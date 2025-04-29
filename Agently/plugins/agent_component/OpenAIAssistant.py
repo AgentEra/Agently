@@ -43,7 +43,7 @@ class OpenAIAssistant(ComponentABC):
         return self
 
     def get_file_id(self, file_name: str):
-        return self.assistant_runtime_ctx.get(f"files.{filename}.id")
+        return self.assistant_runtime_ctx.get(f"files.{file_name}.id")
 
     def remove_file(self, file_name: str):
         self.assistant_runtime_ctx.remove(f"files.{ file_name }")
