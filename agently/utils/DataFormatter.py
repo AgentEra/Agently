@@ -242,9 +242,11 @@ class DataFormatter:
 
             if "additionalProperties" in input_schema:
                 additional_properties = input_schema["additionalProperties"]
-                if additional_properties is True or additional_properties is None:
+                if additional_properties is False:
+                    pass
+                elif additional_properties is True or additional_properties is None:
                     kwargs_format["<*>"] = (Any, "")
-                else:
+                elif isinstance(additional_properties, dict):
                     additional_type = additional_properties.pop("type", Any)
                     additional_properties.pop("title", None)
                     additional_desc = (
@@ -253,6 +255,8 @@ class DataFormatter:
                         else ""
                     )
                     kwargs_format["<*>"] = (additional_type, additional_desc)
+                else:
+                    kwargs_format["<*>"] = (Any, "")
 
             return kwargs_format or None
 

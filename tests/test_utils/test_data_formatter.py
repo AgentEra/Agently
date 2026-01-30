@@ -93,3 +93,32 @@ def test_sanitize_preserves_pydantic_generics():
         (list[dict[str, str]], "A list of string dict"),
         (list, "A list of string dict"),
     )
+
+
+def test_from_schema_to_kwargs_format_additional_properties_false():
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string", "title": "A"}},
+        "additionalProperties": False,
+    }
+    assert DataFormatter.from_schema_to_kwargs_format(schema) == {"a": ("string", "")}
+
+
+def test_from_schema_to_kwargs_format_additional_properties_true():
+    from typing import Any
+
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+        "additionalProperties": True,
+    }
+    assert DataFormatter.from_schema_to_kwargs_format(schema) == {"a": ("string", ""), "<*>": (Any, "")}
+
+
+def test_from_schema_to_kwargs_format_additional_properties_schema():
+    schema = {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": {"type": "number", "title": "X", "description": "x"},
+    }
+    assert DataFormatter.from_schema_to_kwargs_format(schema) == {"<*>": ("number", "description: x")}
