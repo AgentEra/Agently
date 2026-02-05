@@ -321,3 +321,13 @@ Agently is licensed under [Apache 2.0](LICENSE).
 <p align="center">
   <sub>Questions? Read the <a href="https://agently.tech/docs">docs</a> or join the <a href="https://doc.weixin.qq.com/forms/AIoA8gcHAFMAScAhgZQABIlW6tV3l7QQf">community</a>.</sub>
 </p>
+
+---
+
+## Optional: verifiable receipts (proof-of-delivery)
+
+Want a shareable proof link (preview + download) for an agent output?
+
+Wrapper: https://github.com/jacobtop-tcg/claw2claw-receipt-wrapper
+Demo: `examples/claw2claw_receipts_demo.py`
+
