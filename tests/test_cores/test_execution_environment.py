@@ -54,6 +54,59 @@ async def test_execution_environment_ensure_reuses_and_releases_handle():
 
 
 @pytest.mark.asyncio
+async def test_execution_environment_rechecks_health_before_reuse():
+    manager = _create_manager()
+
+    class FlakyProvider:
+        name = "FlakyProvider"
+        kind = "flaky"
+        DEFAULT_SETTINGS: dict[str, Any] = {}
+
+        def __init__(self):
+            self.ensure_count = 0
+            self.release_count = 0
+
+        async def async_ensure(self, *, requirement, policy, existing_handle=None):
+            _ = (requirement, policy, existing_handle)
+            self.ensure_count += 1
+            return {
+                "handle_id": f"flaky:{ self.ensure_count }",
+                "resource": object(),
+                "status": "ready",
+                "meta": {"provider": self.name},
+            }
+
+        async def async_health_check(self, handle):
+            _ = handle
+            return "unhealthy"
+
+        async def async_release(self, handle):
+            _ = handle
+            self.release_count += 1
+
+    provider = FlakyProvider()
+    manager.register_provider(cast(Any, provider))
+    requirement = cast(ExecutionEnvironmentRequirement, {
+        "kind": "flaky",
+        "scope": "session",
+        "owner_id": "session-health",
+        "resource_key": "resource",
+    })
+
+    handle_1 = await manager.async_ensure(requirement)
+    handle_2 = await manager.async_ensure(requirement)
+
+    assert handle_1.get("handle_id") == "flaky:1"
+    assert handle_2.get("handle_id") == "flaky:2"
+    assert provider.ensure_count == 2
+    assert provider.release_count == 1
+    assert manager.list()[0].get("handle_id") == "flaky:2"
+
+    await manager.async_release(handle_2)
+    assert manager.list() == []
+
+
+@pytest.mark.asyncio
 async def test_execution_environment_approval_required_does_not_start():
     manager = _create_manager()
 

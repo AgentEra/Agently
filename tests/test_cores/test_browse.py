@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 
 def test_browse_extract_prefers_main_content_and_ignores_sidebar():

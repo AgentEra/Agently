@@ -67,3 +67,12 @@ def test_in_development_manifest_is_registered_and_protocol_compatible():
         in_development["companions"]["skills"]["devtools_guidance_protocol"]
         == current["companions"]["skills"]["devtools_guidance_protocol"]
     )
+    assert in_development["companions"]["skills"]["catalog_generation"] == "v2"
+    assert in_development["companions"]["skills"]["recommended_bundle"] == "app"
+    assert in_development["companions"]["skills"]["legacy_generations"] == [
+        {
+            "generation": "v1",
+            "last_supported_framework_version": "4.1.1",
+            "status": "frozen",
+        }
+    ]
