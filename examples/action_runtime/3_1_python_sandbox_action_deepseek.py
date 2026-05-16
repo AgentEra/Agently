@@ -25,3 +25,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes a successful python_table_stats call.
+# The ActionResult has model_digest and artifact_refs for the Python code/output.
+# The calculated values are average=20.0 and max-minus-min gap=34.

@@ -34,3 +34,8 @@ if __name__ == "__main__":
 
     print("[ACTION_CALL_HANDLES_AFTER_RELEASE]")
     print(Agently.execution_environment.list(scope="action_call"))
+
+# Expected key output with Ollama running:
+# [ACTION_RECORDS] includes a successful run_python call with model_digest and artifact_refs.
+# [ACTION_RESULTS_INJECTED_TO_REPLY] contains average=20.0, count=5, and max_minus_min_gap=34.
+# [ACTION_CALL_HANDLES_AFTER_RELEASE] prints [].

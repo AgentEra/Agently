@@ -3,9 +3,9 @@
 These examples show the recommended developer path for managed execution
 capabilities.
 
-Most application code should start with `agent.enable_*` helpers. They hide the
-core manager/provider lifecycle and expose model-callable Actions with sensible
-defaults.
+Most application code should start with `agent.enable_*` helpers or built-in
+action packages. They hide the core manager/provider lifecycle and expose
+model-callable Actions with sensible defaults.
 
 ## Start Here
 
@@ -15,6 +15,10 @@ defaults.
 | `02_agent_python_environment_ollama.py` | App developers with local Ollama | Let a model decide to call the enabled Python action before replying. |
 | `03_agent_issue_processor_deepseek.py` | App developers with DeepSeek | A realistic issue-triage task where the model uses Python for deterministic metrics and then writes the summary. |
 | `04_triggerflow_python_environment_local.py` | Workflow/framework developers | Inject a managed Python sandbox into TriggerFlow `runtime_resources`. |
+| `05_action_nodejs_environment_local.py` | App developers, no model required | Enable a managed Node.js action and execute JavaScript through the Node provider. |
+| `06_action_sqlite_environment_local.py` | App developers, no model required | Enable a managed SQLite query action against a local database file. |
+| `07_browser_environment_browse_local.py` | Action/plugin developers | Browse a local page through Browser Execution Environment. |
+| `08_health_check_reuse_local.py` | Provider/plugin developers | Show V2 health-check-before-reuse behavior with a custom provider. |
 
 ## Copy-Paste Shape
 
@@ -50,6 +54,20 @@ action is called.
   - Runs without any model API key.
   - Injects a managed Python sandbox into TriggerFlow `runtime_resources`.
   - This is intentionally lower-level than the first three examples.
+- `05_action_nodejs_environment_local.py`
+  - Runs without any model API key.
+  - Requires `node` on `PATH`; otherwise it prints a skip message.
+  - Demonstrates `agent.enable_nodejs(...)` and action-call-scoped release.
+- `06_action_sqlite_environment_local.py`
+  - Runs without any model API key.
+  - Creates a temporary SQLite database and queries it through `agent.enable_sqlite(...)`.
+- `07_browser_environment_browse_local.py`
+  - Runs without any model API key.
+  - Requires Playwright and Chromium; otherwise it prints a skip message.
+  - Demonstrates `Browse(use_browser_environment=True)` with a managed browser resource.
+- `08_health_check_reuse_local.py`
+  - Runs without any model API key.
+  - Creates a local manager and provider to show that unhealthy ready handles are released and replaced before reuse.
 
 Before running the Ollama example, make sure Ollama is running and the model is
 available:
@@ -76,12 +94,18 @@ python examples/execution_environment/01_action_python_environment_local.py
 python examples/execution_environment/02_agent_python_environment_ollama.py
 python examples/execution_environment/03_agent_issue_processor_deepseek.py
 python examples/execution_environment/04_triggerflow_python_environment_local.py
+python examples/execution_environment/05_action_nodejs_environment_local.py
+python examples/execution_environment/06_action_sqlite_environment_local.py
+python examples/execution_environment/07_browser_environment_browse_local.py
+python examples/execution_environment/08_health_check_reuse_local.py
 ```
 
 Notes:
 
 - Execution Environment declarations are lazy; a declaration does not start a sandbox or transport.
-- Business examples should prefer `agent.enable_python(...)`, `agent.enable_shell(...)`, and `agent.enable_workspace(...)` over direct manager/provider APIs.
+- Business examples should prefer `agent.enable_python(...)`, `agent.enable_shell(...)`, `agent.enable_workspace(...)`, `agent.enable_nodejs(...)`, and `agent.enable_sqlite(...)` over direct manager/provider APIs.
+- Built-in providers currently cover MCP, Bash, Python, Node, Docker, Browser, and SQLite. Search is intentionally not an Execution Environment provider; configure proxy, timeout, backend, and region on `agently.builtins.actions.Search(...)`.
+- Ready handles are health-checked before reuse. Unhealthy handles emit `execution_environment.unhealthy`, are released, and are replaced with fresh handles.
 - `enable_*` helpers provide default action descriptions, so `desc=` is optional. By default `desc=` appends extra guidance; `desc_mode="override"` replaces the default description only when you need full control.
 - Action dispatch ensures required environments immediately before executor calls.
 - `action_call` scoped handles are released after the action call.

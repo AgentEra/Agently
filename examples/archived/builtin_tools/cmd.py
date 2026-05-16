@@ -1,6 +1,6 @@
 import asyncio
 from pathlib import Path
-from agently.builtins.tools import Cmd
+from agently.builtins.actions import Cmd
 
 cmd = Cmd(
     allowed_cmd_prefixes=["ls", "rg", "cat", "pwd"],

@@ -139,3 +139,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes one successful multiply call from SingleRoundActionFlow.
+# The product of 12.5 and 4 is 50.0.
+# [MODEL_REPLY] reports 50.0.

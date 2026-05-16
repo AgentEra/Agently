@@ -19,3 +19,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes MCP calculator action calls.
+# The final computed value for (12.5 + 7.25) * 3 is 59.25.
+# [MODEL_REPLY] reports 59.25.

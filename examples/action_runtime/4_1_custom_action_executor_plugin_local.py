@@ -63,3 +63,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes a successful reverse_text call.
+# The custom executor returns reversed_text="emitnuR noitcA" and length=14.
+# [MODEL_REPLY] reports the reversed text and length.

@@ -37,3 +37,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes successful repo_bash_inspector calls.
+# Each shell ActionResult includes model_digest and artifact_refs.
+# The reply mentions the repository root and files under examples/action_runtime.

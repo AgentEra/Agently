@@ -55,3 +55,8 @@ if __name__ == "__main__":
         with suppress(Exception):
             process.kill()
             process.wait(timeout=5)
+
+# Expected key output after configuring DeepSeek:
+# The local MCP HTTP server starts on 127.0.0.1.
+# [ACTION_RECORDS] includes MCP calculator action calls.
+# The final computed value for (100.25 + 55.5) * 1.08 is 168.21.

@@ -42,3 +42,7 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+# Expected key output:
+# [TRIGGERFLOW_RESULT] prints {"answer": 42}.
+# [EXECUTION_HANDLES_AFTER_RELEASE] prints [] after the execution-scoped Python resource is released.

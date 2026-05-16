@@ -22,3 +22,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes a successful add_invoice_amounts call with result 60525.
+# [ACTION_RESULTS_INJECTED_TO_REPLY] contains {"Add two invoice amounts...": 60525}.
+# [MODEL_REPLY] mentions the total 60525.

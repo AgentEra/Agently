@@ -1,5 +1,5 @@
 import asyncio
-from agently.builtins.tools import Search
+from agently.builtins.actions import Search
 
 search = Search(
     proxy="http://127.0.0.1:7890",
@@ -47,13 +47,7 @@ Agently.set_settings(
 
 agent = Agently.create_agent()
 
-agent.use_actions(
-    [
-        search.search,
-        search.search_news,
-        search.search_arxiv,
-    ]
-)
+agent.use_actions(search)
 
 response = agent.input("Search news about language model applications.").get_response()
 print(response.result.get_data())

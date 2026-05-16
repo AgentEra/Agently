@@ -58,3 +58,9 @@ if __name__ == "__main__":
 
     print("[ACTION_CALL_HANDLES_AFTER_RELEASE]")
     print(Agently.execution_environment.list(scope="action_call"))
+
+# Expected key output after configuring DeepSeek:
+# [ACTION_RECORDS] includes a successful run_python call with deterministic issue metrics.
+# The metrics include label_count=3, comment_count=3, triggerflow_involved=True,
+# devtools_involved=True, and severity_score=6.
+# [ACTION_CALL_HANDLES_AFTER_RELEASE] prints [].

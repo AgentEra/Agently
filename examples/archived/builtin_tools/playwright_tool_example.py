@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 TARGET_URL = os.getenv("PLAYWRIGHT_TARGET_URL", "https://github.com/AgentEra/Agently")
 SCREENSHOT_PATH = os.getenv("PLAYWRIGHT_SCREENSHOT_PATH")

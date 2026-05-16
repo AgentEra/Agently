@@ -4,6 +4,8 @@ These examples are kept for reference only. They were superseded by the Action r
 
 Archived groups:
 
+- `builtin_tools/`
+- `auto_loop/`
 - `step_by_step/07-tools.py`
 - `step_by_step/10-mcp.py`
 - `mcp/mcp_agent.py`
@@ -13,6 +15,10 @@ Archived groups:
 
 Current canonical replacements:
 
+- Recommended cookbook patterns: `examples/cookbook/`
 - Action/function/MCP/sandbox/runtime/flow examples: `examples/action_runtime/README.md`
-- Built-in tool examples that remain current: `examples/builtin_tools/`
+- Built-in Search/Browse examples: `examples/builtin_actions/`
+- Action loop execution recall: `examples/action_runtime/3_5_action_execution_recall_local.py`
+- Model-driven Action Runtime loop: `examples/action_runtime/`
 - General trigger-flow examples: `examples/trigger_flow/`
+- TriggerFlow config and Mermaid export/import: `examples/step_by_step/11-triggerflow-16_flow_config_and_mermaid.py`

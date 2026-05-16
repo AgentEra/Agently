@@ -1,5 +1,5 @@
 import asyncio
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 browse = Browse()
 

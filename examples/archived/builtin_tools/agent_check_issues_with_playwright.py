@@ -7,7 +7,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
 from agently import Agently
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 ISSUES_URL = "https://github.com/AgentEra/Agently/issues?q=is%3Aissue%20state%3Aopen"
 URL_PATTERN = re.compile(r"https?://[^\s\]\)\"'>]+")

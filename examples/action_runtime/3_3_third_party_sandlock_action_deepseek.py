@@ -154,3 +154,8 @@ if __name__ == "__main__":
         print_action_results(records)
         response = agent.get_response()
         print_response(response)
+
+# Expected key output after configuring DeepSeek on Linux 6.7+ with sandlock:
+# [ACTION_RECORDS] includes a successful sandlock_exec call.
+# The sandbox stdout contains "hello from third-party sandlock".
+# If the platform or package is unavailable, the example prints [SKIPPED].

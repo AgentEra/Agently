@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 TARGET_URL = os.getenv("PYAUTOGUI_TARGET_URL", "https://github.com/AgentEra/Agently")
 RUN_REAL = os.getenv("RUN_PYAUTOGUI", "1") == "1"

@@ -261,3 +261,8 @@ if __name__ == "__main__":
         print_action_results(records)
         response = agent.get_response()
         print_response(response)
+
+# Expected key output after configuring DeepSeek with Docker running:
+# [ACTION_RECORDS] includes a successful docker_sandbox_exec call.
+# The container stdout contains "hello from docker sandbox".
+# If Docker is unavailable, the example prints [SKIPPED].

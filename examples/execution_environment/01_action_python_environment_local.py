@@ -48,3 +48,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Expected key output:
+# [ACTION_RESULT] has status="success" and data["result"] equals
+# {"average": 20.0, "count": 5, "max_minus_min_gap": 34}.
+# [ACTION_CALL_HANDLES_AFTER_RELEASE] prints [].

@@ -197,3 +197,8 @@ if __name__ == "__main__":
     print_action_results(records)
     response = agent.get_response()
     print_response(response)
+
+# Expected key output after configuring DeepSeek:
+# The custom ActionRuntime plans normalize_title first, then count_words.
+# The normalized title is "action runtime plugin refactor".
+# The exact word count is 4.

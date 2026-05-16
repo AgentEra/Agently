@@ -9,7 +9,7 @@ from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 
 from agently import Agently
-from agently.builtins.tools import Browse
+from agently.builtins.actions import Browse
 
 TRAVEL_DATE = date.today().isoformat()
 TRAVEL_DATE_OBJ = date.fromisoformat(TRAVEL_DATE)
