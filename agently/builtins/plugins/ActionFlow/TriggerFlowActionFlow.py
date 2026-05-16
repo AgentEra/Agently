@@ -186,6 +186,12 @@ class TriggerFlowActionFlow:
             last_round_records = data.get_state("last_round_records", [])
             if not isinstance(last_round_records, list):
                 last_round_records = []
+            model_visible_done_plans = action.to_model_visible_records(done_plans)
+            model_visible_last_round_records = action.to_model_visible_records(last_round_records)
+            visible_action_list = action._with_action_artifact_recall_action(
+                action_list,
+                model_visible_last_round_records or model_visible_done_plans,
+            )
 
             decision = action._normalize_action_decision(
                 await resolved_planning_handler(
@@ -195,14 +201,14 @@ class TriggerFlowActionFlow:
                         "agent_name": agent_name,
                         "round_index": round_index,
                         "max_rounds": max_rounds,
-                        "done_plans": done_plans,
-                        "last_round_records": last_round_records,
+                        "done_plans": model_visible_done_plans,
+                        "last_round_records": model_visible_last_round_records,
                         "parent_run_context": parent_run_context,
                         "action": action,
                         "runtime": action.action_runtime,
                     },
                     {
-                        "action_list": action_list,
+                        "action_list": visible_action_list,
                         "planning_protocol": planning_protocol,
                     },
                 )
@@ -368,7 +374,10 @@ class TriggerFlowActionFlow:
             result = result.get("$final_result")
         if not isinstance(result, list):
             return []
-        normalized = [action._normalize_execution_record(record, None, index) for index, record in enumerate(result)]
+        normalized = [
+            action._finalize_action_result(action._normalize_execution_record(record, None, index))
+            for index, record in enumerate(result)
+        ]
         with bind_runtime_context(
             parent_run_context=action_loop_run,
             tool_phase_run_context=action_loop_run,

@@ -44,6 +44,9 @@ class ActionExtension(BaseAgent):
         self.use_sandbox = self.use_action_sandbox
         self.use_python = self.enable_python
         self.use_shell = self.enable_shell
+        self.use_nodejs = self.enable_nodejs
+        self.use_sqlite = self.enable_sqlite
+        self.use_docker = self.enable_docker
         self.use_workspace = self.enable_workspace
 
         self.settings.setdefault("action.loop.max_rounds", 5, inherit=True)
@@ -145,24 +148,48 @@ class ActionExtension(BaseAgent):
     def tool_func(self, func: Callable[P, R]) -> Callable[P, R]:
         return self.action_func(func)
 
-    def use_actions(self, actions: Callable | str | list[str | Callable]):
-        if isinstance(actions, (str, Callable)):
-            actions = [actions]
-        names = []
+    @staticmethod
+    def _normalize_action_items(actions: Any):
+        if isinstance(actions, str) or callable(actions) or hasattr(actions, "register_actions"):
+            return [actions]
+        if isinstance(actions, (list, tuple, set)):
+            return list(actions)
+        return [actions]
+
+    @staticmethod
+    def _normalize_registered_action_ids(value: Any):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item) for item in value if str(item)]
+        return []
+
+    def use_actions(self, actions: Callable | str | list[str | Callable] | Any):
+        names: list[str] = []
         local_registry = getattr(self.action, "action_registry", None)
-        for action_item in actions:
+        agent_tag = f"agent-{ self.name }"
+        for action_item in self._normalize_action_items(actions):
+            register_actions = getattr(action_item, "register_actions", None)
+            if callable(register_actions):
+                names.extend(self._normalize_registered_action_ids(register_actions(self.action, tags=[agent_tag])))
+                continue
             if isinstance(action_item, str):
                 self.__import_global_action(action_item)
                 names.append(action_item)
             else:
-                action_name = action_item.__name__
+                action_name = getattr(action_item, "__name__", "")
+                if not action_name:
+                    raise TypeError("use_actions() expects action names, callables, or built-in action packages.")
                 if action_name not in self.action.tool_funcs and (local_registry is None or not local_registry.has(action_name)):
                     self.action_func(action_item)
                 names.append(action_name)
-        self.action.tag(names, f"agent-{ self.name }")
+        if names:
+            self.action.tag(names, agent_tag)
         return self
 
-    def use_tools(self, tools: Callable | str | list[str | Callable]):
+    def use_tools(self, tools: Callable | str | list[str | Callable] | Any):
         return self.use_actions(tools)
 
     @staticmethod
@@ -263,6 +290,79 @@ class ActionExtension(BaseAgent):
             timeout=timeout,
             env=env,
         )
+
+    def enable_nodejs(
+        self,
+        *,
+        action_id: str = "run_nodejs",
+        desc: str | None = None,
+        desc_mode: CapabilityDescMode = "append",
+        expose_to_model: bool = True,
+        node_binary: str = "node",
+        cwd: str | None = None,
+        timeout: int = 20,
+        env: dict[str, str] | None = None,
+    ):
+        default_desc = "Run JavaScript with Node.js inside a managed execution environment."
+        self.action.register_nodejs_action(
+            action_id=action_id,
+            desc=self._build_capability_desc(default_desc, desc, mode=desc_mode),
+            tags=[f"agent-{ self.name }"],
+            expose_to_model=expose_to_model,
+            node_binary=node_binary,
+            cwd=cwd,
+            timeout=timeout,
+            env=env,
+        )
+        return self
+
+    def enable_sqlite(
+        self,
+        *,
+        database: str = ":memory:",
+        action_id: str = "query_sqlite",
+        read_only: bool = True,
+        desc: str | None = None,
+        desc_mode: CapabilityDescMode = "append",
+        expose_to_model: bool = True,
+        uri: bool = False,
+    ):
+        default_desc = "Query a SQLite database through a managed execution environment."
+        self.action.register_sqlite_action(
+            action_id=action_id,
+            desc=self._build_capability_desc(default_desc, desc, mode=desc_mode),
+            tags=[f"agent-{ self.name }"],
+            expose_to_model=expose_to_model,
+            database=database,
+            read_only=read_only,
+            uri=uri,
+        )
+        return self
+
+    def enable_docker(
+        self,
+        *,
+        action_id: str = "run_docker",
+        image: str | None = None,
+        desc: str | None = None,
+        desc_mode: CapabilityDescMode = "append",
+        expose_to_model: bool = False,
+        timeout: int = 60,
+        docker_binary: str = "docker",
+        default_args: list[str] | None = None,
+    ):
+        default_desc = "Run a command in a Docker container through a managed execution environment."
+        self.action.register_docker_action(
+            action_id=action_id,
+            desc=self._build_capability_desc(default_desc, desc, mode=desc_mode),
+            tags=[f"agent-{ self.name }"],
+            expose_to_model=expose_to_model,
+            image=image,
+            timeout=timeout,
+            docker_binary=docker_binary,
+            default_args=default_args,
+        )
+        return self
 
     def enable_workspace(
         self,

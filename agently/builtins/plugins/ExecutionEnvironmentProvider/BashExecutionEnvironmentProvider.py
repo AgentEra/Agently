@@ -45,7 +45,7 @@ class BashExecutionEnvironmentProvider:
         existing_handle: "ExecutionEnvironmentHandle | None" = None,
     ) -> "ExecutionEnvironmentHandle":
         _ = existing_handle
-        from agently.builtins.tools.Cmd import Cmd
+        from agently.builtins.actions import Cmd
 
         config = requirement.get("config", {})
         resource = Cmd(

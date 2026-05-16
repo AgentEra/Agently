@@ -12,19 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from agently.builtins.actions.Browse import Browse as _Browse
+from .Browse import Browse
+from .Cmd import Cmd
+from .Search import Search
 
-
-class Browse(_Browse):
-    """Legacy import facade for `agently.builtins.actions.Browse`."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.tool_info_list = [
-            {
-                "name": "browse",
-                "desc": "Browse the page at {url} with fallback chain: playwright -> bs4; pyautogui is optional legacy fallback.",
-                "kwargs": {"url": ("str", "Accessible URL")},
-                "func": self.browse,
-            }
-        ]
+__all__ = ["Browse", "Cmd", "Search"]

@@ -315,8 +315,14 @@ class AgentlyActionRuntime:
         if not isinstance(max_rounds, int) or max_rounds < 0:
             max_rounds = 5
 
-        safe_done_plans = done_plans if isinstance(done_plans, list) else []
-        safe_last_round_records = last_round_records if isinstance(last_round_records, list) else []
+        safe_done_plans = self.action.to_model_visible_records(done_plans if isinstance(done_plans, list) else [])
+        safe_last_round_records = self.action.to_model_visible_records(
+            last_round_records if isinstance(last_round_records, list) else []
+        )
+        visible_action_list = self.action._with_action_artifact_recall_action(
+            action_list,
+            safe_last_round_records or safe_done_plans,
+        )
         if not isinstance(round_index, int) or round_index < 0:
             round_index = 0
 
@@ -334,7 +340,7 @@ class AgentlyActionRuntime:
                     "runtime": self,
                 },
                 {
-                    "action_list": action_list,
+                    "action_list": visible_action_list,
                     "planning_protocol": planning_protocol,
                 },
             )

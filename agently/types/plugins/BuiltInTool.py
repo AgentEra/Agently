@@ -19,4 +19,12 @@ from agently.types.data import ToolInfo
 
 
 class BuiltInTool(Protocol):
+    """
+    Legacy authoring protocol for built-in tool facades.
+
+    New built-in capabilities should expose `register_actions(...)` through
+    `agently.builtins.actions` and use ActionExecutor plugins for execution
+    backend variation. `tool_info_list` remains for compatibility mounts.
+    """
+
     tool_info_list: list[ToolInfo]

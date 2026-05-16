@@ -26,14 +26,23 @@ def _load_default_plugins(plugin_manager: "PluginManager"):
     from agently.builtins.plugins.ActionRuntime import AgentlyActionRuntime
     from agently.builtins.plugins.ActionExecutor import (
         BashSandboxActionExecutor,
+        BrowseActionExecutor,
+        DockerActionExecutor,
         LocalFunctionActionExecutor,
         MCPActionExecutor,
+        NodeJSActionExecutor,
         PythonSandboxActionExecutor,
+        SQLiteActionExecutor,
+        SearchActionExecutor,
     )
     from agently.builtins.plugins.ExecutionEnvironmentProvider import (
         BashExecutionEnvironmentProvider,
+        BrowserExecutionEnvironmentProvider,
+        DockerExecutionEnvironmentProvider,
         MCPExecutionEnvironmentProvider,
+        NodeExecutionEnvironmentProvider,
         PythonExecutionEnvironmentProvider,
+        SQLiteExecutionEnvironmentProvider,
     )
 
     plugin_manager.register("ActionRuntime", AgentlyActionRuntime)
@@ -42,9 +51,18 @@ def _load_default_plugins(plugin_manager: "PluginManager"):
     plugin_manager.register("ActionExecutor", MCPActionExecutor, activate=False)
     plugin_manager.register("ActionExecutor", PythonSandboxActionExecutor, activate=False)
     plugin_manager.register("ActionExecutor", BashSandboxActionExecutor, activate=False)
+    plugin_manager.register("ActionExecutor", SearchActionExecutor, activate=False)
+    plugin_manager.register("ActionExecutor", BrowseActionExecutor, activate=False)
+    plugin_manager.register("ActionExecutor", NodeJSActionExecutor, activate=False)
+    plugin_manager.register("ActionExecutor", DockerActionExecutor, activate=False)
+    plugin_manager.register("ActionExecutor", SQLiteActionExecutor, activate=False)
     plugin_manager.register("ExecutionEnvironmentProvider", MCPExecutionEnvironmentProvider, activate=False)
     plugin_manager.register("ExecutionEnvironmentProvider", BashExecutionEnvironmentProvider, activate=False)
     plugin_manager.register("ExecutionEnvironmentProvider", PythonExecutionEnvironmentProvider, activate=False)
+    plugin_manager.register("ExecutionEnvironmentProvider", NodeExecutionEnvironmentProvider, activate=False)
+    plugin_manager.register("ExecutionEnvironmentProvider", DockerExecutionEnvironmentProvider, activate=False)
+    plugin_manager.register("ExecutionEnvironmentProvider", BrowserExecutionEnvironmentProvider, activate=False)
+    plugin_manager.register("ExecutionEnvironmentProvider", SQLiteExecutionEnvironmentProvider, activate=False)
 
     from agently.builtins.plugins.PromptGenerator.AgentlyPromptGenerator import (
         AgentlyPromptGenerator,

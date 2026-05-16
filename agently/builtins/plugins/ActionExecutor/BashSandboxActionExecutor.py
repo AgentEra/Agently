@@ -45,7 +45,7 @@ class BashSandboxActionExecutor:
 
     async def execute(self, *, spec, action_call, policy, settings) -> Any:
         _ = (spec, settings)
-        from agently.builtins.tools.Cmd import Cmd
+        from agently.builtins.actions import Cmd
 
         action_input = action_call.get("action_input", {})
         if not isinstance(action_input, dict):

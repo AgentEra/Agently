@@ -49,6 +49,9 @@ class ActionApproval(TypedDict, total=False):
 
 
 class ActionArtifact(TypedDict, total=False):
+    artifact_id: str
+    action_call_id: str
+    label: str
     artifact_type: str
     path: str
     media_type: str
@@ -56,6 +59,8 @@ class ActionArtifact(TypedDict, total=False):
     value: Any
     truncated: bool
     full_value_available: bool
+    available: bool
+    size: int
     meta: dict[str, Any]
 
 
@@ -119,6 +124,7 @@ class ActionDecision(TypedDict, total=False):
 
 
 class ActionResult(TypedDict, total=False):
+    action_call_id: str
     ok: bool
     status: ActionStatus
     purpose: str
@@ -130,11 +136,14 @@ class ActionResult(TypedDict, total=False):
     success: bool
     result: Any
     data: Any
+    model_digest: dict[str, Any]
+    artifact_refs: list[ActionArtifact]
     artifacts: list[ActionArtifact]
     diagnostics: list[ActionDiagnostic]
     approval: ActionApproval
     timing: dict[str, Any]
     meta: dict[str, Any]
+    redaction_report: list[str]
     error: str
     expose_to_model: bool
     side_effect_level: ActionSideEffectLevel

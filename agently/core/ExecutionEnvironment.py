@@ -177,7 +177,7 @@ class ExecutionEnvironmentManager:
             "owner_id": source.get("owner_id", ""),
             "resource_key": source.get("resource_key", ""),
             "status": status or source.get("status", ""),
-            "reuse_key": source.get("reuse_key", ""),
+            "reuse_key": source.get("reuse_key", "") or source.get("meta", {}).get("reuse_key", ""),
         }
         if error:
             payload["error"] = error
@@ -270,14 +270,32 @@ class ExecutionEnvironmentManager:
         policy = cast(ExecutionEnvironmentPolicy, dict(requirement.get("policy", {})))
         policy = await self._resolve_approval(requirement, policy)
         reuse_key = str(requirement.get("reuse_key", ""))
+        provider = self._get_provider(str(requirement["kind"]))
         existing_id = self._handles_by_reuse_key.get(reuse_key)
         if existing_id and existing_id in self._handles:
             existing_handle = self._handles[existing_id]
             if existing_handle.get("status") == "ready":
-                existing_handle["ref_count"] = int(existing_handle.get("ref_count", 0)) + 1
-                return existing_handle
+                health_error = None
+                try:
+                    health_status = await provider.async_health_check(existing_handle)
+                except Exception as error:
+                    health_status = cast(ExecutionEnvironmentStatus, "unhealthy")
+                    health_error = str(error)
+                if health_status == "ready":
+                    existing_handle["ref_count"] = int(existing_handle.get("ref_count", 0)) + 1
+                    return existing_handle
+                existing_handle["status"] = "unhealthy"
+                await self._emit(
+                    "execution_environment.unhealthy",
+                    handle=existing_handle,
+                    status="unhealthy",
+                    message="Execution environment health check failed before reuse.",
+                    error=health_error,
+                )
+                await self._async_release_handle(existing_id, force=True)
+            else:
+                await self._async_release_handle(existing_id, force=True)
 
-        provider = self._get_provider(str(requirement["kind"]))
         await self._emit(
             "execution_environment.ensuring",
             requirement=requirement,
@@ -323,13 +341,12 @@ class ExecutionEnvironmentManager:
         )
         return normalized_handle
 
-    async def async_release(self, handle_or_id: ExecutionEnvironmentHandle | str):
-        handle_id = handle_or_id if isinstance(handle_or_id, str) else str(handle_or_id.get("handle_id", ""))
+    async def _async_release_handle(self, handle_id: str, *, force: bool = False):
         if not handle_id or handle_id not in self._handles:
             return None
         handle = self._handles[handle_id]
         ref_count = int(handle.get("ref_count", 1))
-        if ref_count > 1:
+        if ref_count > 1 and not force:
             handle["ref_count"] = ref_count - 1
             return None
         provider = self._get_provider(str(handle.get("kind", "")))
@@ -364,6 +381,10 @@ class ExecutionEnvironmentManager:
             message="Execution environment released.",
         )
         return None
+
+    async def async_release(self, handle_or_id: ExecutionEnvironmentHandle | str):
+        handle_id = handle_or_id if isinstance(handle_or_id, str) else str(handle_or_id.get("handle_id", ""))
+        return await self._async_release_handle(handle_id)
 
     async def async_release_scope(self, scope: ExecutionEnvironmentScope, owner_id: str):
         targets = [
