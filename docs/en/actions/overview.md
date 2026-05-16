@@ -31,7 +31,7 @@ Default plugin wiring lives in [`agently/_default_init.py`](../../../agently/_de
 - `ActionFlow`: `TriggerFlowActionFlow`
 - `ActionExecutor`: local function, MCP, Python sandbox, Bash sandbox
 
-The public façade is [`agently/core/Action.py`](../../../agently/core/Action.py). Agent-level mounting lives in [`agently/builtins/agent_extensions/ActionExtension.py`](../../../agently/builtins/agent_extensions/ActionExtension.py). The runnable examples are grouped under [`examples/action_runtime/README.md`](../../../examples/action_runtime/README.md).
+The public façade is [`agently/core/Action.py`](../../../agently/core/Action.py). Agent-level mounting lives in [`agently/builtins/agent_extensions/ActionExtension.py`](../../../agently/builtins/agent_extensions/ActionExtension.py). The runnable examples are grouped under [`examples/action_runtime/README.md`](../../../examples/action_runtime/README.md), with model-backed cookbook patterns under [`examples/cookbook/`](../../../examples/cookbook/).
 
 ## Reading choices
 

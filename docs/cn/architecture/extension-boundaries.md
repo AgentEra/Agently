@@ -58,6 +58,10 @@ Plugin 在 core contract 背后提供可替换的 backend 行为。
 
 Provider 代码负责环境相关的 startup、health check 和 release。它不负责决定某个 agent 是否应该被允许使用这个环境。
 
+不要为这一层引入 `ActionProvider`、`CapabilityProvider` 或独立 capability dispatcher
+这类平行概念。可调用能力仍然是 `Action`；执行方式变化属于 `ActionExecutor`；
+live resource 生命周期属于 `ExecutionEnvironmentProvider`。
+
 ### Built-in Capability Actions
 
 Built-in 是 Agently 随框架提供的默认能力目录。它们以 Action 的形式暴露模型可调用操作，并且可以依赖 Execution Environment。
@@ -66,14 +70,19 @@ Built-in 是 Agently 随框架提供的默认能力目录。它们以 Action 的
 
 - 在受 policy 约束的 workspace 内执行 Bash 命令
 - 在安全 sandbox 内运行 Python 代码
-- 在安全 sandbox 内运行 Node.js 代码
+- 通过托管 runner 运行 Node.js 代码
 - 文件搜索、读取、写入
+- web 搜索与页面 browse
 - SQLite 读写
 - vector store 搜索与写入
 - 调用预注册 Python 函数
 - 调用 MCP tools
 
 Action 是模型可见的调用面。只有当 action 需要托管 live dependency、隔离边界、可复用 client 或 cleanup policy 时，才需要 Execution Environment。
+
+内置 capability package 的主 authoring/import path 与实现归属是
+`agently.builtins.actions`。`agently.builtins.tools` 是既有代码的薄 legacy facade，
+不作为新的 authoring 层。
 
 ### Agent Components And Syntax Sugar
 

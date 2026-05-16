@@ -11,8 +11,8 @@ keywords: Agently, ExecutionEnvironment, Action, TriggerFlow, sandbox, MCP, runt
 Execution Environment 是框架级执行环境层，用来在 action 或 workflow step
 真正执行前准备、复用和释放托管执行依赖。
 
-它负责 MCP transport、Bash 命令 runner、Python sandbox 等资源的生命周期和
-policy。Action 与 TriggerFlow 可以声明需要这些环境，但不拥有环境生命周期。
+它负责 MCP transport、命令 runner、sandbox、browser、SQLite connection 和外部进程
+runner 等资源的生命周期和 policy。Action 与 TriggerFlow 可以声明需要这些环境，但不拥有环境生命周期。
 
 ## 面向对象
 
@@ -55,21 +55,29 @@ from agently import Agently
 Agently.execution_environment
 ```
 
-多数业务代码不需要直接调用 manager。内置 MCP、Bash sandbox、Python sandbox
-action 会声明自己的 requirement，Action dispatcher 在 executor 调用前自动 ensure。
+多数业务代码不需要直接调用 manager。内置 MCP、Bash、Python、Node.js、Docker、
+Browser、SQLite action 可以声明自己的 requirement，Action dispatcher 在 executor
+调用前自动 ensure。
 
 更完整的 ownership 模型见
 [Architecture / 扩展边界](../architecture/extension-boundaries.md)。
 
 ## 内置行为
 
-第一批内置 provider：
+内置 provider：
 
 | Kind | 使用方 | 托管资源 |
 |---|---|---|
 | `mcp` | `agent.use_mcp(...)` / MCP actions | MCP transport resource |
 | `bash` | `agent.enable_shell(...)` / Bash sandbox actions | 配置后的命令 runner |
 | `python` | `agent.enable_python(...)` / Python sandbox actions | 配置后的 Python sandbox |
+| `node` | `agent.enable_nodejs(...)` / Node.js executor actions | 配置后的 Node.js runner |
+| `docker` | Docker executor actions | Docker CLI runner |
+| `browser` | 选择托管 browser resource 的 Browse actions | 托管 browser/page/session wrapper |
+| `sqlite` | `agent.enable_sqlite(...)` / SQLite executor actions | SQLite connection |
+
+Search 故意不放在这里。它是无状态的 Action-native capability package；proxy、timeout、
+backend、region 属于 Search package/executor 配置，不属于 Execution Environment。
 
 这些 provider 是低层环境实现。面向用户的能力通常应该暴露为 Action，场景快捷入口应该通过 Agent Component 或未来的 `agent.enable_*` helpers 暴露。
 
@@ -129,7 +137,10 @@ Agently.execution_environment.set_decision_handler(handler)
 ```
 
 声明是 lazy 的：只校验和记录 requirement，不启动任何东西。`ensure(...)` 会在 policy
-与 approval 允许的情况下启动或复用 handle。
+与 approval 允许的情况下启动或复用 handle。复用 ready handle 前，manager 会调用
+`provider.async_health_check(handle)`。健康则 `ref_count + 1` 后复用；不健康则发出
+`execution_environment.unhealthy`，释放旧 handle，再 ensure 一个新 handle。V2 不加入后台
+health scheduler、lease TTL 或自动 reconnect loop。
 
 如果你在开发应用，应该先检查是否已有 built-in action 或 Agent Component 暴露了你需要的能力。
 
@@ -141,6 +152,7 @@ manager 发出 `execution_environment.*` 事件：
 - `execution_environment.approval_required`
 - `execution_environment.ensuring`
 - `execution_environment.ready`
+- `execution_environment.unhealthy`
 - `execution_environment.releasing`
 - `execution_environment.released`
 - `execution_environment.failed`

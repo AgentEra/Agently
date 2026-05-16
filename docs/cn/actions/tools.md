@@ -73,15 +73,35 @@ print(calculate("3333+6666=?"))
 
 工具系列不会消失 —— 但新功能优先在 action 那侧落地。
 
-## 内置工具
+## 内置 actions 与 legacy tools
 
-几个常用能力作为内置工具发布：
+几个常用能力作为内置 action package 发布：
 
 - **Search** —— web 搜索包装
-- **Browse** —— 页面抓取与摘要
-- **Cmd** —— 受限 shell 执行
+- **Browse** —— 页面抓取与可读正文提取
+- **Cmd** —— 低层受限 shell 执行
 
-在 `examples/builtin_tools/` 与 `agently/builtins/...` 下找。它们演示工具入口如何拼成真实 agent。
+新代码使用 action-native import path：
+
+```python
+from agently.builtins.actions import Browse, Search
+
+agent.use_actions(Search(timeout=15, backend="duckduckgo"))
+agent.use_actions(Browse())
+```
+
+`Search(...)` 注册 `search`、`search_news`、`search_wikipedia` 和
+`search_arxiv`。`Browse(...)` 注册 `browse`。实现放在 `agently.builtins.actions`。
+`agently.builtins.tools` 只保留为旧代码的薄 legacy import facade；它可以补旧的
+`tool_info_list` 元数据，但不应该拥有内置能力实现。`agent.use_tools(...)`、
+`agent.tool_func` 和 `Agently.tool` 也仍是受支持的兼容入口。新的内置能力不要再以
+`tool_info_list` / `BuiltInTool` 作为 authoring API。
+
+shell 能力优先使用 `agent.enable_shell(...)`，它挂载托管 `run_bash` action。
+`Cmd` 仍作为低层兼容 package 与 Bash 执行实现 helper 保留。
+
+当前 action-native 示例见 `examples/builtin_actions/`。历史 built-in tool 示例已移到
+`examples/archived/builtin_tools/`，并在 README 中指向当前替代案例。
 
 ## 另见
 

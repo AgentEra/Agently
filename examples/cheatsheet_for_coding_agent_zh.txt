@@ -1,6 +1,6 @@
 # Agently 开发速查表（Agent 可读版）
 
-这份速查表用于快速回忆 Agently 的关键能力与实践要点，结合文档与示例，并重点总结 Auto Loop 的实战实现方式，方便后续自动构建更多智能工作流。
+这份速查表用于快速回忆 Agently 的关键能力与实践要点，结合文档与示例，并重点总结当前 Action Runtime 与 TriggerFlow 的实战模式。
 
 ## Agent-Readable Map（TL;DR）
 ```yaml
@@ -125,7 +125,7 @@ collection = ChromaCollection(collection_name="agently_examples", embedding_agen
 - `data.get_state(...)` / `data.async_set_state(...)`：execution 本地状态
 - `execution.async_close()`：收尾 pending tasks，关闭 runtime stream，并返回 state 快照
 
-## Auto Loop 模式（来自 `examples/step_by_step/12-auto_loop.py`）
+## Action Loop 模式（见 `examples/cookbook/` 和 `examples/action_runtime/`）
 **目标：** 规划 -> Action -> 规划 -> 回复 -> 记忆 -> 循环
 
 **示例关键点：**
@@ -146,7 +146,7 @@ flow.when("UserInput").to(prepare_context).to(ensure_kb).to(make_next_plan)
     .to(reply)
     .to(update_memo)
     .else_condition()
-    .to(use_tool)
+    .to(run_action)
     .to(make_next_plan)
     .end_condition()
 )
@@ -189,11 +189,13 @@ state = await close_task
 - 表单字段加校验，超过次数后可跳过
 
 ## 参考入口
-- Auto Loop：`examples/step_by_step/12-auto_loop.py`
+- Action Runtime loop：`examples/action_runtime/README.md`
+- Cookbook patterns：`examples/cookbook/`
 - Streaming：`examples/step_by_step/06-streaming.py`
 - Actions：`examples/action_runtime/README.md`
 - 已归档旧示例：`examples/archived/README.md`
 - TriggerFlow 系列：`examples/step_by_step/11-triggerflow-01_basics.py`
-- FastAPI 服务：`examples/step_by_step/auto_loop_fastapi/`
+- TriggerFlow config 导出/导入：`examples/step_by_step/11-triggerflow-16_flow_config_and_mermaid.py`
+- 已归档自定义 Auto Loop / FastAPI 服务：`examples/archived/auto_loop/`
 - 访谈示例：`examples/ai_coding_using_Agently/preorder_interview_reset_form.py`
 - AI 编码指南：`examples/ai_coding_using_Agently/ai_coding_guide_with_agently.md`

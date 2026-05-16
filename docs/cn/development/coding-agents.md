@@ -32,24 +32,17 @@ skill **不是**纯文档。它为 coding agent 结构化：每个 skill 告诉 
 
 伴生仓不会变成你的 Agently app 运行时依赖。它仍然只是给 coding agent 的指导包。
 
-## 可用 skill（代表）
+## 当前 skills
 
 | Skill | 用户在做的事 |
 |---|---|
 | `agently-playbook` | 从零开始 —— 选合适的项目结构 |
-| `agently-model-setup` | 接模型端点、环境变量、设置文件 |
-| `agently-prompt-management` | 塑形请求的指令或模板 |
-| `agently-output-control` | 锁结构化字段、ensure 标记 / 运行时 ensure 路径、校验 |
-| `agently-model-response` | 复用单次响应、流式输出 |
-| `agently-session-memory` | 加多轮连续性 / memo |
-| `agently-agent-extensions` | 加 tool 使用、MCP、FastAPI 暴露 |
+| `agently-request` | 模型接入、Prompt 管理、结构化输出、响应复用、session memory、embedding、检索 |
+| `agently-runtime` | Action Runtime、内置 actions、MCP、Execution Environment、FastAPI 暴露、DevTools 接入 |
 | `agently-triggerflow` | 需要分支、并发、pause/resume、save/load |
-| `agently-knowledge-base` | embedding + 检索回答 |
-| `agently-langchain-to-agently` | 从 LangChain agent 迁移 |
-| `agently-langgraph-to-triggerflow` | 从 LangGraph 编排迁移 |
-| `agently-migration-playbook` | 决定先用哪个迁移 skill |
+| `agently-migration` | 从 LangChain、LangGraph、LlamaIndex、CrewAI 或类似系统迁移 |
 
-实际 skill 列表见 `Agently-Skills/skills/`。上表是快照。
+当前公开 catalog generation 是 `v2`。实际默认 skill 列表见 `Agently-Skills/skills/`，应只包含这 5 个 skills。
 
 ## 安装
 
@@ -64,6 +57,22 @@ git clone https://github.com/AgentEra/Agently-Skills
 - **Cursor** —— 经项目 rules / context surface 加载
 
 skill 是纯文本 + 脚本；安装时不跑 Agently 特定的东西。
+
+如果用 CLI 安装，默认 `app` bundle 是：
+
+```bash
+for skill in \
+  agently-playbook \
+  agently-request \
+  agently-runtime \
+  agently-triggerflow
+do
+  npx skills add AgentEra/Agently-Skills --agent "$AGENT" --skill "$skill" -y
+done
+```
+
+只有迁移项目才额外安装 `agently-migration`。冻结的 V1 12-skill catalog 位于
+`Agently-Skills/legacy/v1/`，最后支持 Agently `4.1.1`；不要把它作为新项目推荐路径。
 
 ## 为什么是 skill 不是单纯文档
 

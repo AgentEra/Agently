@@ -1,6 +1,6 @@
 # Agently Development Cheatsheet (Agent-Ready)
 
-Use this page as a compact memory aid for building new intelligent workflows with Agently. It summarizes the key practices from the docs and examples, and highlights the Auto Loop production pattern.
+Use this page as a compact memory aid for building new intelligent workflows with Agently. It summarizes the key practices from the docs and examples, and highlights the current Action Runtime and TriggerFlow patterns.
 
 ## Agent-Readable Map (TL;DR)
 ```yaml
@@ -126,7 +126,7 @@ Event-driven orchestration with runtime-scoped data:
 - `data.get_state(...)` / `data.async_set_state(...)` for execution-local state
 - `execution.async_close()` to drain pending tasks, close runtime streams, and return the state snapshot
 
-## Auto Loop pattern (from `examples/step_by_step/12-auto_loop.py`)
+## Action Loop pattern (see `examples/cookbook/` and `examples/action_runtime/`)
 **Goal:** plan -> action -> plan -> reply -> memo -> loop
 
 **Key ideas from the example:**
@@ -147,7 +147,7 @@ flow.when("UserInput").to(prepare_context).to(ensure_kb).to(make_next_plan)
     .to(reply)
     .to(update_memo)
     .else_condition()
-    .to(use_tool)
+    .to(run_action)
     .to(make_next_plan)
     .end_condition()
 )
@@ -190,11 +190,13 @@ Use two output fields: one for user-facing content, one for app actions.
 - Validate form inputs and skip after retries.
 
 ## Pointers
-- Auto Loop: `examples/step_by_step/12-auto_loop.py`
+- Action Runtime loop: `examples/action_runtime/README.md`
+- Cookbook patterns: `examples/cookbook/`
 - Streaming: `examples/step_by_step/06-streaming.py`
 - Actions: `examples/action_runtime/README.md`
 - Archived legacy examples: `examples/archived/README.md`
 - TriggerFlow series: `examples/step_by_step/11-triggerflow-01_basics.py`
-- FastAPI Service: `examples/step_by_step/auto_loop_fastapi/`
+- TriggerFlow config export/import: `examples/step_by_step/11-triggerflow-16_flow_config_and_mermaid.py`
+- Archived custom Auto Loop / FastAPI service: `examples/archived/auto_loop/`
 - Interview example: `examples/ai_coding_using_Agently/preorder_interview_reset_form.py`
 - AI coding guide: `examples/ai_coding_using_Agently/ai_coding_guide_with_agently.md`

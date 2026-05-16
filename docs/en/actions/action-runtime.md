@@ -27,8 +27,8 @@ Agently's action stack has three replaceable plugin layers below the orchestrati
 | `TriggerFlow` | high-level orchestration above actions (loops, branches, pause/resume, sub-flow) — see [TriggerFlow](../triggerflow/overview.md) | the `TriggerFlow` core |
 | `ActionRuntime` | planning protocol, action call normalization, default execution orchestration | `AgentlyActionRuntime` |
 | `ActionFlow` | bridge between an `ActionRuntime` and a flow representation | `TriggerFlowActionFlow` |
-| `ActionExecutor` | how one action actually runs | `LocalFunctionActionExecutor`, `MCPActionExecutor`, `PythonSandboxActionExecutor`, `BashSandboxActionExecutor` |
-| `ExecutionEnvironment` | managed execution dependencies required before an executor call | MCP, Bash, Python providers |
+| `ActionExecutor` | how one action actually runs | local function, MCP, Python/Bash sandbox, Search/Browse, Node.js, Docker, SQLite executors |
+| `ExecutionEnvironment` | managed execution dependencies required before an executor call | MCP, Bash, Python, Node, Docker, Browser, SQLite providers |
 
 `Action` in `agently.core` is a façade that wires:
 
@@ -102,8 +102,12 @@ print(calculate("3333+6666=?"))
 | `@agent.action_func` | mark a function as an action, derive its schema from signature + docstring |
 | `agent.use_actions(actions)` | register a list, single action, or string-named action with the agent |
 | `agent.use_actions(["name1", "name2"])` | register pre-registered actions by name |
+| `agent.use_actions(Search(...))` | mount the built-in Search package from `agently.builtins.actions` |
+| `agent.use_actions(Browse(...))` | mount the built-in Browse package from `agently.builtins.actions` |
 | `agent.enable_python(...)` | mount a managed `run_python` action for deterministic code execution |
 | `agent.enable_shell(...)` | mount a managed `run_bash` action with workspace and command allowlists |
+| `agent.enable_nodejs(...)` | mount a managed `run_nodejs` action |
+| `agent.enable_sqlite(...)` | mount a managed `query_sqlite` action |
 | `agent.enable_workspace(...)` | mount workspace file list/search/read/write actions |
 | `@agent.auto_func` | turn a Python function signature + docstring into a model-backed implementation that uses the agent's actions |
 | `agent.get_action_result()` | retrieve action call records after a request |
@@ -114,11 +118,54 @@ model a common capability such as Python, shell, or workspace access. Use
 `register_action(..., executor=..., execution_environments=[...])` when you are
 building a custom Action backend.
 
+Built-in capability packages live under `agently.builtins.actions`. For example:
+
+```python
+from agently.builtins.actions import Browse, Search
+
+agent.use_actions(Search(timeout=15, backend="duckduckgo"))
+agent.use_actions(Browse())
+```
+
+Search is an Action-native package and does not use Execution Environment;
+proxy, timeout, backend, and region are package/executor configuration. Browse
+is also Action-native; its default path is Playwright + BS4, while pyautogui is
+kept as legacy/advanced configuration. If a Browse action needs a managed
+browser/page/session, register it with Browser Execution Environment enabled.
+
 The `desc=` argument on `enable_*` helpers is optional. By default it is appended
 as additional guidance so the model still sees the baseline usage and safety
 constraints. Use `desc_mode="override"` when you intentionally want to replace
 the default description, or `desc_mode="default"` to ignore the supplied
 description and keep only the built-in one.
+
+## Execution recall
+
+Instruction-heavy actions such as `run_bash`, `run_python`, `run_nodejs`,
+`query_sqlite`, `browse`, and `search` keep later model context compact by
+recording an execution digest plus artifact references.
+
+The digest is what the next action-planning round normally sees. It includes the
+action id, call id, purpose, status, a compact instruction preview, result
+preview, redaction notes, and artifact refs. Full raw content such as complete
+code, shell output, SQL rows, page HTML, screenshots, or logs is retained as a
+redacted artifact instead of being inserted into every prompt.
+
+When the model or application needs the omitted detail, read it explicitly:
+
+```python
+records = agent.get_action_result()
+artifact_ref = records[0]["artifact_refs"][0]
+
+raw = agent.action.read_action_artifact(
+    artifact_id=artifact_ref["artifact_id"],
+    action_call_id=artifact_ref["action_call_id"],
+)
+```
+
+`Action.to_action_results(records)` uses the digest for instruction-heavy
+actions, so follow-up replies can reason about what happened without receiving
+the full payload by default.
 
 ## Compatibility surface — tools
 

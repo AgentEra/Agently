@@ -125,6 +125,15 @@ Paired compatibility events include `meta.compat_event_alias=True`, `meta.compat
 
 Concrete action execution continues to use `action.started`, `action.completed`, and `action.failed`. For tool-backed actions, `payload.action_type` may be `"tool"`; that does not change the event family.
 
+## Execution environment events
+
+Execution Environment lifecycle uses `execution_environment.*`. Providers and
+DevTools consumers should treat this namespace as extensible. Current manager
+events include `declared`, `approval_required`, `ensuring`, `ready`,
+`unhealthy`, `releasing`, `released`, and `failed`. `unhealthy` means a ready
+handle failed the health check before reuse; the manager releases it and ensures
+a fresh handle.
+
 ## Compatibility rules
 
 Observation events are an observation protocol. Agently-DevTools and custom consumers should fail open:

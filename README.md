@@ -48,7 +48,7 @@ Agently is designed from the start for the gap between "works in a notebook" and
 - **Pause, resume, persist** — TriggerFlow executions can be saved to disk and restored after process restart
 - **Project-scale config** — hierarchical YAML/TOML/JSON settings files, env-variable substitution, and scaffolding via `agently-devtools init`
 
-**Agently 4.1 adds a fully rewritten Action Runtime**: a three-layer extensible plugin stack (planning → loop → execution) with native support for local functions, MCP servers, Python/Bash sandboxes, and custom backends.
+**Agently 4.1 adds a fully rewritten Action Runtime**: a three-layer extensible plugin stack (planning → loop → execution) with native support for local functions, MCP servers, built-in Search/Browse action packages, Python/Bash sandboxes, Node.js runners, SQLite, Docker, and custom backends.
 
 ---
 
@@ -181,7 +181,7 @@ for event in response.get_generator(type="instant"):
         ui.append_example(event.value)            # append each complete example
 ```
 
-### 3. Action Runtime — Functions, MCP, Sandboxes (v4.1)
+### 3. Action Runtime — Functions, MCP, Built-ins, Sandboxes (v4.1)
 
 Mount any combination. The runtime handles planning, execution, retries, and full structured logs.
 
@@ -193,6 +193,7 @@ def search_docs(query: str) -> str:
 
 agent.use_mcp("docs-server", transport="stdio", command=["python", "mcp_server.py"])
 agent.use_sandbox("python")                          # isolated Python execution
+agent.enable_shell(root=".", commands=["pwd", "rg"])  # managed run_bash action
 
 agent.use_actions([search_docs, "docs-server", "python"])
 
@@ -202,7 +203,7 @@ response = agent.input("Find auth docs and show a login code example.").get_resp
 print(response.result.full_result_data["extra"]["action_logs"])
 ```
 
-Legacy `tool` APIs (`@agent.tool_func`, `agent.use_tool()`) continue to work and map to the same runtime.
+Built-in web capabilities use `from agently.builtins.actions import Search, Browse` and mount with `agent.use_actions(Search(...))` / `agent.use_actions(Browse(...))`. Legacy `tool` APIs (`@agent.tool_func`, `agent.use_tool()`) continue to work and map to the same runtime.
 
 ### 4. TriggerFlow — Serious Workflow Orchestration
 

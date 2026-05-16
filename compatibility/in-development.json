@@ -20,7 +20,16 @@
       "repository": "Agently-Skills",
       "authoring_protocol": "agently-skills.authoring.v1",
       "devtools_guidance_protocol": "agently-skills.devtools-guidance.v1",
-      "recommended_ref": "main"
+      "catalog_generation": "v2",
+      "recommended_bundle": "app",
+      "recommended_ref": "main",
+      "legacy_generations": [
+        {
+          "generation": "v1",
+          "last_supported_framework_version": "4.1.1",
+          "status": "frozen"
+        }
+      ]
     },
     "docs": {
       "repository": "docs",

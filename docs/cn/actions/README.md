@@ -4,7 +4,7 @@
 
 1. [概览](overview.md)：先判断问题属于 Action Runtime、工具兼容、MCP，还是 TriggerFlow。
 2. [Action Runtime](action-runtime.md)：当前 action 架构和扩展点。
-3. [Execution Environment](execution-environment.md)：面向 Action、TriggerFlow 与插件开发者的高级托管 MCP/sandbox 资源。
+3. [Execution Environment](execution-environment.md)：面向 Action、TriggerFlow 与插件开发者的高级托管 MCP/sandbox/process/browser/SQLite 资源。
 4. [工具兼容](tools.md)：旧 `tool_func` / `use_tools` 别名的现状。
 5. [MCP](mcp.md)：把 MCP server 挂成 action。
 

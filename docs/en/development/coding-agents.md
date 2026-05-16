@@ -32,24 +32,17 @@ Keep these separate:
 
 The companion repo does not become a runtime dependency of your Agently app. It remains a guidance package for coding agents.
 
-## Available skills (representative)
+## Current skills
 
 | Skill | Use when the user is |
 |---|---|
 | `agently-playbook` | starting fresh — picking the right structure for a new Agently project |
-| `agently-model-setup` | wiring a model endpoint, env vars, settings file |
-| `agently-prompt-management` | shaping how a request is instructed or templated |
-| `agently-output-control` | nailing down structured fields, ensure flags / runtime ensure paths, validation |
-| `agently-model-response` | reusing a single response, streaming partial output |
-| `agently-session-memory` | adding multi-turn continuity / memo |
-| `agently-agent-extensions` | adding tool use, MCP, FastAPI exposure |
+| `agently-request` | model setup, prompt management, structured output, response reuse, session memory, embeddings, retrieval |
+| `agently-runtime` | Action Runtime, built-in actions, MCP, Execution Environment, FastAPI exposure, DevTools wiring |
 | `agently-triggerflow` | needing branching, concurrency, pause/resume, save/load |
-| `agently-knowledge-base` | embeddings + retrieval-backed answers |
-| `agently-langchain-to-agently` | migrating from LangChain agents |
-| `agently-langgraph-to-triggerflow` | migrating from LangGraph orchestration |
-| `agently-migration-playbook` | deciding which migration skill to start with |
+| `agently-migration` | migrating from LangChain, LangGraph, LlamaIndex, CrewAI, or similar systems |
 
-The actual skill list lives in `Agently-Skills/skills/`. Treat the table above as a snapshot.
+The current public catalog generation is `v2`. The actual default skill list lives in `Agently-Skills/skills/` and should contain only these 5 skills.
 
 ## Installing the skills
 
@@ -64,6 +57,21 @@ Then point your coding agent at the skill directory according to its own loader:
 - **Cursor** — load via the project's rules / context surfaces
 
 The skills are plain text + scripts; nothing Agently-specific runs at install time.
+
+For CLI-based installs, the default `app` bundle is:
+
+```bash
+for skill in \
+  agently-playbook \
+  agently-request \
+  agently-runtime \
+  agently-triggerflow
+do
+  npx skills add AgentEra/Agently-Skills --agent "$AGENT" --skill "$skill" -y
+done
+```
+
+Add `agently-migration` only for migration projects. The frozen V1 12-skill catalog lives under `Agently-Skills/legacy/v1/` and last supports Agently `4.1.1`; do not use it as the recommended path for new projects.
 
 ## Why skills, not just docs
 

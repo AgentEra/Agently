@@ -73,15 +73,39 @@ Stay on the **tool** surface when:
 
 The tool family is not going away — but new features land on the action side first.
 
-## Built-in tools
+## Built-in actions and legacy tools
 
-A few common capabilities are shipped as built-in tools:
+A few common capabilities are shipped as built-in action packages:
 
 - **Search** — web search wrappers
-- **Browse** — page fetch and summarization
-- **Cmd** — restricted shell execution
+- **Browse** — page fetch and readable-content extraction
+- **Cmd** — low-level restricted shell execution
 
-Find them under `examples/builtin_tools/` and `agently/builtins/...`. They illustrate how the tool surface composes into real agents.
+Use the action-native import path for new code:
+
+```python
+from agently.builtins.actions import Browse, Search
+
+agent.use_actions(Search(timeout=15, backend="duckduckgo"))
+agent.use_actions(Browse())
+```
+
+`Search(...)` registers `search`, `search_news`, `search_wikipedia`, and
+`search_arxiv`. `Browse(...)` registers `browse`. Implementations live under
+`agently.builtins.actions`. `agently.builtins.tools` remains a thin legacy import
+facade for existing examples and applications; it may add old `tool_info_list`
+metadata, but it should not own built-in capability implementation. `agent.use_tools(...)`,
+`agent.tool_func`, and `Agently.tool` remain supported compatibility surfaces.
+Do not use `tool_info_list` / `BuiltInTool` as the new authoring API for built-in
+capabilities.
+
+For shell access, prefer `agent.enable_shell(...)`, which mounts a managed
+`run_bash` action. `Cmd` remains available as a low-level compatibility package
+and as an implementation helper for Bash execution.
+
+See `examples/builtin_actions/` for the current action-native examples.
+Historical built-in tool examples live under `examples/archived/builtin_tools/`
+and point back to the current replacements.
 
 ## See also
 

@@ -11,9 +11,10 @@ keywords: Agently, ExecutionEnvironment, Action, TriggerFlow, sandbox, MCP, runt
 Execution Environment is the framework-level layer that prepares and releases
 managed execution dependencies before an action or workflow step runs.
 
-It owns lifecycle and policy for resources such as MCP transports, Bash command
-runners, and Python sandboxes. Action and TriggerFlow can require those
-environments, but they do not own environment lifecycle.
+It owns lifecycle and policy for resources such as MCP transports, command
+runners, sandboxes, browsers, SQLite connections, and external process runners.
+Action and TriggerFlow can require those environments, but they do not own
+environment lifecycle.
 
 ## Audience
 
@@ -58,22 +59,30 @@ from agently import Agently
 Agently.execution_environment
 ```
 
-Most application code does not call the manager directly. Built-in MCP, Bash
-sandbox, and Python sandbox actions declare their requirements and the Action
-dispatcher ensures them before executor calls.
+Most application code does not call the manager directly. Built-in MCP, Bash,
+Python, Node.js, Docker, Browser, and SQLite actions can declare their
+requirements and the Action dispatcher ensures them before executor calls.
 
 For the broader ownership model, see
 [Architecture / Extension Boundaries](../architecture/extension-boundaries.md).
 
 ## Built-in behavior
 
-The first built-in providers are:
+The built-in providers are:
 
 | Kind | Used by | Managed resource |
 |---|---|---|
 | `mcp` | `agent.use_mcp(...)` / MCP actions | MCP transport resource |
 | `bash` | `agent.enable_shell(...)` / Bash sandbox actions | configured command runner |
 | `python` | `agent.enable_python(...)` / Python sandbox actions | configured Python sandbox |
+| `node` | `agent.enable_nodejs(...)` / Node.js executor actions | configured Node.js runner |
+| `docker` | Docker executor actions | Docker CLI runner |
+| `browser` | Browse actions that opt into managed browser resources | managed browser/page/session wrapper |
+| `sqlite` | `agent.enable_sqlite(...)` / SQLite executor actions | SQLite connection |
+
+Search intentionally is not listed here. It is a stateless Action-native
+capability package; proxy, timeout, backend, and region belong to the Search
+package/executor configuration rather than Execution Environment.
 
 These providers are low-level environment implementations. User-facing
 capabilities should normally be exposed as Actions, and scenario shortcuts
@@ -137,6 +146,11 @@ Agently.execution_environment.set_decision_handler(handler)
 
 Declaration is lazy. It validates and records a requirement but does not start
 anything. `ensure(...)` starts or reuses a handle subject to policy and approval.
+Before reusing a ready handle, the manager calls
+`provider.async_health_check(handle)`. Healthy handles are reused with
+`ref_count + 1`; unhealthy handles emit `execution_environment.unhealthy`, are
+released, and then a fresh handle is ensured. V2 intentionally does not add a
+background scheduler, lease TTL, or automatic reconnect loop.
 
 If you are building an application, first check whether a built-in action or
 Agent Component already exposes the capability you need.
@@ -149,6 +163,7 @@ The manager emits framework events in the `execution_environment.*` family:
 - `execution_environment.approval_required`
 - `execution_environment.ensuring`
 - `execution_environment.ready`
+- `execution_environment.unhealthy`
 - `execution_environment.releasing`
 - `execution_environment.released`
 - `execution_environment.failed`

@@ -65,6 +65,11 @@ Provider code owns environment-specific startup, health check, and release. It
 does not own app-level decisions about whether an agent should be allowed to use
 that environment.
 
+Do not introduce parallel nouns such as `ActionProvider`,
+`CapabilityProvider`, or a standalone capability dispatcher for this layer.
+Callable ability remains `Action`; execution variation belongs to
+`ActionExecutor`; live resource lifecycle belongs to `ExecutionEnvironmentProvider`.
+
 ### Built-in Capability Actions
 
 Built-ins are the default capability catalog shipped by Agently. They expose
@@ -74,8 +79,9 @@ Good built-in candidates:
 
 - run Bash commands inside a policy-bound workspace
 - run Python code in a safe sandbox
-- run Node.js code in a safe sandbox
+- run Node.js code through a managed runner
 - search, read, and write files
+- search the web and browse pages
 - read and write SQLite data
 - search and update vector stores
 - call pre-registered Python functions
@@ -84,6 +90,11 @@ Good built-in candidates:
 Action is the model-visible callable surface. Execution Environment is only used
 when the action needs a managed live dependency, isolation boundary, reusable
 client, or cleanup policy.
+
+Built-in capability packages use `agently.builtins.actions` as the primary
+authoring/import path and implementation home. `agently.builtins.tools` is a
+thin legacy facade for existing code and should not be treated as the new
+authoring layer.
 
 ### Agent Components And Syntax Sugar
 
