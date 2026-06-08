@@ -139,6 +139,37 @@ These scratch keys are not part of the durable close snapshot.
 
 `auto_close_timeout=None` disables auto-close — the execution stays alive until you call `close()` explicitly. **Don't combine `auto_close_timeout=None` with hidden sugar** — `flow.start()` would never return.
 
+## Save/load checkpoint shape
+
+`execution.save()` returns a serializable execution state dictionary. For
+restart-safe and future distributed recovery paths, that dictionary includes a
+`checkpoint` section:
+
+```python
+saved = execution.save()
+checkpoint = saved["checkpoint"]
+```
+
+The checkpoint section records:
+
+- `schema_version`: the checkpoint schema version.
+- `durable_system_state`: TriggerFlow-owned progress that must survive
+  open/waiting execution rehydration, such as partial `when(mode="and")`
+  aggregation state.
+- `resource_requirements`: the live resources that must be re-injected before a
+  restored execution can safely continue.
+
+Live resource objects are not serialized. `runtime_resources`, managed
+execution-environment handles, clients, callbacks, and other live objects remain
+outside the saved state. The checkpoint only records the requirement keys; pass
+fresh objects through `load(..., runtime_resources={...})` or the host's normal
+resource provisioning path before resuming.
+
+This is an execution snapshot contract, not a complete distributed execution
+store. A production distributed runner still needs storage, lease ownership,
+idempotent resume, access control, and resource provisioning around this saved
+state.
+
 ## Picking the right entry
 
 | Situation | Use |

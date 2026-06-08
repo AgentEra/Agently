@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from typing import Any, Callable, Literal, TYPE_CHECKING, Protocol, TypeAlias, runtime_checkable, Generic, TypeVar
 from typing_extensions import TypedDict
 from agently.types.data import AVOID_COPY
+from agently.types.trigger_flow.runtime_keys import AGGREGATION_SCOPE_META_KEY, PARENT_SIGNAL_ID_META_KEY
 
 if TYPE_CHECKING:
     from agently.core import TriggerFlowExecution
@@ -390,10 +391,10 @@ class TriggerFlowRuntimeData(Generic[ValueT, StreamT, ResultT]):
             origin_chunk = _origin_chunk_payload()
             merged_meta = dict(meta) if isinstance(meta, dict) else {}
             if self.signal_id is not None:
-                inherited_scope = self.signal_meta.get("_triggerflow_aggregation_scope")
-                merged_meta.setdefault("_triggerflow_parent_signal_id", self.signal_id)
+                inherited_scope = self.signal_meta.get(AGGREGATION_SCOPE_META_KEY)
+                merged_meta.setdefault(PARENT_SIGNAL_ID_META_KEY, self.signal_id)
                 merged_meta.setdefault(
-                    "_triggerflow_aggregation_scope",
+                    AGGREGATION_SCOPE_META_KEY,
                     inherited_scope if inherited_scope is not None else self.signal_id,
                 )
             if origin_chunk is not None:

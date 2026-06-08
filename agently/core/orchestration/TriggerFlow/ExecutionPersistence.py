@@ -22,6 +22,7 @@ from typing import Any, TYPE_CHECKING, cast
 import yaml
 
 from agently.types.data import EMPTY, RunContext
+from agently.types.trigger_flow.runtime_keys import DURABLE_SYSTEM_STATE_KEYS, TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION
 from .Control import (
     TRIGGER_FLOW_LIFECYCLE_CLOSED,
     TRIGGER_FLOW_LIFECYCLE_OPEN,
@@ -54,6 +55,17 @@ class TriggerFlowExecutionPersistence:
             )
         result = execution._system_runtime_data.get("result")
         result_ready = result is not EMPTY
+        durable_system_state = self._collect_durable_system_state()
+        resource_keys = sorted(str(key) for key in execution.get_runtime_resources().keys())
+        managed_resource_keys = sorted(
+            str(handle.get("resource_key", ""))
+            for handle in execution._managed_execution_environment_handles
+        )
+        execution_environment_requirement_ids = sorted(
+            str(requirement.get("requirement_id", ""))
+            for requirement in execution._execution_environment_requirements
+            if requirement.get("requirement_id")
+        )
         state = {
             "execution_id": execution.id,
             "status": execution._status,
@@ -90,15 +102,14 @@ class TriggerFlowExecutionPersistence:
             },
             "sub_flow_frames": execution._to_serializable_value(execution._get_sub_flow_frames()),
             "last_signal": execution._serialize_signal(execution.get_last_signal()),
-            "resource_keys": sorted(str(key) for key in execution.get_runtime_resources().keys()),
-            "managed_resource_keys": sorted(
-                str(handle.get("resource_key", ""))
-                for handle in execution._managed_execution_environment_handles
-            ),
-            "execution_environment_requirement_ids": sorted(
-                str(requirement.get("requirement_id", ""))
-                for requirement in execution._execution_environment_requirements
-                if requirement.get("requirement_id")
+            "resource_keys": resource_keys,
+            "managed_resource_keys": managed_resource_keys,
+            "execution_environment_requirement_ids": execution_environment_requirement_ids,
+            "checkpoint": self._build_checkpoint_section(
+                durable_system_state=durable_system_state,
+                resource_keys=resource_keys,
+                managed_resource_keys=managed_resource_keys,
+                execution_environment_requirement_ids=execution_environment_requirement_ids,
             ),
             "result": {
                 "ready": result_ready,
@@ -127,6 +138,62 @@ class TriggerFlowExecutionPersistence:
         target.write_text(content, encoding=encoding)
         return state
 
+    def _collect_durable_system_state(self):
+        execution = self._execution
+        durable_state: dict[str, Any] = {}
+        for key in DURABLE_SYSTEM_STATE_KEYS:
+            value = execution._system_runtime_data.get(key, EMPTY, inherit=False)
+            if value is EMPTY or value is None or value == {}:
+                continue
+            durable_state[key] = execution._to_serializable_value(value)
+        return durable_state
+
+    def _build_checkpoint_section(
+        self,
+        *,
+        durable_system_state: dict[str, Any],
+        resource_keys: list[str],
+        managed_resource_keys: list[str],
+        execution_environment_requirement_ids: list[str],
+    ):
+        execution = self._execution
+        resource_requirements: list[dict[str, Any]] = [
+            {
+                "kind": "runtime_resource",
+                "key": key,
+                "required": True,
+            }
+            for key in resource_keys
+        ]
+        resource_requirements.extend(
+            {
+                "kind": "managed_execution_environment",
+                "key": key,
+                "required": True,
+            }
+            for key in managed_resource_keys
+            if key
+        )
+        resource_requirements.extend(
+            {
+                "kind": "execution_environment_requirement",
+                "key": requirement_id,
+                "required": True,
+            }
+            for requirement_id in execution_environment_requirement_ids
+        )
+        return {
+            "schema_version": TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION,
+            "kind": "triggerflow.execution_snapshot",
+            "execution_id": execution.id,
+            "flow_name": execution._trigger_flow.name,
+            "status": execution._status,
+            "lifecycle_state": execution._lifecycle_state,
+            "state_version": execution._state_version,
+            "durable_system_state": durable_system_state,
+            "resource_requirements": resource_requirements,
+        }
+
     def load(
         self,
         state: dict[str, Any] | str | Path,
@@ -145,6 +212,10 @@ class TriggerFlowExecutionPersistence:
         interventions = intervention_state.get("ledger", runtime_data.get(INTERVENTIONS_STATE_KEY, {}))
         if interventions is None:
             interventions = {}
+        checkpoint_state = state.get("checkpoint", {}) or {}
+        durable_system_state = checkpoint_state.get("durable_system_state", {})
+        if durable_system_state is None:
+            durable_system_state = {}
         sub_flow_frames = state.get("sub_flow_frames", {})
         last_signal_state = state.get("last_signal", None)
         result_state = state.get("result", {})
@@ -219,6 +290,7 @@ class TriggerFlowExecutionPersistence:
         execution._runtime_data.set(INTERVENTIONS_STATE_KEY, execution._to_serializable_value(interventions))
         execution._system_runtime_data.set("sub_flow_frames", sub_flow_frames)
         execution._system_runtime_data.set("last_signal", last_signal_state)
+        self._restore_durable_system_state(durable_system_state)
         execution._set_status(status)
         execution._auto_close = bool(state.get("auto_close", execution._auto_close))
         execution._auto_close_timeout = state.get("auto_close_timeout", execution._auto_close_timeout)
@@ -261,6 +333,15 @@ class TriggerFlowExecutionPersistence:
             execution._ensure_auto_close_monitor()
 
         return execution
+
+    def _restore_durable_system_state(self, durable_system_state: dict[str, Any]):
+        execution = self._execution
+        for key in DURABLE_SYSTEM_STATE_KEYS:
+            execution._system_runtime_data.pop(key, None)
+        for key in DURABLE_SYSTEM_STATE_KEYS:
+            value = durable_system_state.get(key)
+            if value is not None:
+                execution._system_runtime_data.set(key, value)
 
     def _load_state_content(
         self,
@@ -358,6 +439,30 @@ class TriggerFlowExecutionPersistence:
         result_state = state.get("result", {})
         if not isinstance(result_state, dict):
             raise TypeError(f"Can not load key 'result', expect dictionary but got: { type(result_state) }")
+
+        checkpoint_state = state.get("checkpoint", {})
+        if checkpoint_state is None:
+            checkpoint_state = {}
+        if not isinstance(checkpoint_state, dict):
+            raise TypeError(
+                f"Can not load key 'checkpoint', expect dictionary/None but got: { type(checkpoint_state) }"
+            )
+        durable_system_state = checkpoint_state.get("durable_system_state", {})
+        if durable_system_state is None:
+            durable_system_state = {}
+        if not isinstance(durable_system_state, dict):
+            raise TypeError(
+                "Can not load key 'checkpoint.durable_system_state', "
+                f"expect dictionary/None but got: { type(durable_system_state) }"
+            )
+        resource_requirements = checkpoint_state.get("resource_requirements", [])
+        if resource_requirements is None:
+            resource_requirements = []
+        if not isinstance(resource_requirements, list):
+            raise TypeError(
+                "Can not load key 'checkpoint.resource_requirements', "
+                f"expect list/None but got: { type(resource_requirements) }"
+            )
 
         execution_id = state.get("execution_id", self._execution.id)
         if not isinstance(execution_id, str):

@@ -43,6 +43,7 @@ from agently.types.trigger_flow import (
     TriggerFlowInterruptEvent,
     TriggerFlowRuntimeData,
 )
+from agently.types.trigger_flow.runtime_keys import TRANSIENT_AGGREGATION_STATE_KEYS
 from agently.types.data import EMPTY, RunContext
 from agently.types.data import ExecutionEnvironmentRequirement
 from .Control import (
@@ -729,16 +730,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         return self._runtime_io.build_close_snapshot()
 
     def _clear_transient_aggregation_state(self):
-        for key in (
-            "when_states",
-            "batch_states",
-            "collect_states",
-            "for_each_results",
-            "match_results",
-            "batch_semaphores",
-            "batch_fanout_semaphores",
-            "for_each_semaphores",
-        ):
+        for key in TRANSIENT_AGGREGATION_STATE_KEYS:
             self._system_runtime_data.pop(key, None)
 
     async def _async_wait_for_compat_result_or_close(self, *, timeout: float | None = None):

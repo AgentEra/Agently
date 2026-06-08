@@ -18,6 +18,8 @@ import uuid
 import warnings
 from typing import Any, TYPE_CHECKING
 
+from agently.types.trigger_flow.runtime_keys import SELF_RESUME_COUNT_META_KEY, SELF_RESUME_MAX_META_KEY
+
 from .Control import (
     TRIGGER_FLOW_LIFECYCLE_OPEN,
     TRIGGER_FLOW_STATUS_CANCELLED,
@@ -29,9 +31,6 @@ from .Signal import TriggerFlowSignal
 
 if TYPE_CHECKING:
     from .Execution import TriggerFlowExecution
-
-SELF_RESUME_COUNT_META_KEY = "_triggerflow_self_resume_count"
-SELF_RESUME_MAX_META_KEY = "_triggerflow_self_resume_max"
 
 
 class TriggerFlowExecutionInterrupts:

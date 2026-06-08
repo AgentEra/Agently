@@ -7,6 +7,7 @@ import pytest
 from agently import Agently, TriggerFlow, TriggerFlowRuntimeData
 from agently.types.data import RunContext
 from agently.types.data.event import normalize_triggerflow_event_type
+from agently.types.trigger_flow import AGGREGATION_SCOPE_META_KEY
 
 
 def test_trigger_flow_sync_start_returns_close_snapshot():
@@ -96,6 +97,52 @@ async def test_trigger_flow_execution_load_from_json_string():
 
 
 @pytest.mark.asyncio
+async def test_trigger_flow_execution_checkpoint_restores_scoped_when_join_progress_after_load():
+    flow = TriggerFlow(name="checkpoint-scoped-join")
+
+    async def emit_left(data: TriggerFlowRuntimeData):
+        await data.async_emit("A", {"left": data.value})
+
+    async def joined(data: TriggerFlowRuntimeData):
+        await data.async_set_state("joined", data.value, emit=False)
+
+    flow.when("Run").to(emit_left)
+    flow.when(["A", "B"], mode="and").to(joined)
+
+    execution = flow.create_execution(auto_close=False)
+    await execution.async_emit("Run", "task-1")
+    saved_state = execution.save()
+
+    checkpoint = saved_state["checkpoint"]
+    assert checkpoint["schema_version"] == 1
+    durable_when_states = checkpoint["durable_system_state"]["when_states"]
+    signal_scope_keys = [
+        scope_key
+        for when_state in durable_when_states.values()
+        for scope_key in when_state.keys()
+        if str(scope_key).startswith("signal:")
+    ]
+    assert len(signal_scope_keys) == 1
+    aggregation_scope = signal_scope_keys[0].removeprefix("signal:")
+
+    restored_execution = flow.create_execution(auto_close=False)
+    restored_execution.load(saved_state)
+    await restored_execution.async_emit(
+        "B",
+        {"right": "task-1"},
+        _meta={AGGREGATION_SCOPE_META_KEY: aggregation_scope},
+    )
+    await restored_execution.async_close()
+
+    assert restored_execution.get_state("joined") == {
+        "event": {
+            "A": {"left": "task-1"},
+            "B": {"right": "task-1"},
+        }
+    }
+
+
+@pytest.mark.asyncio
 async def test_trigger_flow_execution_load_restore_ready_result():
     flow = TriggerFlow()
     flow.to(lambda data: data.value).end()
@@ -109,6 +156,40 @@ async def test_trigger_flow_execution_load_restore_ready_result():
     result = await restored_execution.async_get_result(timeout=0.01)
 
     assert result == {"done": True}
+
+
+@pytest.mark.asyncio
+async def test_trigger_flow_execution_checkpoint_preserves_self_resume_count_after_load():
+    flow = TriggerFlow(name="checkpoint-self-resume")
+
+    async def always_pause(data: TriggerFlowRuntimeData):
+        return await data.async_pause_for(
+            type="approval",
+            interrupt_id="approval",
+            resume_to="self",
+            max_resumes=2,
+        )
+
+    flow.to(always_pause)
+    execution = flow.create_execution(auto_close=False)
+    await execution.async_start(None)
+    await execution.async_continue_with("approval", {"round": 1})
+
+    pending = execution.get_pending_interrupts()
+    assert pending["approval"]["resume_count"] == 1
+    assert pending["approval"]["max_resumes"] == 2
+
+    saved_state = execution.save()
+    assert saved_state["interrupts"]["approval"]["resume_count"] == 1
+
+    restored_execution = flow.create_execution(auto_close=False)
+    restored_execution.load(saved_state)
+    restored_pending = restored_execution.get_pending_interrupts()
+    assert restored_pending["approval"]["resume_count"] == 1
+    assert restored_pending["approval"]["max_resumes"] == 2
+
+    with pytest.raises(RuntimeError, match="self resume limit"):
+        await restored_execution.async_continue_with("approval", {"round": 2})
 
 
 @pytest.mark.asyncio

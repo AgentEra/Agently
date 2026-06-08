@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from .TriggerFlow import TriggerFlow
 
 from agently.types.data import EMPTY
+from agently.types.trigger_flow.runtime_keys import AGGREGATION_SCOPE_META_KEY
 from agently.utils import StateDataNamespace
 from .Chunk import TriggerFlowChunk
 from .Execution import TriggerFlowExecution
@@ -632,7 +633,7 @@ class TriggerFlowBlueprint:
     def _layer_key(data):
         if data._layer_marks:
             return ".".join(data._layer_marks)
-        signal_scope = data.signal_meta.get("_triggerflow_aggregation_scope")
+        signal_scope = data.signal_meta.get(AGGREGATION_SCOPE_META_KEY)
         if signal_scope is not None:
             return f"signal:{ signal_scope }"
         return "__root__"

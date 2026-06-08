@@ -45,6 +45,31 @@ class TriggerFlowInterrupt(TypedDict):
     sub_flow_frame_id: NotRequired[str | None]
 
 
+class TriggerFlowResourceRequirement(TypedDict):
+    kind: Literal["runtime_resource", "managed_execution_environment", "execution_environment_requirement"]
+    key: str
+    required: bool
+    metadata: NotRequired[dict[str, Any]]
+
+
+class TriggerFlowExecutionSnapshot(TypedDict, total=False):
+    schema_version: int
+    kind: Literal["triggerflow.execution_snapshot"]
+    execution_id: str
+    flow_name: str | None
+    status: str
+    lifecycle_state: str
+    state_version: int
+    durable_system_state: dict[str, Any]
+    resource_requirements: list[TriggerFlowResourceRequirement]
+
+
+class TriggerFlowExecutionRehydration(TypedDict, total=False):
+    snapshot: TriggerFlowExecutionSnapshot
+    runtime_resources: dict[str, Any]
+    missing_resource_keys: list[str]
+
+
 class TriggerFlowInterruptEvent(TypedDict):
     type: Literal["interrupt"]
     action: Literal["pause", "resume", "project"]

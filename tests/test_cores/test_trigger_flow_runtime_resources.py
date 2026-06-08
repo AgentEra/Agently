@@ -86,6 +86,10 @@ async def test_trigger_flow_execution_save_records_resource_keys_only():
     state = execution.save()
 
     assert sorted(state["resource_keys"]) == ["execution_logger", "flow_tool"]
+    assert state["checkpoint"]["resource_requirements"] == [
+        {"kind": "runtime_resource", "key": "execution_logger", "required": True},
+        {"kind": "runtime_resource", "key": "flow_tool", "required": True},
+    ]
     assert "runtime_resources" not in state
     json.dumps(state)
 
