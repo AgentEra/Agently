@@ -36,6 +36,7 @@ What `pause_for` does:
 | `resume_to=` | optional target for `continue_with`: `"next"`, `"self"`, or `{"event": "EventName"}`. |
 | `resume_event=` | compatibility shortcut. If set without `resume_to`, `continue_with` and matching `emit(...)` route to that event. |
 | `interrupt_id=` | optional. Specify the id yourself; otherwise the framework generates one. |
+| `max_resumes=` | optional guard for `resume_to="self"`. Defaults to `1`, so a resumed chunk must handle `data.is_resume` instead of pausing itself forever. Pass a higher integer for bounded self-retry loops, or `None` only for an intentionally unbounded loop with its own exit guard. |
 
 ## Resume with continue_with
 
@@ -58,6 +59,12 @@ async def gate(data: TriggerFlowRuntimeData):
         resume_to="self",
     )
 ```
+
+`resume_to="self"` carries a `resume_count` in the interrupt ledger and signal
+metadata. By default the same signal may be replayed once; if the resumed chunk
+calls `pause_for(..., resume_to="self")` again without handling
+`data.is_resume`, TriggerFlow fails with a self-resume limit error instead of
+building an unbounded interrupt loop.
 
 With `resume_to={"event": "ApprovalGiven"}`, TriggerFlow emits that event with the resume payload. `resume_event="ApprovalGiven"` keeps the older event-based behavior.
 

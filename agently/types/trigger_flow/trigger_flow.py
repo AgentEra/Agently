@@ -388,10 +388,16 @@ class TriggerFlowRuntimeData(Generic[ValueT, StreamT, ResultT]):
 
         def _chunk_signal_meta(meta: dict[str, Any] | None = None):
             origin_chunk = _origin_chunk_payload()
-            if origin_chunk is None:
-                return meta
             merged_meta = dict(meta) if isinstance(meta, dict) else {}
-            merged_meta.setdefault("origin_chunk", origin_chunk)
+            if self.signal_id is not None:
+                inherited_scope = self.signal_meta.get("_triggerflow_aggregation_scope")
+                merged_meta.setdefault("_triggerflow_parent_signal_id", self.signal_id)
+                merged_meta.setdefault(
+                    "_triggerflow_aggregation_scope",
+                    inherited_scope if inherited_scope is not None else self.signal_id,
+                )
+            if origin_chunk is not None:
+                merged_meta.setdefault("origin_chunk", origin_chunk)
             return merged_meta
 
         def _emit_from_chunk(

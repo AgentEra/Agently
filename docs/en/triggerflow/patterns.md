@@ -59,6 +59,17 @@ async def store_grade(data):
 
 `match()` switches on `data.input` from the previous chunk. Use it when you have a small set of discrete values; for predicates, prefer `if_condition`.
 
+## when — event joins
+
+```python
+flow.when(["task_a_done", "task_b_done"], mode="and").to(run_after_both)
+```
+
+The list form is the event-only shorthand for
+`flow.when({"event": [...]}, mode="and")`. It is the recommended shape for
+developer-owned DAG dependencies because the dependency edge stays visible in
+the TriggerFlow definition and runtime events.
+
 ## batch — parallel named branches
 
 ```python

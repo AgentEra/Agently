@@ -84,6 +84,11 @@ snapshot = await execution.async_close()
 
 Sync `start()` 仅支持 `auto_close=True`。需要手动 close 时用 `await execution.async_start(...)`。
 
+传给 `execution.async_start(value)` 的值是 execution 的 start input，
+不会 emit 一个名为该值的自定义事件。应从 start boundary 开始运行的 chunk
+用 `flow.to(handler, name=...)` 挂接。如果确实需要 `"start"` 这类自定义事件，
+先启动 execution，再调用 `await execution.async_emit("start", payload)`。
+
 ### `execution.seal()` —— 停新输入，让在途完成
 
 ```python
@@ -126,6 +131,10 @@ close 上的 `timeout=` 是 **drain timeout** —— 在途 task 的最大等待
 `pause_for(...)` 暂停 auto-close 计时。`continue_with(...)` 后空闲计时重新开始。
 
 `close()` / `async_close()` 默认拒绝关闭仍有 pending interrupt 的 execution。应先恢复这些 interrupt；如果关闭时就是要放弃等待，必须显式传 `pending_interrupts="cancel"`。
+
+close 还会释放 execution-local 的 transient aggregation state，例如未完成的
+`when(mode="and")`、`batch`、`collect`、`for_each` 和 `match` bookkeeping。
+这些 scratch key 不属于 durable close snapshot。
 
 `auto_close_timeout=None` 关掉 auto-close —— execution 一直存活直到显式 `close()`。**不要把 `auto_close_timeout=None` 与隐式糖一起用** —— `flow.start()` 会永远不返回。
 

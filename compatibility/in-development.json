@@ -153,7 +153,7 @@
       ]
     },
     "triggerflow": {
-      "runtime_integrity_contract": "TriggerFlow preserves execution-local runtime scope across framework-owned fan-out and chunk-internal emits; batch creates a real fan-out signal and isolates concurrent invocations; empty for_each emits an empty collected result; no-hit match restores its layer before continuing; falsy state/flow_data values can be deleted; loaded blueprints/configs restore contract metadata; async_close runs once and removes closed executions from the live registry; execution concurrency is a global handler dispatch limit with permit yielding around awaited internal dispatch."
+      "runtime_integrity_contract": "TriggerFlow preserves execution-local runtime scope across framework-owned fan-out and chunk-internal emits; batch creates a real fan-out signal and isolates concurrent invocations; chunk-emitted signals carry parent signal identity and aggregation scope for DAG-friendly joins; flow.when([...], mode=\"and\") is the event-list shorthand for multi-dependency joins; empty for_each emits an empty collected result; no-hit match restores its layer before continuing; pause_for(..., resume_to=\"self\") records resume_count and defaults to max_resumes=1; async_close runs once, clears transient aggregation scratch state, and removes closed executions from the live registry; execution concurrency is a global handler dispatch limit with permit yielding around awaited internal dispatch."
     }
   },
   "request_input": {

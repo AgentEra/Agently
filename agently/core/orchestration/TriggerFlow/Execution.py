@@ -728,6 +728,19 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
     def _build_close_snapshot(self):
         return self._runtime_io.build_close_snapshot()
 
+    def _clear_transient_aggregation_state(self):
+        for key in (
+            "when_states",
+            "batch_states",
+            "collect_states",
+            "for_each_results",
+            "match_results",
+            "batch_semaphores",
+            "batch_fanout_semaphores",
+            "for_each_semaphores",
+        ):
+            self._system_runtime_data.pop(key, None)
+
     async def _async_wait_for_compat_result_or_close(self, *, timeout: float | None = None):
         return await self._runtime_io.async_wait_for_compat_result_or_close(timeout=timeout)
 
@@ -950,6 +963,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                     reason=reason,
                 )
                 await self._async_expire_pending_interventions()
+                self._clear_transient_aggregation_state()
 
                 result = self._build_close_snapshot()
                 if self._status not in {TRIGGER_FLOW_STATUS_FAILED, TRIGGER_FLOW_STATUS_CANCELLED}:
@@ -1881,6 +1895,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         resume_event: str | None = None,
         interrupt_id: str | None = None,
         resume_to: Any = None,
+        max_resumes: int | None = 1,
     ):
         return await self._interrupts.async_pause_for(
             type=type,
@@ -1888,6 +1903,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
             resume_event=resume_event,
             interrupt_id=interrupt_id,
             resume_to=resume_to,
+            max_resumes=max_resumes,
         )
 
     async def async_continue_with(

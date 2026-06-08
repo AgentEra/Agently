@@ -84,6 +84,12 @@ snapshot = await execution.async_close()
 
 Sync `start()` only supports `auto_close=True`. If your execution must be manually closed, use `await execution.async_start(...)` instead.
 
+The value passed to `execution.async_start(value)` is the execution's start
+input. It does not emit a custom event named by that value. Attach chunks that
+should run from the start boundary with `flow.to(handler, name=...)`. If you
+want a custom event such as `"start"`, start the execution and then call
+`await execution.async_emit("start", payload)`.
+
 ### `execution.seal()` — stop new input, let in-flight finish
 
 ```python
@@ -126,6 +132,10 @@ What close does, in order:
 `pause_for(...)` pauses the auto-close timer. After `continue_with(...)`, the idle timer starts fresh.
 
 `close()` / `async_close()` reject pending interrupts by default. Resume them first, or explicitly cancel them with `pending_interrupts="cancel"` when shutdown should abandon the wait.
+
+Close also releases execution-local transient aggregation state such as partial
+`when(mode="and")`, `batch`, `collect`, `for_each`, and `match` bookkeeping.
+These scratch keys are not part of the durable close snapshot.
 
 `auto_close_timeout=None` disables auto-close — the execution stays alive until you call `close()` explicitly. **Don't combine `auto_close_timeout=None` with hidden sugar** — `flow.start()` would never return.
 

@@ -630,7 +630,12 @@ class TriggerFlowBlueprint:
 
     @staticmethod
     def _layer_key(data):
-        return ".".join(data._layer_marks) if data._layer_marks else "__root__"
+        if data._layer_marks:
+            return ".".join(data._layer_marks)
+        signal_scope = data.signal_meta.get("_triggerflow_aggregation_scope")
+        if signal_scope is not None:
+            return f"signal:{ signal_scope }"
+        return "__root__"
 
     def _compile_chunk_operator(self, operator: dict[str, Any]):
         handler = self._resolve_callable("chunk", operator.get("handler_ref"))

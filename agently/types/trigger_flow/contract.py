@@ -31,11 +31,13 @@ class TriggerFlowContractEntry(TypedDict):
 class TriggerFlowInterrupt(TypedDict):
     id: str
     type: str
-    status: Literal["waiting", "resumed"]
+    status: Literal["waiting", "resumed", "cancelled"]
     payload: NotRequired[Any]
     resume_event: NotRequired[str | None]
     resume_to: NotRequired[Any]
     response: NotRequired[Any]
+    resume_count: NotRequired[int]
+    max_resumes: NotRequired[int | None]
     local_interrupt_id: NotRequired[str | None]
     source_execution_id: NotRequired[str | None]
     source_flow_name: NotRequired[str | None]

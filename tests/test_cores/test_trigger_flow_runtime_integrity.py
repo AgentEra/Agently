@@ -251,6 +251,96 @@ async def test_runtime_data_emit_inherits_current_layer_scope_for_when_join():
 
 
 @pytest.mark.asyncio
+async def test_chunk_emitted_event_list_join_uses_signal_scope_for_builder_and_loaded_config():
+    async def fan_out(data: TriggerFlowRuntimeData):
+        await data.async_emit("A", f"A{data.value}")
+        await asyncio.sleep(0.02 if data.value == 1 else 0)
+        await data.async_emit("B", f"B{data.value}")
+
+    async def joined(data: TriggerFlowRuntimeData):
+        results = list(data.get_state("joined", []) or [])
+        results.append(data.value)
+        await data.async_set_state("joined", results, emit=False)
+
+    async def run(flow: TriggerFlow):
+        execution = flow.create_execution(auto_close=False)
+        await asyncio.gather(
+            execution.async_emit("Run", 1),
+            execution.async_emit("Run", 2),
+        )
+        await execution.async_close()
+        return sorted(execution.get_state("joined", []), key=lambda item: item["event"]["A"])
+
+    flow = TriggerFlow(name="signal-scope-event-list-join")
+    flow.when("Run").to(fan_out)
+    flow.when(["A", "B"], mode="and").to(joined)
+
+    expected = [
+        {"event": {"A": "A1", "B": "B1"}},
+        {"event": {"A": "A2", "B": "B2"}},
+    ]
+    assert await run(flow) == expected
+
+    restored = TriggerFlow()
+    restored.register_chunk_handler(fan_out)
+    restored.register_chunk_handler(joined)
+    restored.load_flow_config(flow.get_flow_config())
+
+    assert await run(restored) == expected
+
+
+@pytest.mark.asyncio
+async def test_async_close_clears_transient_aggregation_state():
+    flow = TriggerFlow(name="close-scratch-cleanup")
+    flow.when(["A", "B"], mode="and").to(lambda data: data.value)
+    execution = flow.create_execution(auto_close=False)
+
+    await execution.async_emit("A", "partial")
+    assert execution._system_runtime_data.get("when_states", {}, inherit=False)
+
+    await execution.async_close()
+
+    assert [
+        key
+        for key in execution._system_runtime_data.keys()
+        if str(key)
+        in {
+            "when_states",
+            "batch_states",
+            "collect_states",
+            "for_each_results",
+            "match_results",
+            "batch_semaphores",
+            "batch_fanout_semaphores",
+            "for_each_semaphores",
+        }
+    ] == []
+
+
+@pytest.mark.asyncio
+async def test_pause_resume_to_self_has_default_replay_guard():
+    flow = TriggerFlow(name="self-resume-guard")
+
+    async def always_pause(data: TriggerFlowRuntimeData):
+        return await data.async_pause_for(
+            type="approval",
+            interrupt_id="approval",
+            resume_to="self",
+        )
+
+    flow.to(always_pause)
+    execution = flow.create_execution(auto_close=False)
+
+    await execution.async_start(None)
+    assert "approval" in execution.get_pending_interrupts()
+
+    with pytest.raises(RuntimeError, match="self resume limit"):
+        await execution.async_continue_with("approval", {"approved": True})
+
+    assert execution.get_pending_interrupts() == {}
+
+
+@pytest.mark.asyncio
 async def test_set_concurrency_limits_nested_dispatch_without_deadlocking_chain():
     flow = TriggerFlow(name="global-concurrency")
     active = 0

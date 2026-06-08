@@ -65,19 +65,19 @@ To-Do executors, dependency joins, side branches, and reflection loops.
 For multi-dependency joins, use:
 
 ```python
-flow.when({"event": ["done:a", "done:b"]}, mode="and").to(continue_after_both)
+flow.when(["done:a", "done:b"], mode="and").to(continue_after_both)
 ```
 
 The join state belongs to one execution. It must not leak across executions or
 be stored in shared flow data.
 
-Signals emitted from inside a chunk inherit the current runtime scope. That
-keeps framework-owned fan-out, such as `batch`, `for_each`, and chunk-internal
-emits, correlated for `when(..., mode="and")` joins. External emits that do not
-share a runtime scope are separate business events; if a host needs to join
-externally submitted `A` / `B` events for the same business item, route them
-through one scoped flow stage or carry an explicit correlation key in the
-payload and branch on it.
+Signals emitted from inside a chunk carry the parent signal id and inherit the
+current aggregation scope. That keeps framework-owned fan-out, such as `batch`,
+`for_each`, and chunk-internal emits, correlated for `when(..., mode="and")`
+joins. External emits that do not share a runtime scope are separate business
+events; if a host needs to join externally submitted `A` / `B` events for the
+same business item, route them through one scoped flow stage or carry an
+explicit correlation key in the payload and branch on it.
 
 ### Emitting from outside
 

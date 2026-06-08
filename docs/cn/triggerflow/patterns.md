@@ -59,6 +59,16 @@ async def store_grade(data):
 
 `match()` 对前一 chunk 的 `data.input` 分发。少量离散值用它；要 predicate 用 `if_condition`。
 
+## when —— 事件 join
+
+```python
+flow.when(["task_a_done", "task_b_done"], mode="and").to(run_after_both)
+```
+
+list 形式是 `flow.when({"event": [...]}, mode="and")` 的事件专用简写。
+开发者拥有的 DAG 依赖推荐使用这个形态，因为依赖边会保留在 TriggerFlow
+definition 和 runtime events 里。
+
 ## batch —— 并行命名分支
 
 ```python

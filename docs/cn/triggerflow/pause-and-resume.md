@@ -36,6 +36,7 @@ async def ask(data: TriggerFlowRuntimeData):
 | `resume_to=` | 可选恢复目标：`"next"`、`"self"` 或 `{"event": "EventName"}`。 |
 | `resume_event=` | 兼容快捷方式。未显式设置 `resume_to` 时，`continue_with` 与匹配的 `emit(...)` 会路由到该事件。 |
 | `interrupt_id=` | 可选。自己指定 id；否则框架生成。 |
+| `max_resumes=` | `resume_to="self"` 的可选护栏。默认 `1`，所以恢复后的 chunk 必须处理 `data.is_resume`，不能再次无限暂停自己。有界 self-retry 传更大的整数；确实需要无界循环时传 `None`，并由应用自己保证退出条件。 |
 
 ## 用 continue_with 恢复
 
@@ -58,6 +59,11 @@ async def gate(data: TriggerFlowRuntimeData):
         resume_to="self",
     )
 ```
+
+`resume_to="self"` 会在 interrupt ledger 和 signal metadata 中携带
+`resume_count`。默认同一个 signal 只能重放一次；如果恢复后的 chunk 没处理
+`data.is_resume`，又再次调用 `pause_for(..., resume_to="self")`，TriggerFlow
+会以 self-resume limit error 失败，而不是构造无界 interrupt 循环。
 
 使用 `resume_to={"event": "ApprovalGiven"}` 时，TriggerFlow 用恢复 payload 发出该事件。`resume_event="ApprovalGiven"` 保留旧的事件式恢复行为。
 
