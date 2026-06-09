@@ -139,11 +139,11 @@ These scratch keys are not part of the durable close snapshot.
 
 `auto_close_timeout=None` disables auto-close — the execution stays alive until you call `close()` explicitly. **Don't combine `auto_close_timeout=None` with hidden sugar** — `flow.start()` would never return.
 
-## Save/load checkpoint shape
+## Checkpoint and rehydration
 
-`execution.save()` returns a serializable execution state dictionary. For
-restart-safe and future distributed recovery paths, that dictionary includes a
-`checkpoint` section:
+`execution.save()` returns a serializable execution snapshot. For restart-safe
+and distributed recovery paths, that snapshot includes a versioned `checkpoint`
+section:
 
 ```python
 saved = execution.save()
@@ -152,23 +152,68 @@ checkpoint = saved["checkpoint"]
 
 The checkpoint section records:
 
-- `schema_version`: the checkpoint schema version.
+- `schema_version`, `kind`, `snapshot_id`, and `state_version`.
+- execution identity, flow name, run context, lifecycle/status, owner, heartbeat,
+  and lease fields.
+- runtime state, flow data, pending interrupts, intervention ledger,
+  sub-flow frames, last signal, and compatible result state.
 - `durable_system_state`: TriggerFlow-owned progress that must survive
   open/waiting execution rehydration, such as partial `when(mode="and")`
   aggregation state.
-- `resource_requirements`: the live resources that must be re-injected before a
-  restored execution can safely continue.
+- `resource_requirements`: live resource keys and execution-environment
+  requirements needed before the restored graph can safely continue.
+- `resume_ledger`: accepted `continue_with(..., resume_request_id=...)` requests
+  so an external resume retry does not dispatch the graph twice.
 
 Live resource objects are not serialized. `runtime_resources`, managed
 execution-environment handles, clients, callbacks, and other live objects remain
-outside the saved state. The checkpoint only records the requirement keys; pass
-fresh objects through `load(..., runtime_resources={...})` or the host's normal
-resource provisioning path before resuming.
+outside the saved state.
 
-This is an execution snapshot contract, not a complete distributed execution
-store. A production distributed runner still needs storage, lease ownership,
-idempotent resume, access control, and resource provisioning around this saved
-state.
+Declare resources that a future resumed chunk will need. TriggerFlow can record
+resources that are already mounted, but it cannot infer a resource used only by a
+later branch unless you declare it:
+
+```python
+flow.declare_resource_requirement("resume_service")
+```
+
+Use `inspect_rehydration(...)` or strict `async_rehydrate(...)` before resuming:
+
+```python
+saved = execution.save()
+
+report = restored.inspect_rehydration(saved)
+assert report["missing_resource_keys"] == ["resume_service"]
+
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"resume_service": service},
+)
+await restored.async_continue_with(
+    interrupt_id,
+    {"approved": True},
+    resume_request_id="webhook-42",
+    actor="approval-service",
+)
+```
+
+`async_rehydrate(...)` loads the snapshot, restores declared execution
+environment requirements, re-ensures managed execution environments, and fails
+before graph continuation if required resources are still missing. Plain
+`load(...)` remains the compatibility path; pass `validate_rehydration=True` if
+you want the same fail-fast resource check without ensuring async environments.
+
+External checkpoint stores can persist the same snapshot by exposing
+`put_checkpoint(run_id, state, step_id=...)`:
+
+```python
+await execution.async_save_checkpoint(workspace.checkpoint_store)
+```
+
+TriggerFlow carries owner/lease fields in the snapshot and exposes
+`claim_lease(...)` / `heartbeat_lease(...)` so a store can index and project
+distributed ownership. The store still owns cross-worker atomic writes, lease
+enforcement, access control, and conflict handling.
 
 ## Picking the right entry
 

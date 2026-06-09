@@ -299,10 +299,31 @@ class TriggerFlowExecutionInterrupts:
         )
         return TriggerFlowPauseSignal(interrupt)
 
+    def _resume_request_record(
+        self,
+        *,
+        resume_request_id: str,
+        value: Any,
+        actor: str | None,
+    ):
+        return {
+            "request_id": resume_request_id,
+            "status": "accepted",
+            "value": self._execution._to_serializable_value(value),
+            "actor": actor,
+            "accepted_at": time.time(),
+        }
+
+    def _same_resume_request_value(self, record: dict[str, Any], value: Any):
+        return record.get("value") == self._execution._to_serializable_value(value)
+
     async def async_continue_with(
         self,
         interrupt_id: str,
         value: Any = None,
+        *,
+        resume_request_id: str | None = None,
+        actor: str | None = None,
     ):
         execution = self._execution
         if execution._lifecycle_state != TRIGGER_FLOW_LIFECYCLE_OPEN:
@@ -329,10 +350,32 @@ class TriggerFlowExecutionInterrupts:
         if interrupt_id not in interrupts:
             raise KeyError(f"Can not continue execution { execution.id }, interrupt '{ interrupt_id }' not found.")
         interrupt = dict(interrupts[interrupt_id])
+        resume_requests = interrupt.get("resume_requests", {})
+        if not isinstance(resume_requests, dict):
+            resume_requests = {}
+        if resume_request_id is not None:
+            resume_request_id = str(resume_request_id)
+            existing_request = resume_requests.get(resume_request_id)
+            if isinstance(existing_request, dict):
+                if not self._same_resume_request_value(existing_request, value):
+                    raise ValueError(
+                        f"Can not continue execution { execution.id }, interrupt '{ interrupt_id }' with "
+                        f"conflicting resume_request_id '{ resume_request_id }'."
+                    )
+                return interrupt
         if interrupt.get("status") != "waiting":
             raise ValueError(
                 f"Can not continue execution { execution.id }, interrupt '{ interrupt_id }' is not waiting."
             )
+        if resume_request_id is not None:
+            resume_requests[resume_request_id] = self._resume_request_record(
+                resume_request_id=resume_request_id,
+                value=value,
+                actor=actor,
+            )
+            interrupt["resume_requests"] = resume_requests
+            interrupt["resume_request_id"] = resume_request_id
+            interrupt["resumed_by"] = actor
         interrupt["status"] = "resumed"
         interrupt["response"] = value
         interrupt["resume_value"] = value

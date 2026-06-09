@@ -130,9 +130,13 @@ await execution.async_start(input_value)
 root_interrupt_id = next(iter(execution.get_pending_interrupts()))
 saved = execution.save()
 
-restored = parent_flow.create_execution(auto_close=False, runtime_resources={...})
-restored.load(saved)
-await restored.async_continue_with(root_interrupt_id, {"approved": True})
+restored = parent_flow.create_execution(auto_close=False)
+await restored.async_rehydrate(saved, runtime_resources={...})
+await restored.async_continue_with(
+    root_interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 ```
 
 投影出来的 interrupt 会带 `sub_flow_frame_id` 与 `local_interrupt_id` 便于调试，但调用方应把父 interrupt id 当作公开 handle。子流完成后，`write_back` 正常执行，父 flow 继续下游。

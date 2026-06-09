@@ -14,6 +14,7 @@
 
 
 TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION = 1
+TRIGGER_FLOW_CHECKPOINT_KIND = "triggerflow.execution_snapshot"
 
 PARENT_SIGNAL_ID_META_KEY = "_triggerflow_parent_signal_id"
 AGGREGATION_SCOPE_META_KEY = "_triggerflow_aggregation_scope"

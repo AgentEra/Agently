@@ -149,6 +149,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._lease_ttl = lease_ttl
         self._execution_environment_requirements = execution_environments if execution_environments is not None else []
         self._managed_execution_environment_handles: list["ExecutionEnvironmentHandle"] = []
+        self._resource_requirements: list[dict[str, Any]] = []
         self._heartbeat_at: float | None = None
         self._lease_until: float | None = self._created_at + lease_ttl if lease_ttl is not None else None
         self._pending_tasks: set[asyncio.Task[Any]] = set()
@@ -208,6 +209,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self.del_runtime_resource = self._del_runtime_resource
         self.update_runtime_resources = self._update_runtime_resources
         self.clear_runtime_resources = self._clear_runtime_resources
+        self.declare_resource_requirement = self._declare_resource_requirement
 
         # Runtime Stream
         self.put_into_stream = FunctionShifter.syncify(self.async_put_into_stream)
@@ -1248,6 +1250,38 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._runtime_resources.clear()
         return self
 
+    def _declare_resource_requirement(
+        self,
+        key: str,
+        *,
+        kind: str = "runtime_resource",
+        required: bool = True,
+        metadata: dict[str, Any] | None = None,
+    ):
+        requirement = {
+            "kind": str(kind),
+            "key": str(key),
+            "required": bool(required),
+            "source": "execution",
+            "metadata": {"scope": "execution", **dict(metadata or {})},
+        }
+        self._resource_requirements = [
+            item
+            for item in self._resource_requirements
+            if not (
+                item.get("kind") == requirement["kind"]
+                and item.get("key") == requirement["key"]
+                and item.get("source") == requirement["source"]
+            )
+        ]
+        self._resource_requirements.append(requirement)
+        return self
+
+    def get_resource_requirements(self):
+        return copy.deepcopy(self._trigger_flow.get_resource_requirements()) + copy.deepcopy(
+            self._resource_requirements
+        )
+
     def get_runtime_resources(self):
         resources = self._runtime_resources.get(None, {}, inherit=True)
         return resources if isinstance(resources, dict) else {}
@@ -1325,12 +1359,129 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         *,
         encoding: str | None = "utf-8",
         runtime_resources: dict[str, Any] | None = None,
+        execution_environments: "list[ExecutionEnvironmentRequirement] | None" = None,
+        validate_rehydration: bool = False,
     ):
         return self._persistence.load(
             state,
             encoding=encoding,
             runtime_resources=runtime_resources,
+            execution_environments=execution_environments,
+            validate_rehydration=validate_rehydration,
         )
+
+    def inspect_rehydration(
+        self,
+        state: dict[str, Any] | str | Path,
+        *,
+        encoding: str | None = "utf-8",
+        runtime_resources: dict[str, Any] | None = None,
+        execution_environments: "list[ExecutionEnvironmentRequirement] | None" = None,
+    ):
+        return self._persistence.inspect_rehydration(
+            state,
+            encoding=encoding,
+            runtime_resources=runtime_resources,
+            execution_environments=execution_environments,
+        )
+
+    async def async_rehydrate(
+        self,
+        state: dict[str, Any] | str | Path,
+        *,
+        encoding: str | None = "utf-8",
+        runtime_resources: dict[str, Any] | None = None,
+        execution_environments: "list[ExecutionEnvironmentRequirement] | None" = None,
+        require_resources: bool = True,
+        restore_execution_environments: bool = True,
+    ):
+        self.load(
+            state,
+            encoding=encoding,
+            runtime_resources=runtime_resources,
+            execution_environments=execution_environments,
+            validate_rehydration=require_resources,
+        )
+        if restore_execution_environments:
+            await self._ensure_execution_environments()
+        rehydration = self.inspect_rehydration(
+            self.save(),
+            runtime_resources=None,
+            execution_environments=None,
+        )
+        if require_resources and not rehydration.get("ready", False):
+            raise RuntimeError(
+                f"Can not rehydrate TriggerFlow execution { self.id }; "
+                f"missing resources: { rehydration.get('missing_resource_keys', []) }."
+            )
+        return rehydration
+
+    async def async_save_checkpoint(
+        self,
+        checkpoint_store: Any,
+        *,
+        run_id: str | None = None,
+        step_id: str | None = None,
+        require_idle: bool = False,
+    ):
+        if not hasattr(checkpoint_store, "put_checkpoint"):
+            raise TypeError(
+                "TriggerFlow checkpoint_store must expose async put_checkpoint(run_id, state, step_id=...)."
+            )
+        state = self.save(require_idle=require_idle)
+        resolved_run_id = run_id or self.run_context.run_id or self.id
+        resolved_step_id = step_id or f"state:{ self._state_version }"
+        return await checkpoint_store.put_checkpoint(
+            resolved_run_id,
+            state,
+            step_id=resolved_step_id,
+        )
+
+    def claim_lease(
+        self,
+        owner_id: str,
+        *,
+        lease_ttl: float | None = None,
+        now: float | None = None,
+    ):
+        if not owner_id:
+            raise ValueError("TriggerFlow execution lease owner_id must be non-empty.")
+        timestamp = time.time() if now is None else float(now)
+        ttl = self._lease_ttl if lease_ttl is None else lease_ttl
+        self._owner_id = str(owner_id)
+        self._lease_ttl = ttl
+        self._heartbeat_at = timestamp
+        self._lease_until = timestamp + ttl if ttl is not None else None
+        self._bump_state_version()
+        return self
+
+    def heartbeat_lease(
+        self,
+        *,
+        owner_id: str | None = None,
+        lease_ttl: float | None = None,
+        now: float | None = None,
+    ):
+        if owner_id is not None and self._owner_id is not None and str(owner_id) != str(self._owner_id):
+            raise RuntimeError(
+                f"TriggerFlow execution { self.id } lease is owned by '{ self._owner_id }', "
+                f"not '{ owner_id }'."
+            )
+        timestamp = time.time() if now is None else float(now)
+        ttl = self._lease_ttl if lease_ttl is None else lease_ttl
+        self._lease_ttl = ttl
+        self._heartbeat_at = timestamp
+        self._lease_until = timestamp + ttl if ttl is not None else None
+        self._bump_state_version()
+        return self
+
+    def get_lease(self):
+        return {
+            "owner_id": self._owner_id,
+            "lease_ttl": self._lease_ttl,
+            "lease_until": self._lease_until,
+            "heartbeat_at": self._heartbeat_at,
+        }
 
     # Set Concurrency
     def set_concurrency(self, concurrency):
@@ -1902,8 +2053,16 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self,
         interrupt_id: str,
         value: Any = None,
+        *,
+        resume_request_id: str | None = None,
+        actor: str | None = None,
     ):
-        return await self._interrupts.async_continue_with(interrupt_id, value)
+        return await self._interrupts.async_continue_with(
+            interrupt_id,
+            value,
+            resume_request_id=resume_request_id,
+            actor=actor,
+        )
 
     # Runtime Stream
     async def async_put_into_stream(

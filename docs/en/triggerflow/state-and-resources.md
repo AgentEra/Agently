@@ -100,21 +100,28 @@ async def step(data: TriggerFlowRuntimeData):
 
 ### Why resources don't enter the snapshot
 
-A close snapshot is supposed to be a serializable dict. Live objects can't survive serialization (no meaningful representation, no way to reconstruct the live state on the other side). What the snapshot **does** record is `resource_keys` — the names of resources the execution had — so you know what to re-inject on resume:
+A close snapshot is supposed to be a serializable dict. Live objects can't survive serialization (no meaningful representation, no way to reconstruct the live state on the other side). What the snapshot **does** record is `resource_keys` and `checkpoint.resource_requirements` — the resource identities needed for rehydration:
 
 ```python
-saved = execution.save()
-# saved contains state, lifecycle metadata, interrupt state, and resource_keys
-# but NOT the live objects themselves
+flow.declare_resource_requirement("db")
+flow.declare_resource_requirement("logger")
+flow.declare_resource_requirement("search_tool")
 
-restored = flow.create_execution(
-    auto_close=False,
+saved = execution.save()
+# saved contains state, lifecycle metadata, interrupt state,
+# resource requirements, and resource keys, but NOT live objects
+
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
     runtime_resources={"db": new_db_client, "logger": new_logger, "search_tool": search_function},
 )
-restored.load(saved)
 ```
 
-The caller is responsible for re-injecting compatible resources after `load()`.
+The caller is responsible for re-injecting compatible resources during
+rehydration. `load(saved)` remains a low-level compatibility API, but restart
+and worker-handoff paths should prefer `async_rehydrate(...)` so missing
+resources fail before the execution continues.
 
 ### Managed execution resources
 

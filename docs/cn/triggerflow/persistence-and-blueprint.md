@@ -17,19 +17,26 @@ keywords: Agently, TriggerFlow, save, load, blueprint, persistence, durable
 
 ## Execution save / load
 
-`save()` 捕获恢复 execution 所需的全部内容：
+`save()` 捕获可安全重启的 execution snapshot：
 
 - execution 的 `state`
 - lifecycle metadata（status、时间戳、run id）
 - pending interrupt state（如果碰到了 `pause_for(...)`）
-- `resource_keys` —— 恢复时期望的 runtime resource 名，但不含 live 值
+- 带版本的 `checkpoint` envelope，包含 TriggerFlow 系统进度、interrupt
+  ledger、resume ledger 和 resource requirements
+- `resource_keys` 与 `checkpoint.resource_requirements` —— 恢复时期望的
+  resource，但不含 live 值
 
 它**不**捕获：
 
 - live `runtime_resources` 本体（不可序列化；见 [State 与 Resources](state-and-resources.md)）
 - 在途 chunk（不存在协程中段；在稳定状态保存）
+- 分布式存储所有权。TriggerFlow 记录 lease metadata，但持久化 store 仍负责
+  原子的 claim / compare-and-set 行为。
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("refund request")
 
@@ -40,22 +47,35 @@ saved_state = execution.save()
 后续恢复（可能是另一个进程）：
 
 ```python
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={"db": new_db_client, "logger": new_logger},
+report = flow.create_execution(auto_close=False).inspect_rehydration(
+    saved_state,
+    runtime_resources={"approval_service": new_approval_service},
 )
-restored.load(saved_state)
+if not report["ready"]:
+    raise RuntimeError(report["diagnostics"])
 
-# 继续：emit、continue_with interrupt，再 close
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved_state,
+    runtime_resources={"approval_service": new_approval_service},
+)
+
+# 继续：emit、continue_with interrupt，再 close。
 await restored.async_emit("UserFeedback", {"approved": True})
 snapshot = await restored.async_close()
 ```
 
 flow 定义两端必须一致（或兼容）—— `load()` 不会从 `saved_state` 重建 chunk 图，要求 flow 已存在。
 
+`load(saved_state)` 仍作为低层兼容 API 保留。重启或 worker handoff 路径推荐使用
+`async_rehydrate(...)`，因为它会在继续运行前校验缺失资源，并可重建 managed
+execution environments。
+
 ### 跨 pause_for 的恢复
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("topic")
 
@@ -63,18 +83,45 @@ await execution.async_start("topic")
 saved = execution.save()
 
 # 几天后，另一 worker
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={"search_tool": new_search_function},
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": new_approval_service},
 )
-restored.load(saved)
 
 interrupt_id = next(iter(restored.get_pending_interrupts()))
-await restored.async_continue_with(interrupt_id, {"approved": True})
+await restored.async_continue_with(
+    interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 snapshot = await restored.async_close()
 ```
 
 `get_pending_interrupts()` 返回 `pause_for(...)` 创建的 interrupt id 集合。`continue_with(id, payload)` 解析一个 interrupt，并按该 interrupt 的 `resume_to` 目标继续图。
+Webhook、队列或审批回调应传入稳定的 `resume_request_id`，这样重复投递可以被重放，
+但不会把同一次 resume 派发两次。
+
+### Checkpoint stores
+
+`execution.async_save_checkpoint(store, ...)` 会把当前 snapshot 写入任何实现了
+`put_checkpoint(run_id, state, *, step_id=None)` 的 store。TriggerFlow 提供
+snapshot 契约；生产级 store 负责持久留存、原子 claim、lease enforcement 和冲突处理。
+
+```python
+execution.claim_lease("worker-a", lease_ttl=30)
+await execution.async_save_checkpoint(store, run_id=execution.id)
+
+saved = await store.get_checkpoint(execution.id)
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
+)
+```
+
+checkpoint envelope 刻意基于 resource key。可序列化的 resource requirements 可以被
+持久化和检查，但 client、callback、task、semaphore 与 coroutine frame 必须由恢复端重新创建。
 
 ## Flow blueprint save / load
 
@@ -199,30 +246,42 @@ Flow 定义（chunk、分支、条件）
 **单服务器恢复**
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 saved = execution.save()
 redis.set(f"flow:{exec_id}", json.dumps(saved))
 
 # 后续
 saved = json.loads(redis.get(f"flow:{exec_id}"))
-restored = flow.create_execution(auto_close=False, runtime_resources={...})
-restored.load(saved)
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
+)
 ```
 
 **分布式 worker 拉起**
 
-把 blueprint（存一次）和 execution save（每个 execution 存一份）配对：
+把 blueprint（存一次）和 execution checkpoint（每个 execution 存一份）配对。
+worker rehydrate 并继续运行前，持久化 store 应先原子分配所有权：
 
 ```python
 blueprint = source_flow.save_blueprint()
 db.save("flow_blueprints", blueprint_id, blueprint)
 
 # worker 中
+saved = await checkpoint_store.claim(run_id, owner_id=worker_id)
+
 flow = TriggerFlow(name="loaded")
 register_all_handlers(flow)            # 你的注册入口
 flow.load_blueprint(db.load("flow_blueprints", blueprint_id))
 
-execution = flow.create_execution(auto_close=False, runtime_resources=...)
-execution.load(saved)
+execution = flow.create_execution(auto_close=False)
+await execution.async_rehydrate(
+    saved,
+    runtime_resources=runtime_resources_for(saved),
+)
+execution.claim_lease(worker_id, lease_ttl=30)
 ```
 
 ## 另见

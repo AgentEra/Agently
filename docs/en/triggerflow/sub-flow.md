@@ -130,9 +130,13 @@ await execution.async_start(input_value)
 root_interrupt_id = next(iter(execution.get_pending_interrupts()))
 saved = execution.save()
 
-restored = parent_flow.create_execution(auto_close=False, runtime_resources={...})
-restored.load(saved)
-await restored.async_continue_with(root_interrupt_id, {"approved": True})
+restored = parent_flow.create_execution(auto_close=False)
+await restored.async_rehydrate(saved, runtime_resources={...})
+await restored.async_continue_with(
+    root_interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 ```
 
 The projected interrupt includes `sub_flow_frame_id` and `local_interrupt_id` for debugging, but callers should treat the parent interrupt id as the public handle. After the child finishes, `write_back` runs normally and the parent continues downstream.

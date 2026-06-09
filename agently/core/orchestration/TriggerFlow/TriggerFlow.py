@@ -74,6 +74,7 @@ class TriggerFlow(Generic[InputT, StreamT, ResultT]):
         self._runtime_resources = StateData(
             name=f"TriggerFlow-{ self.name }-RuntimeResources",
         )
+        self._resource_requirements: list[dict[str, Any]] = []
         self._blue_print = blueprint if blueprint is not None else TriggerFlowBlueprint()
         self._skip_exceptions = skip_exceptions
         self._executions: dict[str, "TriggerFlowExecution[InputT, StreamT, ResultT]"] = {}
@@ -97,6 +98,7 @@ class TriggerFlow(Generic[InputT, StreamT, ResultT]):
         self.del_runtime_resource = self._del_runtime_resource
         self.update_runtime_resources = self._update_runtime_resources
         self.clear_runtime_resources = self._clear_runtime_resources
+        self.declare_resource_requirement = self._declare_resource_requirement
         self._bind_start_process()
 
     def _bind_start_process(self):
@@ -347,6 +349,36 @@ class TriggerFlow(Generic[InputT, StreamT, ResultT]):
     def _clear_runtime_resources(self):
         self._runtime_resources.clear()
         return self
+
+    def _declare_resource_requirement(
+        self,
+        key: str,
+        *,
+        kind: str = "runtime_resource",
+        required: bool = True,
+        metadata: dict[str, Any] | None = None,
+    ):
+        requirement = {
+            "kind": str(kind),
+            "key": str(key),
+            "required": bool(required),
+            "source": "flow",
+            "metadata": {"scope": "flow", **dict(metadata or {})},
+        }
+        self._resource_requirements = [
+            item
+            for item in self._resource_requirements
+            if not (
+                item.get("kind") == requirement["kind"]
+                and item.get("key") == requirement["key"]
+                and item.get("source") == requirement["source"]
+            )
+        ]
+        self._resource_requirements.append(requirement)
+        return self
+
+    def get_resource_requirements(self):
+        return copy.deepcopy(self._resource_requirements)
 
     def remove_execution(self, execution: "TriggerFlowExecution | str"):
         if isinstance(execution, str):

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from dataclasses import dataclass, field
-from typing import Any, Generic, Literal, TypeAlias, TypeVar
+from typing import Any, Generic, Literal, Protocol, TypeAlias, TypeVar, runtime_checkable
 
 from pydantic import TypeAdapter
 from typing_extensions import NotRequired, TypedDict
@@ -38,6 +38,9 @@ class TriggerFlowInterrupt(TypedDict):
     response: NotRequired[Any]
     resume_count: NotRequired[int]
     max_resumes: NotRequired[int | None]
+    resume_request_id: NotRequired[str | None]
+    resume_requests: NotRequired[dict[str, Any]]
+    resumed_by: NotRequired[str | None]
     local_interrupt_id: NotRequired[str | None]
     source_execution_id: NotRequired[str | None]
     source_flow_name: NotRequired[str | None]
@@ -49,25 +52,61 @@ class TriggerFlowResourceRequirement(TypedDict):
     kind: Literal["runtime_resource", "managed_execution_environment", "execution_environment_requirement"]
     key: str
     required: bool
+    source: NotRequired[Literal["flow", "execution", "managed", "external"] | str]
     metadata: NotRequired[dict[str, Any]]
 
 
 class TriggerFlowExecutionSnapshot(TypedDict, total=False):
     schema_version: int
     kind: Literal["triggerflow.execution_snapshot"]
+    snapshot_id: str
+    created_at: float
     execution_id: str
     flow_name: str | None
     status: str
     lifecycle_state: str
     state_version: int
+    owner_id: str | None
+    lease: dict[str, Any]
+    run_context: dict[str, Any]
+    runtime_data: dict[str, Any]
+    flow_data: dict[str, Any]
+    interrupts: dict[str, Any]
+    intervention: dict[str, Any]
+    sub_flow_frames: dict[str, Any]
+    last_signal: dict[str, Any] | None
+    result: dict[str, Any]
     durable_system_state: dict[str, Any]
     resource_requirements: list[TriggerFlowResourceRequirement]
+    resource_keys: list[str]
+    managed_resource_keys: list[str]
+    execution_environment_requirement_ids: list[str]
+    resume_ledger: dict[str, Any]
 
 
 class TriggerFlowExecutionRehydration(TypedDict, total=False):
     snapshot: TriggerFlowExecutionSnapshot
+    execution_id: str
+    status: Literal["ready", "missing_resources", "invalid_snapshot"]
+    ready: bool
     runtime_resources: dict[str, Any]
     missing_resource_keys: list[str]
+    resolved_resource_keys: list[str]
+    pending_environment_resource_keys: list[str]
+    resource_requirements: list[TriggerFlowResourceRequirement]
+    execution_environment_requirements: list[dict[str, Any]]
+    diagnostics: list[dict[str, Any]]
+
+
+@runtime_checkable
+class TriggerFlowCheckpointStore(Protocol):
+    async def put_checkpoint(
+        self,
+        run_id: str,
+        state: dict[str, Any],
+        *,
+        step_id: str | None = None,
+    ) -> Any: ...
 
 
 class TriggerFlowInterruptEvent(TypedDict):

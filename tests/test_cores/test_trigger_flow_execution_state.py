@@ -193,6 +193,57 @@ async def test_trigger_flow_execution_checkpoint_preserves_self_resume_count_aft
 
 
 @pytest.mark.asyncio
+async def test_trigger_flow_continue_with_resume_request_id_is_idempotent_after_load():
+    flow = TriggerFlow(name="checkpoint-resume-idempotency")
+
+    async def gate(data: TriggerFlowRuntimeData):
+        return await data.async_pause_for(
+            type="approval",
+            interrupt_id="approval",
+            resume_to="next",
+        )
+
+    async def finalize(data: TriggerFlowRuntimeData):
+        resumes = data.get_state("resumes", []) or []
+        resumes.append(data.value)
+        await data.async_set_state("resumes", resumes, emit=False)
+
+    flow.to(gate).to(finalize)
+    execution = flow.create_execution(auto_close=False)
+    await execution.async_start(None)
+    await execution.async_continue_with(
+        "approval",
+        {"approved": True},
+        resume_request_id="resume-1",
+        actor="reviewer",
+    )
+    saved_state = execution.save()
+    assert saved_state["checkpoint"]["resume_ledger"]["approval"]["resume-1"]["status"] == "accepted"
+
+    restored_execution = flow.create_execution(auto_close=False)
+    restored_execution.load(saved_state)
+    retry_result = await restored_execution.async_continue_with(
+        "approval",
+        {"approved": True},
+        resume_request_id="resume-1",
+        actor="reviewer",
+    )
+    with pytest.raises(ValueError, match="conflicting resume_request_id"):
+        await restored_execution.async_continue_with(
+            "approval",
+            {"approved": False},
+            resume_request_id="resume-1",
+            actor="reviewer",
+        )
+    await restored_execution.async_close()
+
+    assert retry_result is not None
+    assert retry_result["resume_request_id"] == "resume-1"
+    assert retry_result["resumed_by"] == "reviewer"
+    assert restored_execution.get_state("resumes") == [{"approved": True}]
+
+
+@pytest.mark.asyncio
 async def test_trigger_flow_execution_save_to_json_file_and_load_from_file(tmp_path: Path):
     flow = TriggerFlow()
     flow.to(lambda data: data.value).end()

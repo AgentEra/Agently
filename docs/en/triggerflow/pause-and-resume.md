@@ -114,9 +114,11 @@ same gate re-enters with `data.is_resume` and `data.resume` after human review.
 
 ## Pause across process restarts
 
-`pause_for(...)` integrates cleanly with `save` / `load`:
+`pause_for(...)` integrates cleanly with checkpoint rehydration:
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("topic")
 # at this point pause_for has been hit; an interrupt is pending
@@ -125,17 +127,23 @@ saved = execution.save()
 # persist saved somewhere
 
 # later, in a different process / worker:
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={...},   # re-inject whatever the chunk needs
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
 )
-restored.load(saved)
 interrupt_id = next(iter(restored.get_pending_interrupts()))
-await restored.async_continue_with(interrupt_id, {"approved": True})
+await restored.async_continue_with(
+    interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 snapshot = await restored.async_close()
 ```
 
-The interrupt is part of the saved state, so the new process knows what's pending. See [Persistence and Blueprint](persistence-and-blueprint.md).
+The interrupt and accepted resume request ids are part of the saved state, so
+the new process knows what's pending and can ignore duplicate resume retries.
+See [Persistence and Blueprint](persistence-and-blueprint.md).
 
 ## Multiple concurrent pauses
 

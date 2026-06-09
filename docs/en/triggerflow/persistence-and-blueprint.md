@@ -17,19 +17,26 @@ Two distinct serialization paths exist. Don't confuse them.
 
 ## Execution save / load
 
-`save()` captures everything needed to resume the execution where it stopped:
+`save()` captures a restart-safe execution snapshot:
 
 - the execution's `state`
 - lifecycle metadata (status, timestamps, run ids)
 - pending interrupt state (if `pause_for(...)` was hit)
-- `resource_keys` — the names of runtime resources expected on resume, but not the live values
+- a versioned `checkpoint` envelope with TriggerFlow system progress, interrupt
+  ledger, resume ledger, and resource requirements
+- `resource_keys` and `checkpoint.resource_requirements` — the resources
+  expected on resume, but not their live values
 
 What it does **not** capture:
 
 - the live `runtime_resources` themselves (they're not serializable; see [State and Resources](state-and-resources.md))
 - in-flight chunks (no execution mid-coroutine; save during a settled state)
+- distributed-store ownership. TriggerFlow records lease metadata, while the
+  durable store still owns atomic claim / compare-and-set behavior.
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("refund request")
 
@@ -40,22 +47,36 @@ saved_state = execution.save()
 Restore later (possibly in a different process):
 
 ```python
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={"db": new_db_client, "logger": new_logger},
+report = flow.create_execution(auto_close=False).inspect_rehydration(
+    saved_state,
+    runtime_resources={"approval_service": new_approval_service},
 )
-restored.load(saved_state)
+if not report["ready"]:
+    raise RuntimeError(report["diagnostics"])
 
-# Continue: emit, continue_with an interrupt, then close
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved_state,
+    runtime_resources={"approval_service": new_approval_service},
+)
+
+# Continue: emit, continue_with an interrupt, then close.
 await restored.async_emit("UserFeedback", {"approved": True})
 snapshot = await restored.async_close()
 ```
 
 The flow definition must be the **same flow** (or compatible) on both sides — `load()` doesn't reconstruct the chunk graph from `saved_state`; it expects the flow to already exist.
 
+`load(saved_state)` remains available as a low-level compatibility API.
+`async_rehydrate(...)` is the recommended recovery boundary for restart or
+worker-handoff paths because it validates missing resources and can rebuild
+managed execution environments before the execution is resumed.
+
 ### Resuming around a pause_for
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("topic")
 
@@ -63,18 +84,47 @@ await execution.async_start("topic")
 saved = execution.save()
 
 # ... days later, in a different worker ...
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={"search_tool": new_search_function},
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": new_approval_service},
 )
-restored.load(saved)
 
 interrupt_id = next(iter(restored.get_pending_interrupts()))
-await restored.async_continue_with(interrupt_id, {"approved": True})
+await restored.async_continue_with(
+    interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 snapshot = await restored.async_close()
 ```
 
 `get_pending_interrupts()` returns ids of interrupts created via `pause_for(...)`. `continue_with(id, payload)` resolves one interrupt and resumes the graph according to that interrupt's `resume_to` target.
+Use a stable `resume_request_id` for webhook, queue, or approval callbacks so a
+duplicate delivery can be replayed without dispatching the same resume twice.
+
+### Checkpoint stores
+
+`execution.async_save_checkpoint(store, ...)` writes the current snapshot to any
+store that exposes `put_checkpoint(run_id, state, *, step_id=None)`.
+TriggerFlow supplies the snapshot contract; the production store owns durable
+retention, atomic claim, lease enforcement, and conflict handling.
+
+```python
+execution.claim_lease("worker-a", lease_ttl=30)
+await execution.async_save_checkpoint(store, run_id=execution.id)
+
+saved = await store.get_checkpoint(execution.id)
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
+)
+```
+
+The checkpoint envelope is intentionally resource-key based. Serializable
+resource requirements can be persisted and inspected, but clients, callbacks,
+tasks, semaphores, and coroutine frames must be recreated by the recovery host.
 
 ## Flow blueprint save / load
 
@@ -206,30 +256,43 @@ Both paths return JSON-friendly dicts. Pick storage (Redis, Postgres, S3, file) 
 **Single-server resume**
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 saved = execution.save()
 redis.set(f"flow:{exec_id}", json.dumps(saved))
 
 # later
 saved = json.loads(redis.get(f"flow:{exec_id}"))
-restored = flow.create_execution(auto_close=False, runtime_resources={...})
-restored.load(saved)
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
+)
 ```
 
 **Distributed worker pickup**
 
-Pair a blueprint (stored once) with an execution save (stored per execution):
+Pair a blueprint (stored once) with an execution checkpoint (stored per
+execution). The durable store should atomically assign ownership before a worker
+rehydrates and continues the execution:
 
 ```python
 blueprint = source_flow.save_blueprint()
 db.save("flow_blueprints", blueprint_id, blueprint)
 
 # in worker
+saved = await checkpoint_store.claim(run_id, owner_id=worker_id)
+
 flow = TriggerFlow(name="loaded")
 register_all_handlers(flow)            # whatever your registration entry is
 flow.load_blueprint(db.load("flow_blueprints", blueprint_id))
 
-execution = flow.create_execution(auto_close=False, runtime_resources=...)
-execution.load(saved)
+execution = flow.create_execution(auto_close=False)
+await execution.async_rehydrate(
+    saved,
+    runtime_resources=runtime_resources_for(saved),
+)
+execution.claim_lease(worker_id, lease_ttl=30)
 ```
 
 ## See also

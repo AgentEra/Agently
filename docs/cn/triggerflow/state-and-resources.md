@@ -100,21 +100,27 @@ async def step(data: TriggerFlowRuntimeData):
 
 ### 为什么 resources 不进 snapshot
 
-close snapshot 应当是可序列化的 dict。live 对象不能序列化（没有有意义的表示，也没法在另一边重建 live 状态）。snapshot **会**记录 `resource_keys` —— execution 持有过的 resource 名 —— 这样恢复时知道要重新注入什么：
+close snapshot 应当是可序列化的 dict。live 对象不能序列化（没有有意义的表示，也没法在另一边重建 live 状态）。snapshot **会**记录 `resource_keys` 与 `checkpoint.resource_requirements` —— 恢复所需的 resource identity：
 
 ```python
-saved = execution.save()
-# saved 含 state、lifecycle metadata、interrupt state、resource_keys
-# 但不含 live 对象本体
+flow.declare_resource_requirement("db")
+flow.declare_resource_requirement("logger")
+flow.declare_resource_requirement("search_tool")
 
-restored = flow.create_execution(
-    auto_close=False,
+saved = execution.save()
+# saved 含 state、lifecycle metadata、interrupt state、
+# resource requirements 和 resource keys，但不含 live 对象本体
+
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
     runtime_resources={"db": new_db_client, "logger": new_logger, "search_tool": search_function},
 )
-restored.load(saved)
 ```
 
-`load()` 后调用方负责重新注入兼容的 resource。
+调用方负责在 rehydration 时重新注入兼容 resource。`load(saved)` 仍作为低层兼容
+API 保留，但重启和 worker handoff 路径推荐使用 `async_rehydrate(...)`，这样缺失
+资源会在 execution 继续前失败。
 
 ### 托管 execution resources
 

@@ -110,9 +110,11 @@ asyncio.run(main())
 
 ## 跨进程重启的 pause
 
-`pause_for(...)` 与 `save` / `load` 配合得很好：
+`pause_for(...)` 可以和 checkpoint rehydration 配合：
 
 ```python
+flow.declare_resource_requirement("approval_service")
+
 execution = flow.create_execution(auto_close=False)
 await execution.async_start("topic")
 # 此时已碰到 pause_for；存在 pending interrupt
@@ -121,17 +123,21 @@ saved = execution.save()
 # 持久化 saved
 
 # 后续在另一进程 / worker：
-restored = flow.create_execution(
-    auto_close=False,
-    runtime_resources={...},   # chunk 需要的全部重新注入
+restored = flow.create_execution(auto_close=False)
+await restored.async_rehydrate(
+    saved,
+    runtime_resources={"approval_service": approval_service},
 )
-restored.load(saved)
 interrupt_id = next(iter(restored.get_pending_interrupts()))
-await restored.async_continue_with(interrupt_id, {"approved": True})
+await restored.async_continue_with(
+    interrupt_id,
+    {"approved": True},
+    resume_request_id="approval-webhook-42",
+)
 snapshot = await restored.async_close()
 ```
 
-interrupt 是 saved state 的一部分，新进程知道有什么待处理。详见 [持久化与 Blueprint](persistence-and-blueprint.md)。
+interrupt 和已接受的 resume request id 都是 saved state 的一部分，新进程知道有什么待处理，也能忽略重复 resume。详见 [持久化与 Blueprint](persistence-and-blueprint.md)。
 
 ## 多个并发 pause
 
