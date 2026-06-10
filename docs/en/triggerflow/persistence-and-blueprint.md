@@ -23,7 +23,8 @@ Two distinct serialization paths exist. Don't confuse them.
 - lifecycle metadata (status, timestamps, run ids)
 - pending interrupt state (if `pause_for(...)` was hit)
 - a versioned `checkpoint` envelope with TriggerFlow system progress, interrupt
-  ledger, resume ledger, and resource requirements
+  ledger, resume ledger, resource requirements, and a flow definition
+  fingerprint
 - `resource_keys` and `checkpoint.resource_requirements` — the resources
   expected on resume, but not their live values
 
@@ -65,7 +66,13 @@ await restored.async_emit("UserFeedback", {"approved": True})
 snapshot = await restored.async_close()
 ```
 
-The flow definition must be the **same flow** (or compatible) on both sides — `load()` doesn't reconstruct the chunk graph from `saved_state`; it expects the flow to already exist.
+The flow definition must be the **same flow** (or compatible) on both sides.
+`save()` records `checkpoint.flow_definition_fingerprint`; `inspect_rehydration(...)`
+reports `status="invalid_snapshot"` when the checkpoint fingerprint is missing
+or does not match the current flow definition, and `load(...)` rejects that
+snapshot.
+`load()` doesn't reconstruct the chunk graph from `saved_state`; it expects the
+flow to already exist.
 
 `load(saved_state)` remains available as a low-level compatibility API.
 `async_rehydrate(...)` is the recommended recovery boundary for restart or

@@ -45,6 +45,8 @@ class TriggerFlowInterrupt(TypedDict):
     source_execution_id: NotRequired[str | None]
     source_flow_name: NotRequired[str | None]
     source_operator_id: NotRequired[str | None]
+    source_signal: NotRequired[dict[str, Any] | None]
+    continuation_event: NotRequired[str | None]
     sub_flow_frame_id: NotRequired[str | None]
 
 
@@ -63,6 +65,7 @@ class TriggerFlowExecutionSnapshot(TypedDict, total=False):
     created_at: float
     execution_id: str
     flow_name: str | None
+    flow_definition_fingerprint: str
     status: str
     lifecycle_state: str
     state_version: int
@@ -90,6 +93,7 @@ class TriggerFlowExecutionRehydration(TypedDict, total=False):
     status: Literal["ready", "missing_resources", "invalid_snapshot"]
     ready: bool
     runtime_resources: dict[str, Any]
+    current_flow_definition_fingerprint: str
     missing_resource_keys: list[str]
     resolved_resource_keys: list[str]
     pending_environment_resource_keys: list[str]

@@ -22,8 +22,10 @@ class RuntimeIntegrityResult(BaseModel):
 
 
 async def _run_empty_for_each(flow: TriggerFlow):
-    result = await flow.async_start([], auto_close_timeout=0.01)
-    return _compat_result(result)
+    execution = flow.create_execution(auto_close=False)
+    await execution.async_start([])
+    snapshot = await execution.async_close(timeout=1)
+    return _compat_result(snapshot)
 
 
 @pytest.mark.asyncio
@@ -45,8 +47,10 @@ async def test_for_each_empty_sequence_completes_for_builder_and_loaded_config()
 
 
 async def _run_match_without_hit(flow: TriggerFlow):
-    result = await flow.async_start("actual", auto_close_timeout=0.01)
-    return _compat_result(result)
+    execution = flow.create_execution(auto_close=False)
+    await execution.async_start("actual")
+    snapshot = await execution.async_close(timeout=1)
+    return _compat_result(snapshot)
 
 
 @pytest.mark.asyncio

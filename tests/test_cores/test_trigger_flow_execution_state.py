@@ -1,5 +1,6 @@
-import json
 import asyncio
+import copy
+import json
 from pathlib import Path
 
 import pytest
@@ -76,6 +77,83 @@ async def test_trigger_flow_execution_save_and_load_then_continue():
         "draft": {"topic": "pricing"},
         "global_flag": True,
     }
+
+
+def test_trigger_flow_checkpoint_records_definition_fingerprint_and_rejects_mismatch():
+    flow = TriggerFlow(name="checkpoint-fingerprint")
+
+    async def original_stage(data: TriggerFlowRuntimeData):
+        return data.value
+
+    flow.to(original_stage)
+    saved_state = flow.create_execution(auto_close=False).save()
+    fingerprint = saved_state["checkpoint"]["flow_definition_fingerprint"]
+
+    assert fingerprint.startswith("sha256:")
+    report = flow.create_execution(auto_close=False).inspect_rehydration(saved_state)
+    assert report["ready"] is True
+    assert report["status"] == "ready"
+    assert report["current_flow_definition_fingerprint"] == fingerprint
+
+    incompatible_flow = TriggerFlow(name="checkpoint-fingerprint")
+
+    async def incompatible_stage(data: TriggerFlowRuntimeData):
+        return {"changed": data.value}
+
+    incompatible_flow.to(incompatible_stage)
+    incompatible_report = incompatible_flow.create_execution(auto_close=False).inspect_rehydration(saved_state)
+
+    assert incompatible_report["ready"] is False
+    assert incompatible_report["status"] == "invalid_snapshot"
+    assert {
+        diagnostic["code"]
+        for diagnostic in incompatible_report["diagnostics"]
+    } == {"triggerflow.checkpoint.flow_definition_mismatch"}
+    with pytest.raises(ValueError, match="flow definition fingerprint mismatch"):
+        incompatible_flow.create_execution(auto_close=False).load(saved_state)
+
+
+def test_trigger_flow_checkpoint_rejects_invalid_kind_and_schema_version():
+    flow = TriggerFlow(name="checkpoint-contract")
+
+    async def stage(data: TriggerFlowRuntimeData):
+        return data.value
+
+    flow.to(stage)
+    saved_state = flow.create_execution(auto_close=False).save()
+
+    invalid_kind = copy.deepcopy(saved_state)
+    invalid_kind["checkpoint"]["kind"] = "unknown.snapshot"
+    kind_report = flow.create_execution(auto_close=False).inspect_rehydration(invalid_kind)
+    assert kind_report["status"] == "invalid_snapshot"
+    assert any(
+        diagnostic["code"] == "triggerflow.checkpoint.invalid_kind"
+        for diagnostic in kind_report["diagnostics"]
+    )
+    with pytest.raises(ValueError, match="checkpoint kind"):
+        flow.create_execution(auto_close=False).load(invalid_kind)
+
+    invalid_schema = copy.deepcopy(saved_state)
+    invalid_schema["checkpoint"]["schema_version"] = 999
+    schema_report = flow.create_execution(auto_close=False).inspect_rehydration(invalid_schema)
+    assert schema_report["status"] == "invalid_snapshot"
+    assert any(
+        diagnostic["code"] == "triggerflow.checkpoint.invalid_schema_version"
+        for diagnostic in schema_report["diagnostics"]
+    )
+    with pytest.raises(ValueError, match="schema_version"):
+        flow.create_execution(auto_close=False).load(invalid_schema)
+
+    missing_fingerprint = copy.deepcopy(saved_state)
+    missing_fingerprint["checkpoint"].pop("flow_definition_fingerprint")
+    fingerprint_report = flow.create_execution(auto_close=False).inspect_rehydration(missing_fingerprint)
+    assert fingerprint_report["status"] == "invalid_snapshot"
+    assert any(
+        diagnostic["code"] == "triggerflow.checkpoint.missing_flow_definition_fingerprint"
+        for diagnostic in fingerprint_report["diagnostics"]
+    )
+    with pytest.raises(ValueError, match="flow definition fingerprint"):
+        flow.create_execution(auto_close=False).load(missing_fingerprint)
 
 
 @pytest.mark.asyncio

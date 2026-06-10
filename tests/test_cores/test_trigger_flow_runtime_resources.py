@@ -132,6 +132,9 @@ async def test_trigger_flow_execution_load_requires_reinjecting_runtime_resource
     assert report["ready"] is False
     assert report["missing_resource_keys"] == ["resume_service"]
 
+    with pytest.raises(RuntimeError, match="missing resources"):
+        flow.create_execution().load(saved_state, validate_rehydration=True)
+
     legacy_state = copy.deepcopy(saved_state)
     legacy_state["checkpoint"].pop("resource_requirements", None)
     legacy_state["resource_keys"] = ["resume_service"]

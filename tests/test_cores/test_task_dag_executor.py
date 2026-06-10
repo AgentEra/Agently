@@ -341,6 +341,55 @@ async def test_task_dag_executor_approval_task_resumes_to_downstream_tasks():
     assert snapshot["task_results"]["write_report"] == "approved=True"
 
 
+@pytest.mark.asyncio
+async def test_task_dag_executor_checkpoint_rehydrates_approval_dag_and_continues_downstream():
+    async def consume_approval(context):
+        return f"approved={ context.dependency_results['approve_write']['approved'] }"
+
+    graph = {
+        "graph_id": "approval-checkpoint-demo",
+        "tasks": [
+            {"id": "approve_write", "kind": "approval", "approval": {"type": "human_approval"}},
+            {"id": "write_report", "kind": "local", "depends_on": ["approve_write"]},
+        ],
+    }
+
+    compiled = TaskDAGExecutor({"local": consume_approval}).compile(graph)
+    execution = compiled.create_execution(auto_close=False)
+    Agently.configure_policy_approval(handler="fail_closed")
+    try:
+        await execution.async_start({"request": "publish"})
+
+        interrupts = {}
+        for _ in range(20):
+            interrupts = execution.get_pending_interrupts()
+            if interrupts:
+                break
+            await asyncio.sleep(0.01)
+        assert len(interrupts) == 1
+        saved_state = execution.save()
+        await execution.async_close(pending_interrupts="cancel")
+
+        restored = compiled.create_execution(auto_close=False)
+        report = restored.inspect_rehydration(saved_state)
+        assert report["ready"] is True
+        assert report["status"] == "ready"
+        await restored.async_rehydrate(saved_state)
+
+        interrupt_id = next(iter(restored.get_pending_interrupts()))
+        await restored.async_continue_with(
+            interrupt_id,
+            {"approved": True},
+            resume_request_id="approval-callback-1",
+        )
+        snapshot = await restored.async_close(timeout=1)
+    finally:
+        Agently.configure_policy_approval(handler="input_timeout_fail")
+
+    assert snapshot["task_results"]["approve_write"] == {"approved": True}
+    assert snapshot["task_results"]["write_report"] == "approved=True"
+
+
 def test_task_dag_executor_repeated_compilation_is_idempotent():
     async def local_task(context):
         return context.task.id

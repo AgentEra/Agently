@@ -215,6 +215,10 @@ def test_trigger_flow_public_interrupt_event_type_matches_runtime_stream_shape()
     assert validated_event["execution_id"]
     assert validated_event["interrupt"]["type"] == "human_input"
     assert validated_event["interrupt"].get("resume_event") == "UserFeedback"
+    assert validated_event["interrupt"].get("source_execution_id") == validated_event["execution_id"]
+    assert validated_event["interrupt"].get("source_operator_id")
+    assert validated_event["interrupt"].get("source_signal") == validated_event.get("signal")
+    assert "continuation_event" in validated_event["interrupt"]
 
 
 @pytest.mark.asyncio

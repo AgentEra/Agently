@@ -327,6 +327,7 @@ class TriggerFlowExecutionPersistence:
             "created_at": saved_at,
             "execution_id": execution.id,
             "flow_name": execution._trigger_flow.name,
+            "flow_definition_fingerprint": self._current_flow_definition_fingerprint(),
             "status": execution._status,
             "lifecycle_state": execution._lifecycle_state,
             "state_version": execution._state_version,
@@ -365,6 +366,7 @@ class TriggerFlowExecutionPersistence:
         execution = self._execution
         state = self._load_state_content(state, encoding=encoding)
         self._validate_state_sections(state)
+        self._raise_for_checkpoint_contract(state)
         if validate_rehydration:
             rehydration = self.inspect_rehydration_state(
                 state,
@@ -549,7 +551,12 @@ class TriggerFlowExecutionPersistence:
         missing_resource_keys: set[str] = set()
         pending_environment_resource_keys: set[str] = set()
         resolved_resource_keys: set[str] = set()
-        diagnostics: list[dict[str, Any]] = []
+        diagnostics: list[dict[str, Any]] = self._checkpoint_contract_diagnostics(state)
+        checkpoint_errors = [
+            diagnostic
+            for diagnostic in diagnostics
+            if diagnostic.get("severity") == "error"
+        ]
 
         for requirement in resource_requirements:
             if requirement.get("required", True) is False:
@@ -567,21 +574,28 @@ class TriggerFlowExecutionPersistence:
             diagnostics.append(
                 {
                     "code": "triggerflow.rehydration.missing_resource",
+                    "severity": "error",
                     "resource_key": resource_key,
                     "requirement": execution._to_serializable_value(requirement),
                 }
             )
 
-        ready = not missing_resource_keys
+        ready = not checkpoint_errors and not missing_resource_keys
+        status = "ready"
+        if checkpoint_errors:
+            status = "invalid_snapshot"
+        elif missing_resource_keys:
+            status = "missing_resources"
         return {
             "snapshot": checkpoint_state,
             "execution_id": str(state.get("execution_id", execution.id)),
-            "status": "ready" if ready else "missing_resources",
+            "status": status,
             "ready": ready,
             "runtime_resources": {
                 key: "<provided>"
                 for key in sorted((runtime_resources or {}).keys())
             },
+            "current_flow_definition_fingerprint": self._current_flow_definition_fingerprint(),
             "missing_resource_keys": sorted(missing_resource_keys),
             "resolved_resource_keys": sorted(resolved_resource_keys),
             "pending_environment_resource_keys": sorted(pending_environment_resource_keys),
@@ -591,6 +605,95 @@ class TriggerFlowExecutionPersistence:
             ),
             "diagnostics": diagnostics,
         }
+
+    def _current_flow_definition_fingerprint(self):
+        return self._execution._trigger_flow._blue_print._get_definition_fingerprint()
+
+    def _checkpoint_contract_diagnostics(self, state: dict[str, Any]):
+        checkpoint_state = state.get("checkpoint", {}) or {}
+        if not checkpoint_state:
+            return []
+
+        diagnostics: list[dict[str, Any]] = []
+        kind = checkpoint_state.get("kind")
+        if kind != TRIGGER_FLOW_CHECKPOINT_KIND:
+            diagnostics.append(
+                {
+                    "code": "triggerflow.checkpoint.invalid_kind",
+                    "severity": "error",
+                    "message": (
+                        "TriggerFlow checkpoint kind does not match "
+                        f"{ TRIGGER_FLOW_CHECKPOINT_KIND }."
+                    ),
+                    "expected": TRIGGER_FLOW_CHECKPOINT_KIND,
+                    "actual": kind,
+                }
+            )
+
+        schema_version = checkpoint_state.get("schema_version")
+        if schema_version != TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION:
+            diagnostics.append(
+                {
+                    "code": "triggerflow.checkpoint.invalid_schema_version",
+                    "severity": "error",
+                    "message": (
+                        "TriggerFlow checkpoint schema_version does not match "
+                        f"{ TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION }."
+                    ),
+                    "expected": TRIGGER_FLOW_CHECKPOINT_SCHEMA_VERSION,
+                    "actual": schema_version,
+                }
+            )
+
+        snapshot_fingerprint = checkpoint_state.get("flow_definition_fingerprint")
+        current_fingerprint = self._current_flow_definition_fingerprint()
+        if snapshot_fingerprint is None:
+            diagnostics.append(
+                {
+                    "code": "triggerflow.checkpoint.missing_flow_definition_fingerprint",
+                    "severity": "error",
+                    "message": "TriggerFlow checkpoint has no flow definition fingerprint.",
+                    "current": current_fingerprint,
+                }
+            )
+        elif not isinstance(snapshot_fingerprint, str):
+            diagnostics.append(
+                {
+                    "code": "triggerflow.checkpoint.invalid_flow_definition_fingerprint",
+                    "severity": "error",
+                    "message": "TriggerFlow checkpoint flow definition fingerprint must be a string.",
+                    "actual": snapshot_fingerprint,
+                }
+            )
+        elif snapshot_fingerprint != current_fingerprint:
+            diagnostics.append(
+                {
+                    "code": "triggerflow.checkpoint.flow_definition_mismatch",
+                    "severity": "error",
+                    "message": "TriggerFlow checkpoint flow definition fingerprint mismatch.",
+                    "expected": snapshot_fingerprint,
+                    "actual": current_fingerprint,
+                    "flow_name": checkpoint_state.get("flow_name"),
+                }
+            )
+        return diagnostics
+
+    def _raise_for_checkpoint_contract(self, state: dict[str, Any]):
+        errors = [
+            diagnostic
+            for diagnostic in self._checkpoint_contract_diagnostics(state)
+            if diagnostic.get("severity") == "error"
+        ]
+        if not errors:
+            return
+        messages = [
+            str(diagnostic.get("message", diagnostic.get("code", "invalid checkpoint")))
+            for diagnostic in errors
+        ]
+        raise ValueError(
+            "Can not load TriggerFlow checkpoint: invalid snapshot. "
+            + " ".join(messages)
+        )
 
     def _available_resource_keys(self, *, runtime_resources: dict[str, Any] | None = None):
         resources = dict(self._execution.get_runtime_resources())

@@ -1107,6 +1107,16 @@ class TriggerFlowBlueprint:
             name=name if name is not None else self.name,
         )
 
+    def _get_definition_fingerprint(self):
+        config = self.definition.to_dict(
+            validate_serializable=False,
+            name=self.name,
+        )
+        config = copy.deepcopy(config)
+        config.pop("name", None)
+        digest = hashlib.sha256(_stable_definition_json(config).encode("utf-8")).hexdigest()
+        return f"sha256:{ digest }"
+
     def get_json_flow(
         self,
         save_to: str | Path | None = None,

@@ -23,7 +23,8 @@ keywords: Agently, TriggerFlow, save, load, blueprint, persistence, durable
 - lifecycle metadata（status、时间戳、run id）
 - pending interrupt state（如果碰到了 `pause_for(...)`）
 - 带版本的 `checkpoint` envelope，包含 TriggerFlow 系统进度、interrupt
-  ledger、resume ledger 和 resource requirements
+  ledger、resume ledger、resource requirements 与 flow definition
+  fingerprint
 - `resource_keys` 与 `checkpoint.resource_requirements` —— 恢复时期望的
   resource，但不含 live 值
 
@@ -65,7 +66,11 @@ await restored.async_emit("UserFeedback", {"approved": True})
 snapshot = await restored.async_close()
 ```
 
-flow 定义两端必须一致（或兼容）—— `load()` 不会从 `saved_state` 重建 chunk 图，要求 flow 已存在。
+flow 定义两端必须一致（或兼容）。`save()` 会记录
+`checkpoint.flow_definition_fingerprint`；如果 checkpoint 缺少指纹或指纹与当前
+flow 定义不匹配，`inspect_rehydration(...)` 返回 `status="invalid_snapshot"`，
+`load(...)` 会拒绝该 snapshot。`load()` 不会从 `saved_state` 重建 chunk 图，
+要求 flow 已存在。
 
 `load(saved_state)` 仍作为低层兼容 API 保留。重启或 worker handoff 路径推荐使用
 `async_rehydrate(...)`，因为它会在继续运行前校验缺失资源，并可重建 managed
