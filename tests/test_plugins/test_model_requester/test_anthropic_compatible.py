@@ -80,15 +80,22 @@ def collect_events(plugin: AnthropicCompatible, request_events: list[tuple[str, 
     return asyncio.run(_run())
 
 
-def test_generate_request_uses_messages_path_and_default_model():
+@pytest.mark.parametrize(
+    ("base_url", "expected_url"),
+    [
+        ("https://api.anthropic.example", "https://api.anthropic.example/v1/messages"),
+        ("https://api.anthropic.example/v1", "https://api.anthropic.example/v1/messages"),
+    ],
+)
+def test_generate_request_uses_messages_path_and_default_model(base_url: str, expected_url: str):
     request = generate_request(
         {
-            "base_url": "https://api.anthropic.example/v1",
+            "base_url": base_url,
         },
         {"input": "hello"},
     )
 
-    assert request["request_url"] == "https://api.anthropic.example/v1/messages"
+    assert request["request_url"] == expected_url
     assert request["request_options"]["model"] == "claude-sonnet-4-20250514"
     assert request["request_options"]["stream"] is True
     assert request["request_options"]["max_tokens"] == 8192
@@ -214,7 +221,7 @@ async def test_auth_headers_are_preserved_in_outgoing_request(monkeypatch: pytes
     captured = await capture_request_headers(
         monkeypatch,
         {
-            "base_url": "https://api.anthropic.example/v1",
+            "base_url": "https://api.anthropic.example",
             "model": "claude-sonnet-4-20250514",
             "stream": False,
             "auth": {"headers": {"X-Test": "1"}, "api_key": "claude-secret"},
@@ -223,6 +230,7 @@ async def test_auth_headers_are_preserved_in_outgoing_request(monkeypatch: pytes
         {"input": "hello"},
     )
 
+    assert captured["url"] == "https://api.anthropic.example/v1/messages"
     assert captured["headers"]["x-api-key"] == "claude-secret"
     assert captured["headers"]["X-Test"] == "1"
     assert captured["headers"]["anthropic-version"] == "2023-06-01"

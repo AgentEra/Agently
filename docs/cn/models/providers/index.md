@@ -113,7 +113,7 @@ Anthropic 兼容全球站端点：
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimax.io/anthropic/v1",
+    "base_url": "https://api.minimax.io/anthropic",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
@@ -123,7 +123,7 @@ Anthropic 兼容中国站端点：
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimaxi.com/anthropic/v1",
+    "base_url": "https://api.minimaxi.com/anthropic",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
