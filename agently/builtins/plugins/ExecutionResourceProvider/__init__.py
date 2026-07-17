@@ -6,3 +6,4 @@ from .NodeExecutionResourceProvider import NodeExecutionResourceProvider
 from .DockerExecutionResourceProvider import DockerExecutionResourceProvider
 from .BrowserExecutionResourceProvider import BrowserExecutionResourceProvider
 from .SQLiteExecutionResourceProvider import SQLiteExecutionResourceProvider
+from .SeatbeltExecutionResourceProvider import SeatbeltExecutionResourceProvider

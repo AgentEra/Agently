@@ -35,13 +35,13 @@ class ActionResourceRegistrar:
         self._action = action
 
     @staticmethod
-    def _normalize_code_sandbox(value: Literal["auto", "docker", "trusted_local"] | str) -> Literal["auto", "docker", "trusted_local"]:
+    def _normalize_code_sandbox(value: Literal["auto", "docker", "seatbelt", "trusted_local"] | str) -> Literal["auto", "docker", "seatbelt", "trusted_local"]:
         normalized = str(value or "trusted_local").strip().lower().replace("-", "_")
         if normalized in {"local", "python", "node", "bash"}:
             normalized = "trusted_local"
-        if normalized not in {"auto", "docker", "trusted_local"}:
-            raise ValueError("sandbox must be one of: 'auto', 'docker', 'trusted_local'.")
-        return cast(Literal["auto", "docker", "trusted_local"], normalized)
+        if normalized not in {"auto", "docker", "seatbelt", "trusted_local"}:
+            raise ValueError("sandbox must be one of: 'auto', 'docker', 'seatbelt', 'trusted_local'.")
+        return cast(Literal["auto", "docker", "seatbelt", "trusted_local"], normalized)
 
     @staticmethod
     def _normalize_dependency_policy(value: Literal["deny", "request", "install"] | dict[str, Any] | str) -> dict[str, Any]:
@@ -649,6 +649,64 @@ class ActionResourceRegistrar:
                     "config": {
                         "database": database,
                         "uri": uri,
+                    },
+                    "policy": cast(ExecutionResourcePolicy, merged_policy),
+                }
+            ]),
+        )
+        return action
+
+    # ------------------------------------------------------------------
+    # Seatbelt sandbox registration (macOS only)
+    # ------------------------------------------------------------------
+
+    def register_seatbelt_sandbox_action(
+        self,
+        *,
+        action_id: str = "seatbelt_sandbox",
+        desc: str = "Execute Python code inside a macOS Seatbelt sandbox (sandbox-exec + SBPL).",
+        tags: str | list[str] | None = None,
+        default_policy: "ActionPolicy | None" = None,
+        expose_to_model: bool = False,
+        network: bool = False,
+        read_paths: list[str] | None = None,
+        write_paths: list[str] | None = None,
+        extra_sbpl_rules: str = "",
+        timeout: int = 60,
+    ):
+        """Register a Python sandbox action backed by macOS Seatbelt.
+
+        Only available on macOS. On other platforms the provider will
+        report itself as unavailable at handle-creation time.
+        """
+        action = self._action.register_action(
+            action_id=action_id,
+            desc=desc,
+            tags=tags,
+            default_policy=default_policy,
+            expose_to_model=expose_to_model,
+        )
+
+        merged_policy = self._merge_action_policy(
+            action_policy=default_policy,
+            timeout=timeout,
+        )
+
+        action.bind_execution(
+            default_policy=merged_policy,
+            side_effect_level="read",
+            execution_resources=cast(list[ExecutionResourceRequirement], [
+                {
+                    "requirement_id": f"seatbelt:{ action_id }",
+                    "kind": "seatbelt",
+                    "scope": "action_call",
+                    "resource_key": action_id,
+                    "config": {
+                        "timeout": timeout,
+                        "network": network,
+                        "read_paths": read_paths or [],
+                        "write_paths": write_paths or [],
+                        "extra_sbpl_rules": extra_sbpl_rules,
                     },
                     "policy": cast(ExecutionResourcePolicy, merged_policy),
                 }
