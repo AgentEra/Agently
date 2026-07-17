@@ -669,12 +669,20 @@ class ActionResourceRegistrar:
         default_policy: "ActionPolicy | None" = None,
         expose_to_model: bool = False,
         network: bool = False,
-        read_paths: list[str] | None = None,
-        write_paths: list[str] | None = None,
+        writable_paths: list[str] | None = None,
+        protected_paths: list[str] | None = None,
+        deny_read_paths: list[str] | None = None,
         extra_sbpl_rules: str = "",
         timeout: int = 60,
     ):
         """Register a Python sandbox action backed by macOS Seatbelt.
+
+        SBPL Profile Design:
+        - File read: globally allowed (needed for system libs)
+        - File write: whitelist only (writable_paths + temp dirs)
+        - Protected paths: deny write (overrides writable_paths, last-match-wins)
+        - Deny-read paths: deny both read and write (for secrets)
+        - Network: optional outbound switch
 
         Only available on macOS. On other platforms the provider will
         report itself as unavailable at handle-creation time.
@@ -704,8 +712,9 @@ class ActionResourceRegistrar:
                     "config": {
                         "timeout": timeout,
                         "network": network,
-                        "read_paths": read_paths or [],
-                        "write_paths": write_paths or [],
+                        "writable_paths": writable_paths or [],
+                        "protected_paths": protected_paths or [],
+                        "deny_read_paths": deny_read_paths or [],
                         "extra_sbpl_rules": extra_sbpl_rules,
                     },
                     "policy": cast(ExecutionResourcePolicy, merged_policy),
