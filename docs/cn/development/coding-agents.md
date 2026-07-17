@@ -103,6 +103,41 @@ issue 必须把遭遇问题时的具体场景讲清楚，说明当时尝试解�
 
 新增框架 deprecation 时，必须通过 `agently.utils.DeprecationWarnings.warn_deprecated_once(...)` 或 `agently.utils.warn_deprecated_once(...)` alias 搭配稳定 API key 发 warning。不要直接新增 `warnings.warn(..., DeprecationWarning, ...)`；deprecated API warning 设计为每个 Python 进程内每个 API 只发一次，并遵守 `runtime.show_deprecation_warnings`。
 
+## 模拟优先的模型实验
+
+如果问题发现或策略调优预计需要多轮模型调用，先让开发 Agent 在当前任务中
+自我模拟一条尽量贴近目标的请求、返回与行为链。预先写明验收条件，并在不调用
+目标模型 API 的情况下，迭代 prompt、输出 schema、拓扑、观测信息和失败路径，直到
+同一上下文内的**热预演**达到这些条件。所有产物必须标记为 `simulated`：它们只是
+低成本的假设和协议设计材料，不是观测事实，也不是真实模型证据。
+
+模拟可以检查内容、schema、分支、错误包络以及计量元数据的预期形状，但不能准确
+复现 provider 生成的 request ID、token 用量、cache / billing 字段、时延、结束行为
+或其他遥测。虚构值标记为 `synthetic`，估算值标记为 `estimated`，无法获得的字段
+标记为 `unavailable`，历史 trace 回放标记为 `replayed` 并注明来源。只有目标 provider
+在当前真实运行中返回的值才能标记为 `observed`；不得把模拟用量或元数据计入真实实验
+汇总。
+
+热预演稳定后，最多选择一个可行的隔离载体做**冷复核**：
+
+- 使用全新或不继承上下文的原生 coding-agent 子 Agent；
+- 使用经过 handshake 确认的 ACP coding agent；或
+- 为开发 Agent 创建一个全新、隔离的任务或会话。
+
+ACP 只是选项之一，不是必选项，也不需要把三个选项全部执行。只向选定载体提供当前
+任务相关的 input、权威 `info`、`instruct`、精确 `output` contract 和书面验收条件；
+不得泄漏预期答案、既有结论、完整对话、客户 secret 或无关文件。由宿主强制限制工具、
+网络、文件范围、调用次数和时间。结果标记为 `simulated` 与 `cold_preflight`；除非载体
+能够证明底层恰好只有一次模型请求并暴露其计量信息，否则还必须标记为
+`agent_simulation`，不得标记为 `single_model_request_simulation`。
+
+在当前上下文中直接自我模拟只能算 `warm_preflight`，不能充当冷复核。没有可用隔离载体
+时，记录 `cold_preflight=skipped` 及原因，然后继续执行最小、具有代表性且有明确上限的
+真实模型校验；不得因此阻塞真实校验，也不得把热预演伪装成冷复核。最终结论必须来自
+真实 trace；模拟与现实不一致时，以真实 trace 为准并回到分析与修订循环。默认使用项目
+或开发方已授权的测试凭据，并明确限制调用数、并发、重试与预算。未经客户明确授权并
+告知最大调用数或费用，不得消耗客户 API 凭据或额度。
+
 ## 4.1 之后的默认推荐
 
 当你审计或编写面向 Agently `4.1+` 的指导时，coding agent 应默认偏向这些用法：

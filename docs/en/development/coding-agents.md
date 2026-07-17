@@ -106,6 +106,53 @@ tokens, customer data, or local absolute paths.
 
 When adding a framework deprecation, route the warning through `agently.utils.DeprecationWarnings.warn_deprecated_once(...)` or the `agently.utils.warn_deprecated_once(...)` alias with a stable API key. Do not add direct `warnings.warn(..., DeprecationWarning, ...)` calls; deprecated API warnings are intentionally once per API per Python process and respect `runtime.show_deprecation_warnings`.
 
+## Simulation-first model experiments
+
+When problem discovery or strategy tuning is likely to require multiple model
+rounds, ask the development agent to self-simulate a realistic target request,
+response, and behavior chain first. Define the acceptance criteria up front and
+iterate the prompt, output schema, topology, instrumentation, and failure paths
+until this same-context **warm preflight** meets them without calling the target
+model API. Mark every artifact `simulated`: it is low-cost hypothesis and
+protocol-design material, not an observed fact or real-model evidence.
+
+Simulation can exercise content, schemas, branches, error envelopes, and the
+expected shape of accounting metadata. It cannot accurately reproduce
+provider-generated request IDs, token accounting, cache or billing fields,
+latency, finish behavior, or other provider telemetry. Mark invented values
+`synthetic`, estimates `estimated`, unavailable fields `unavailable`, and
+recorded-trace playback `replayed` with its source. Only current values returned
+by the target provider are `observed`; never add simulated usage or metadata to
+real experiment totals.
+
+After the warm preflight stabilizes, choose at most one feasible isolated
+carrier for a **cold preflight**:
+
+- a native coding-agent subagent with fresh or no inherited context;
+- a handshake-verified ACP coding agent; or
+- a fresh isolated task or session of the development agent.
+
+ACP is one option, not a requirement, and the workflow does not need to run all
+three. Give the selected carrier only task-relevant input, authoritative
+`info`, `instruct`, the exact `output` contract, and the written acceptance
+criteria. Do not disclose the intended answer, prior conclusions, the full
+conversation, customer secrets, or unrelated files. Enforce tool, network, and
+file boundaries plus call and time limits in the host. Mark the result
+`simulated` and `cold_preflight`; unless the carrier proves exactly one
+underlying model request and exposes its accounting, also mark it
+`agent_simulation`, not `single_model_request_simulation`.
+
+Direct simulation in the existing context is only `warm_preflight`; it never
+counts as cold review. If no isolated carrier is available, record
+`cold_preflight=skipped` with the reason and continue to the smallest
+representative, bounded real-model comparison. Do not block the real check or
+relabel the warm preflight as cold. Base the final conclusion on real traces;
+when simulation and reality differ, the real trace wins and the design returns
+to the analysis/revision loop. Use authorized project- or developer-owned test
+credentials with explicit call, concurrency, retry, and budget limits. Do not
+consume customer API credentials or quota without explicit customer
+authorization and a disclosed maximum call count or spend.
+
 ## Post-4.1 defaults
 
 When you audit or author guidance for Agently `4.1+`, these are the defaults coding agents should prefer:
