@@ -472,8 +472,6 @@ class AnthropicCompatibleRequestBuilderMixin:
 
         full_url = self.plugin_settings.get("full_url")
         base_url = str(self.plugin_settings.get("base_url")).rstrip("/")
-        if not base_url.endswith("/v1"):
-            base_url = f"{ base_url }/v1"
         agently_request_dict["request_url"] = str(full_url) if isinstance(full_url, str) else f"{ base_url }/messages"
 
         return AgentlyRequestData(**agently_request_dict)

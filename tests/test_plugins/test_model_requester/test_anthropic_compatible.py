@@ -83,7 +83,7 @@ def collect_events(plugin: AnthropicCompatible, request_events: list[tuple[str, 
 @pytest.mark.parametrize(
     ("base_url", "expected_url"),
     [
-        ("https://api.anthropic.example", "https://api.anthropic.example/v1/messages"),
+        ("https://api.anthropic.example", "https://api.anthropic.example/messages"),
         ("https://api.anthropic.example/v1", "https://api.anthropic.example/v1/messages"),
     ],
 )
@@ -230,7 +230,7 @@ async def test_auth_headers_are_preserved_in_outgoing_request(monkeypatch: pytes
         {"input": "hello"},
     )
 
-    assert captured["url"] == "https://api.anthropic.example/v1/messages"
+    assert captured["url"] == "https://api.anthropic.example/messages"
     assert captured["headers"]["x-api-key"] == "claude-secret"
     assert captured["headers"]["X-Test"] == "1"
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
