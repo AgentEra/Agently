@@ -85,6 +85,8 @@ def collect_events(plugin: AnthropicCompatible, request_events: list[tuple[str, 
     [
         ("https://api.anthropic.example", "https://api.anthropic.example/messages"),
         ("https://api.anthropic.example/v1", "https://api.anthropic.example/v1/messages"),
+        ("https://api.minimax.io/anthropic/v1", "https://api.minimax.io/anthropic/v1/messages"),
+        ("https://api.minimaxi.com/anthropic/v1", "https://api.minimaxi.com/anthropic/v1/messages"),
     ],
 )
 def test_generate_request_uses_messages_path_and_default_model(base_url: str, expected_url: str):
