@@ -2,10 +2,13 @@ import asyncio
 import logging
 import sys
 import warnings
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import agently
 import pytest
+import toml
 import yaml
 from typing_extensions import assert_type
 
@@ -39,6 +42,18 @@ _RUNTIME_LOG_KEYS = (
     "runtime.show_runtime_logs",
     "runtime.httpx_log_level",
 )
+
+
+def test_package_exposes_release_version() -> None:
+    pyproject = toml.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_version = pyproject["project"]["version"]
+
+    assert agently.version == expected_version
+    assert Agently.version == expected_version
 
 
 def test_public_core_instance_creation_styles(tmp_path, monkeypatch):

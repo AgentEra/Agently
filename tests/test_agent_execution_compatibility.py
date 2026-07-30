@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Annotated, Any
 
 import pytest
+from agently_stage import Stage
 from pydantic import BaseModel, Field
 
 from agently import Agently
@@ -1368,6 +1369,66 @@ def test_agent_execution_ensure_long_output_continues_plain_text_losslessly(tmp_
     assert long_output["manifest_ref"]["sha256"]
     assert long_output["final_digest"]
     assert long_output["final_ref_retention"] == "execution_private_staging"
+
+
+@pytest.mark.asyncio
+async def test_agent_execution_long_output_settles_stage_owned_continuation_tasks(
+    tmp_path,
+    monkeypatch,
+):
+    stage_origins: dict[int, list[str]] = {}
+    closed_snapshots: dict[int, Any] = {}
+    original_create_task = Stage.create_task
+    original_async_close = Stage.async_close
+
+    def record_create_task(
+        self,
+        coroutine,
+        *,
+        origin,
+        name=None,
+    ):
+        stage_origins.setdefault(id(self), []).append(origin)
+        return original_create_task(
+            self,
+            coroutine,
+            origin=origin,
+            name=name,
+        )
+
+    async def record_async_close(self, timeout=None):
+        await original_async_close(self, timeout=timeout)
+        closed_snapshots[id(self)] = self.snapshot()
+
+    monkeypatch.setattr(Stage, "create_task", record_create_task)
+    monkeypatch.setattr(Stage, "async_close", record_async_close)
+    MockAgentExecutionLongOutputRequester.reset()
+    agent = _create_long_output_test_agent(
+        MockAgentExecutionLongOutputRequester,
+        "ensure-long-output-stage-settlement",
+    ).use_task_workspace(tmp_path)
+
+    execution = agent.input("write a long document").ensure_long_output()
+    result = await execution.async_get_text()
+
+    continuation_stage_ids = [
+        stage_id
+        for stage_id, origins in stage_origins.items()
+        if "emit_nowait:event:VALIDATE" in origins
+    ]
+    assert result == "alpha-omega"
+    assert len(continuation_stage_ids) == 1
+    continuation_stage_id = continuation_stage_ids[0]
+    assert any(
+        origin.startswith("handler:")
+        for origin in stage_origins[continuation_stage_id]
+    )
+    assert continuation_stage_id in closed_snapshots
+    snapshot = closed_snapshots[continuation_stage_id]
+    assert snapshot.state == "closed"
+    assert snapshot.active_count == 0
+    assert snapshot.pending_root_count == 0
+    assert snapshot.unresolved_origins == ()
 
 
 def test_agent_execution_ensure_long_output_separates_text_anchor_from_continuity_context(

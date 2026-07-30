@@ -64,6 +64,18 @@ Agently 内部的调用形态桥接使用 Agently-Stage `StageCallBridge`。
 `FunctionShifter` 仍可导入，但只作为 deprecated 兼容 facade，并委托给同一个
 bridge；新的框架代码不应让它负责 task 生命周期。
 
+## 包版本查询
+
+包和默认 `Agently` facade 暴露相同的发布版本：
+
+```python
+import agently
+from agently import Agently
+
+assert agently.version == "4.1.4.5"
+assert Agently.version == agently.version
+```
+
 ## 性能特征
 
 Stage-native TriggerFlow 与旧私有 adapter 进行了两轮反向顺序本地 A/B，每个
@@ -80,6 +92,15 @@ variant 共记录 18 个样本：
 实验没有产生 pending-task、未消费异常或生命周期警告。这些数据证明的是本地开销
 可控，并不表示 Stage 会让 provider-bound 模型请求变快。
 
+## 核心变更
+
+| 范围 | 变更内容 | 推荐用法 | 兼容性 / 风险 | 证据 |
+|---|---|---|---|---|
+| Direct 长输出 | 在观察到 length/incomplete terminal 后增加可选的 append-only continuation | 在 direct `AgentExecution` 启动前调用 `.ensure_long_output()` | 增量能力且默认关闭；不能与显式 AgentTask strategy 同时使用 | 确定性协议测试、真实 DeepSeek 结构化运行、公开示例 |
+| TriggerFlow 任务生命周期 | 由真实 Agently-Stage 0.3.5 实例直接持有 execution-managed 本地任务 | 继续使用现有 TriggerFlow execution API；Agently 不公开暴露 Stage 对象 | 内部 owner 变化且实测开销受控；EventCenter 保持原生实现 | Stage ownership/settlement 测试、全量测试、性能 A/B |
+| 同步/异步桥接 | 内部 bridge 委托到 `StageCallBridge`；`FunctionShifter` 保留为 deprecated facade | 新框架代码直接使用 Stage bridge | 现有导入仍然可用 | FunctionShifter 兼容测试 |
+| 包元数据 | 增加 `agently.version` 和 `Agently.version` | 使用任一属性读取当前安装的 Agently 发布版本 | 增量能力 | 源码/包元数据一致性测试和安装 wheel smoke |
+
 ## 兼容性
 
 - Python：`>=3.10`
@@ -90,4 +111,3 @@ variant 共记录 18 个样本：
 
 4.1.4.4 的 ModelRequest、TriggerFlow snapshot、RecordStore retention 和
 companion protocol 契约继续受支持。
-

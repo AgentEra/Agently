@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .base import print_, async_print, AgentlyMain, Agent
+from ._version import version
 from .core import (
     AgentTask,
     TaskContext,
@@ -54,6 +55,7 @@ Agently = AgentlyMain()
 
 __all__ = [
     "Agently",
+    "version",
     "Agent",
     "AgentTask",
     "TaskContext",

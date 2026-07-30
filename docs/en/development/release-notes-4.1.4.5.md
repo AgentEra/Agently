@@ -71,6 +71,18 @@ Agently's internal call-shape bridges use Agently-Stage `StageCallBridge`.
 delegates to the same bridge; new framework code should not use it as a task
 lifecycle owner.
 
+## Package version inspection
+
+The package and the default `Agently` facade expose the same release version:
+
+```python
+import agently
+from agently import Agently
+
+assert agently.version == "4.1.4.5"
+assert Agently.version == agently.version
+```
+
 ## Performance characterization
 
 The Stage-native TriggerFlow candidate was compared with the previous private
@@ -88,6 +100,15 @@ No run emitted a pending-task, unconsumed-exception, or lifecycle warning.
 These numbers demonstrate bounded local overhead; they do not claim that Stage
 makes provider-bound model requests faster.
 
+## Core changes
+
+| Area | What changed | Recommended usage | Compatibility / risk | Evidence |
+|---|---|---|---|---|
+| Direct long output | Added opt-in, append-only continuation after an observed length/incomplete terminal | Call `.ensure_long_output()` before starting a direct `AgentExecution` | Additive and disabled by default; not compatible with explicit AgentTask strategy | Deterministic protocol suite, real DeepSeek structured run, public example |
+| TriggerFlow task lifecycle | A real Agently-Stage 0.3.5 instance directly owns execution-managed local tasks | Keep using existing TriggerFlow execution APIs; no Stage object is exposed publicly by Agently | Internal owner change with bounded measured overhead; EventCenter remains native | Stage ownership/settlement tests, full suite, performance A/B |
+| Sync/async bridge | Internal bridges delegate to `StageCallBridge`; `FunctionShifter` remains a deprecated facade | New framework code should use Stage bridges directly | Existing imports remain available | FunctionShifter compatibility tests |
+| Package metadata | Added `agently.version` and `Agently.version` | Read either attribute for the installed Agently release version | Additive | Source/package metadata consistency and installed-wheel smoke |
+
 ## Compatibility
 
 - Python: `>=3.10`
@@ -98,4 +119,3 @@ makes provider-bound model requests faster.
 
 The 4.1.4.4 ModelRequest, TriggerFlow snapshot, RecordStore retention, and
 companion protocol contracts remain supported.
-
