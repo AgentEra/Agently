@@ -49,12 +49,13 @@ Core 负责：
 
 Core 不应该直接变成能力目录。例如，`ExecutionResourceManager` 应该知道如何管理 environment requirement，但它不应该成为“让模型在我的 repo 里做 coding 工作”的用户入口。
 
-Agently-Stage 在这个边界上属于私有机制依赖：TriggerFlow 把自己在 caller loop
-上创建的 task 纳入 Stage structured scope，由 Stage 支撑 ownership、取消传递、
+Agently-Stage 在这个边界上属于私有机制依赖：TriggerFlow 直接持有一个 Stage
+structured scope，由 Stage 支撑 caller-loop task 创建、ownership、取消传递、
 origin 诊断与 settlement；Stage 在首个任务进入时才 lazy 选择 caller loop。
-Stage 是唯一的实时 task/origin registry，只提供只读 adopted-task inventory
-和同步 completion observation seam；TriggerFlow 的私有 adapter 继续拥有业务
-错误保留与生命周期策略，不再安装第二套 task registry 和 done callback。
+TriggerFlow 自己创建的 managed work 使用 `Stage.create_task(...)`，只有真实存在于
+接管之前的外部 task 才使用 `Stage.adopt(...)`。Stage 是唯一的实时 task/origin
+registry；TriggerFlow 只保留业务错误投影、单 deadline close policy 与
+RuntimeEvent 映射，不再存在 Agently task-scope adapter 或影子 registry。
 Tunnel 支撑 TriggerFlow 的进程内 execution stream 传输。Event Center 保留原生
 后台任务机制，因为 Stage-backed 候选在热路径上存在可测量的额外开销。
 EventCenter、RuntimeEvent、SignalNet、
@@ -67,7 +68,7 @@ facade 保留，并委托给同一个 bridge。
 生命周期的边界才请求 `managed=True`，避免兼容 helper 仅仅因为转换 sync/async
 形态就改变业务错误或取消语义。
 
-Agently 依赖 Agently-Stage 0.3.x 兼容线中的 0.3.4 或更高版本。
+Agently 依赖 Agently-Stage 0.3.x 兼容线中的 0.3.5 或更高版本。
 `LocalTaskScope` 不是 Agently 的集成接口；它只是 Agently-Stage 中为兼容保留、
 并计划在 Agently-Stage 0.4 移除的 deprecated shim。
 

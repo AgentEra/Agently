@@ -13,9 +13,8 @@ from packaging.version import Version
 
 import agently
 from agently import TriggerFlow
-from agently_stage import StageHandle
+from agently_stage import Stage, StageHandle
 from agently.core import EventCenter
-from agently.core.runtime._task_support import StageManagedTaskScope
 from agently.types.data import RuntimeEvent
 from agently.types.trigger_flow import TriggerFlowRuntimeData
 
@@ -23,14 +22,14 @@ from agently.types.trigger_flow import TriggerFlowRuntimeData
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_private_stage_support_module_exists() -> None:
-    module = importlib.import_module("agently.core.runtime._task_support")
-    source = (ROOT / "agently/core/runtime/_task_support.py").read_text(encoding="utf-8")
+def test_triggerflow_uses_real_stage_without_scope_adapter() -> None:
+    execution = TriggerFlow(name="stage-native-task-owner").create_execution(auto_close=False)
+    source = (ROOT / "agently/core/orchestration/TriggerFlow/Execution.py").read_text(encoding="utf-8")
 
-    assert hasattr(module, "StageManagedTaskScope")
-    assert hasattr(module, "ManagedTaskOutcome")
+    assert isinstance(execution._task_stage, Stage)
+    assert not (ROOT / "agently/core/runtime/_task_support.py").exists()
+    assert "StageManagedTaskScope" not in source
     assert "LocalTaskScope" not in source
-    assert "LocalTaskOutcome" not in source
 
 
 def test_private_stage_runtime_stream_transport_exists() -> None:
@@ -42,8 +41,8 @@ def test_private_stage_runtime_stream_transport_exists() -> None:
 def test_project_declares_supported_stage_dependency() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "agently-stage (>=0.3.4,<0.4.0)" in pyproject
-    assert Version(importlib.metadata.version("agently-stage")) >= Version("0.3.4")
+    assert "agently-stage (>=0.3.5,<0.4.0)" in pyproject
+    assert Version(importlib.metadata.version("agently-stage")) >= Version("0.3.5")
     assert not hasattr(agently, "Stage")
     assert not hasattr(agently, "Tunnel")
     assert not hasattr(agently, "LocalTaskScope")
@@ -67,170 +66,49 @@ def test_triggerflow_sync_emit_nowait_returns_loop_neutral_stage_handle() -> Non
 
 
 @pytest.mark.asyncio
-async def test_stage_managed_scope_preserves_loop_origin_and_retained_error() -> None:
-    scope = StageManagedTaskScope()
-    assert not hasattr(scope, "_origins")
-    caller_loop = asyncio.get_running_loop()
-
-    async def fail() -> None:
-        assert asyncio.get_running_loop() is caller_loop
-        raise ValueError("retained")
-
-    task = scope.spawn(
-        fail(),
-        origin="triggerflow:emit:test",
-        retain_outcome=True,
-    )
-    with pytest.raises(ValueError, match="retained"):
-        await task
-    await asyncio.sleep(0)
-
-    outcomes = scope.take_retained_outcomes()
-    assert len(outcomes) == 1
-    assert outcomes[0].origin == "triggerflow:emit:test"
-    assert isinstance(outcomes[0].error, ValueError)
-    assert scope.pending_count == 0
-    await scope.close(timeout=0)
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_wait_returns_after_agently_projection_is_complete() -> None:
-    scope = StageManagedTaskScope()
-
-    async def fail() -> None:
-        raise ValueError("wait projection")
-
-    scope.spawn(
-        fail(),
-        origin="triggerflow:emit:wait-projection",
-        retain_outcome=True,
-    )
-
-    await scope.wait_settled(timeout=1)
-
-    outcomes = scope.take_retained_outcomes()
-    assert len(outcomes) == 1
-    assert outcomes[0].origin == "triggerflow:emit:wait-projection"
-    assert isinstance(outcomes[0].error, ValueError)
-    assert scope.pending_count == 0
-    await scope.close(timeout=0)
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_close_returns_after_agently_projection_is_complete() -> None:
-    scope = StageManagedTaskScope()
-
-    async def fail() -> None:
-        raise ValueError("close projection")
-
-    scope.spawn(
-        fail(),
-        origin="triggerflow:emit:close-projection",
-        retain_outcome=True,
-    )
-
-    await scope.close(timeout=1)
-
-    outcomes = scope.take_retained_outcomes()
-    assert len(outcomes) == 1
-    assert outcomes[0].origin == "triggerflow:emit:close-projection"
-    assert isinstance(outcomes[0].error, ValueError)
-    assert scope.pending_count == 0
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_does_not_retain_parent_consumed_outcome() -> None:
-    scope = StageManagedTaskScope()
-
-    async def fail() -> None:
-        raise ValueError("parent consumes")
-
-    task = scope.spawn(
-        fail(),
-        origin="triggerflow:handler:test",
-        retain_outcome=False,
-    )
-    with pytest.raises(ValueError, match="parent consumes"):
-        await task
-    await asyncio.sleep(0)
-
-    assert scope.take_retained_outcomes() == ()
-    await scope.close(timeout=0)
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_does_not_report_consumed_cancellation_twice() -> None:
-    scope = StageManagedTaskScope()
-    task = scope.spawn(
-        asyncio.sleep(10),
-        origin="triggerflow:emit:cancelled",
-        retain_outcome=True,
-    )
-
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    await asyncio.sleep(0)
-
-    assert scope.take_retained_outcomes() == ()
-    await scope.close(timeout=0)
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_skips_unused_outcome_projection(monkeypatch: pytest.MonkeyPatch) -> None:
-    task_support = importlib.import_module("agently.core.runtime._task_support")
-    original_outcome = task_support.ManagedTaskOutcome
-    projections = 0
-
-    def record_projection(*args: object, **kwargs: object):
-        nonlocal projections
-        projections += 1
-        return original_outcome(*args, **kwargs)
-
-    monkeypatch.setattr(task_support, "ManagedTaskOutcome", record_projection)
-    scope = StageManagedTaskScope()
-
-    await scope.spawn(
-        asyncio.sleep(0),
-        origin="eventcenter:background:no-consumer",
-    )
-    await asyncio.sleep(0)
-
-    assert projections == 0
-    await scope.close(timeout=0)
-
-
-@pytest.mark.asyncio
-async def test_stage_managed_scope_success_notification_has_no_unused_projection(
+async def test_triggerflow_creates_internal_managed_tasks_through_stage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    task_support = importlib.import_module("agently.core.runtime._task_support")
-    original_outcome = task_support.ManagedTaskOutcome
-    projections = 0
-    callback_arguments: list[tuple[object, ...]] = []
+    created_origins: list[str] = []
+    original_create_task = Stage.create_task
 
-    def record_projection(*args: object, **kwargs: object):
-        nonlocal projections
-        projections += 1
-        return original_outcome(*args, **kwargs)
+    def record_create_task(
+        self: Stage,
+        coroutine,
+        *,
+        origin: str,
+        name: str | None = None,
+    ):
+        created_origins.append(origin)
+        return original_create_task(self, coroutine, origin=origin, name=name)
 
-    def on_done(*args: object) -> None:
-        callback_arguments.append(args)
+    monkeypatch.setattr(Stage, "create_task", record_create_task)
+    execution = TriggerFlow(name="stage-native-create-task").create_execution(auto_close=False)
+    delivered: list[int] = []
 
-    monkeypatch.setattr(task_support, "ManagedTaskOutcome", record_projection)
-    scope = StageManagedTaskScope(on_done=on_done)
+    async def handler(data: TriggerFlowRuntimeData) -> None:
+        delivered.append(data.value)
 
-    await scope.spawn(
-        asyncio.sleep(0),
-        origin="triggerflow:emit:successful",
-        retain_outcome=True,
-    )
-    await asyncio.sleep(0)
+    execution.on("probe", handler, binding_id="stage-native.handler")
+    task = await execution.async_emit_nowait("probe", 7)
+    assert task is not None
+    assert await task == [None]
+    await execution.async_close()
 
-    assert projections == 0
-    assert callback_arguments == [()]
-    assert scope.take_retained_outcomes() == ()
-    await scope.close(timeout=0)
+    assert delivered == [7]
+    assert "emit_nowait:event:probe" in created_origins
+    assert "handler:stage-native.handler" in created_origins
+
+
+@pytest.mark.asyncio
+async def test_triggerflow_adopts_only_preexisting_external_task() -> None:
+    execution = TriggerFlow(name="stage-native-adopt").create_execution(auto_close=False)
+    task = asyncio.create_task(asyncio.sleep(0, result="done"))
+
+    assert execution._track_task(task, origin="external:preexisting") is task
+    assert execution._task_stage.origin_for_adopted(task) == "external:preexisting"
+    assert await task == "done"
+    await execution.async_close()
 
 
 @pytest.mark.asyncio

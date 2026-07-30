@@ -3,10 +3,10 @@
   "framework": "agently",
   "target_version": "4.1.4.5",
   "release_train": "2026-07-4.1.4.5-dev",
-  "notes": "4.1.4.5 development line: AgentExecution adds the default-disabled ensure_long_output() direct-delivery policy for lossless multi-request text and JSON assembly after an observed length terminal. Completion provenance distinguishes observed JSON boundaries from synthetic parser repair, structured units pass local slot-schema validation before append-only commit, and final candidates remain subject to manifest replay plus the original schema, ensure, and custom validators. Model-repairable final validation failures retain accepted units and feed bounded correction feedback into continuation, while storage/digest/lineage integrity failures remain immediately terminal. The first request keeps its original contract; only accepted length/incomplete termination enters TriggerFlow-visible continuation. Agently-Stage >=0.3.2,<0.4.0 is now a private mechanism dependency beneath TriggerFlow managed task settlement and TriggerFlow process-local runtime stream transport. EventCenter retains its native background-task mechanism after the Stage-backed candidate showed measurable hot-path cost. EventCenter, RuntimeEvent, SignalNet, TriggerFlowExecution, and AgentExecution retain semantic ownership; Stage types and statuses are not public Agently lifecycle. TriggerFlow now retains a completed top-level managed-task failure until close consumes it once and applies one monotonic close settlement deadline. The 4.1.4.4 release contracts remain intact: ModelRequest owns provider attempts and parser boundaries, TriggerFlow owns orchestration lifecycle, TaskWorkspace owns staged file truth, and AgentExecution owns the one-run public result and stream projection. The 4.1.4.2 owner split also remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
+  "notes": "4.1.4.5 development line: AgentExecution adds the default-disabled ensure_long_output() direct-delivery policy for lossless multi-request text and JSON assembly after an observed length terminal. Completion provenance distinguishes observed JSON boundaries from synthetic parser repair, structured units pass local slot-schema validation before append-only commit, and final candidates remain subject to manifest replay plus the original schema, ensure, and custom validators. Model-repairable final validation failures retain accepted units and feed bounded correction feedback into continuation, while storage/digest/lineage integrity failures remain immediately terminal. The first request keeps its original contract; only accepted length/incomplete termination enters TriggerFlow-visible continuation. Agently-Stage >=0.3.5,<0.4.0 is the private mechanism dependency beneath TriggerFlow managed task settlement, TriggerFlow process-local runtime stream transport, and Agently sync/async call-shape bridges. TriggerFlowExecution directly owns a real Stage: framework-created managed work enters through Stage.create_task(), pre-existing external tasks enter through Stage.adopt(), and no Agently task-scope adapter or shadow task registry remains. EventCenter retains its native background-task mechanism after the Stage-backed candidate showed measurable hot-path cost. EventCenter, RuntimeEvent, SignalNet, TriggerFlowExecution, and AgentExecution retain semantic ownership; Stage types and statuses are not public Agently lifecycle. TriggerFlow retains a completed top-level managed-task failure until close consumes it once and applies one monotonic close settlement deadline. The 4.1.4.4 release contracts remain intact: ModelRequest owns provider attempts and parser boundaries, TriggerFlow owns orchestration lifecycle, TaskWorkspace owns staged file truth, and AgentExecution owns the one-run public result and stream projection. The 4.1.4.2 owner split also remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
   "runtime_support": {
     "agently_stage": {
-      "version_specifier": ">=0.3.2,<0.4.0",
+      "version_specifier": ">=0.3.5,<0.4.0",
       "public_runtime_surface": false,
       "task_mechanism_owners": [
         "TriggerFlowExecution"
@@ -14,11 +14,10 @@
       "stream_mechanism_owner": "TriggerFlow execution stream",
       "rejected_mechanism_replacements": [
         "EventCenter background task settlement",
-        "EventCenter and SignalNet event dispatch",
-        "FunctionShifter"
+        "EventCenter and SignalNet event dispatch"
       ],
       "semantic_owners_unchanged": true,
-      "persistence_contract": "Stage task scopes, Tunnel cursors, handles, and carrier state are process-local and are not serialized."
+      "persistence_contract": "Stage task inventory, Tunnel cursors, handles, and carrier state are process-local and are not serialized."
     }
   },
   "companions": {

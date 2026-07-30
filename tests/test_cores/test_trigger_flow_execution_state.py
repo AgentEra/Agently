@@ -1126,3 +1126,30 @@ async def test_trigger_flow_runtime_stream_propagates_parent_run_context():
     assert event.run.agent_id == "agent-stream"
     assert event.run.agent_name == "stream-owner"
     assert event.run.session_id == "stream-session"
+
+
+@pytest.mark.asyncio
+async def test_hidden_runtime_stream_settles_and_closes_its_stage_tasks():
+    flow = TriggerFlow(name="stream-hidden-close")
+
+    async def stream_once(data: TriggerFlowRuntimeData):
+        await data.async_put_into_stream(data.value)
+        await data.async_stop_stream()
+
+    flow.to(stream_once)
+    execution = flow.create_execution(
+        auto_close_timeout=0.0,
+        resume_handle_exposed=False,
+    )
+
+    items = [
+        item
+        async for item in execution.get_async_runtime_stream(
+            "settled",
+            timeout=1,
+        )
+    ]
+
+    assert items == ["settled"]
+    assert execution.is_closed()
+    assert execution._task_stage.adopted_tasks == ()

@@ -55,13 +55,14 @@ requirement, but it should not be the user-facing API for "do coding work in my
 repo".
 
 Agently-Stage is a private mechanism dependency at this boundary. TriggerFlow
-attaches its caller-loop tasks to a Stage structured scope for ownership,
-cancellation delivery, origin diagnostics, and settlement; Stage selects the
-caller loop lazily when the first task enters. Stage remains the single live
-task/origin registry and exposes only read-only adopted-task inventory plus a
-synchronous completion observation seam; TriggerFlow's private adapter keeps
-business error retention and lifecycle policy without installing a second task
-registry or done callback. Stage's Tunnel supports
+directly owns one Stage structured scope for caller-loop task creation,
+ownership, cancellation delivery, origin diagnostics, and settlement; Stage
+selects the caller loop lazily when the first task enters. TriggerFlow-created
+managed work uses `Stage.create_task(...)`; a genuinely pre-existing external
+task may use `Stage.adopt(...)`. Stage remains the single live task/origin
+registry. TriggerFlow retains only its business error projection, one-deadline
+close policy, and RuntimeEvent mapping; there is no Agently task-scope adapter
+or shadow registry. Stage's Tunnel supports
 TriggerFlow's process-local execution stream transport. EventCenter keeps its
 native background-task mechanism because the Stage-backed candidate had a
 measurable hot-path cost. EventCenter, RuntimeEvent, SignalNet,
@@ -76,7 +77,7 @@ TriggerFlow or EventCenter requests `managed=True`; this prevents compatibility
 helpers from changing error or cancellation semantics merely because they adapt
 sync and async call shapes.
 
-Agently depends on Agently-Stage 0.3.4 or newer in the 0.3 compatibility line.
+Agently depends on Agently-Stage 0.3.5 or newer in the 0.3 compatibility line.
 `LocalTaskScope` is not an Agently integration surface; it is a deprecated
 Agently-Stage compatibility shim scheduled for removal in Agently-Stage 0.4.
 

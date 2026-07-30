@@ -207,7 +207,9 @@ class TriggerFlowExecutionRuntimeIO:
                 yield item
         finally:
             await subscription.async_close()
-            if start_task is not None and start_task.done():
+            if not execution._resume_handle_exposed:
+                await execution.async_close(reason="hidden_runtime_stream_complete")
+            elif start_task is not None and start_task.done():
                 await start_task
 
     def _publish_stream_start_failure(self, task: asyncio.Task[Any]) -> None:
@@ -227,8 +229,9 @@ class TriggerFlowExecutionRuntimeIO:
             if execution._started or self._stream_start_claimed:
                 return self._async_stream_start_task
             self._stream_start_claimed = True
-            task = asyncio.create_task(
-                execution._async_run_start(initial_value=initial_value)
+            task = execution._create_managed_task(
+                execution._async_run_start(initial_value=initial_value),
+                origin="runtime_stream.start",
             )
             task.add_done_callback(self._publish_stream_start_failure)
             self._async_stream_start_task = task
@@ -247,6 +250,9 @@ class TriggerFlowExecutionRuntimeIO:
                         await execution._async_run_start(initial_value=initial_value)
                     except BaseException as error:
                         execution._runtime_stream_transport.fail(error)
+                    finally:
+                        if not execution._resume_handle_exposed:
+                            await execution.async_close(reason="hidden_runtime_stream_complete")
 
                 asyncio.run(run())
 
