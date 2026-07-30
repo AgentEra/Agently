@@ -22,3 +22,20 @@ def test_release_workflows_require_foundation_example_effect_gate():
         assert "ask the maintainer" in text or "请示维护者" in text
         assert "recommended usage" in text or "推荐用法" in text
         assert "all-allowed test capability policy" in text or "全开的测试 capability" in text
+
+
+def test_4_1_4_5_release_notes_are_linked_from_public_indexes():
+    english_notes = ROOT / "docs/en/development/release-notes-4.1.4.5.md"
+    chinese_notes = ROOT / "docs/cn/development/release-notes-4.1.4.5.md"
+
+    assert english_notes.exists()
+    assert chinese_notes.exists()
+    for path in (
+        ROOT / "README.md",
+        ROOT / "README_CN.md",
+        ROOT / "docs/en/index.md",
+        ROOT / "docs/cn/index.md",
+        ROOT / "docs/en/development/README.md",
+        ROOT / "docs/cn/development/README.md",
+    ):
+        assert "release-notes-4.1.4.5.md" in path.read_text(encoding="utf-8")
