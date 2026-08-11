@@ -131,7 +131,7 @@ Agently.set_settings("AnthropicCompatible", {
 })
 ```
 
-MiniMax 将 `/anthropic` 作为 Anthropic SDK 的 base root；Agently 直接发送 HTTP 请求，因此用 `full_url` 指定完整的 Messages 端点。
+MiniMax uses `/anthropic` as the Anthropic SDK base root. Agently sends HTTP directly, so use `full_url` for the complete Messages endpoint.
 
 ## Doubao（豆包）
 
