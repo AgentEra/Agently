@@ -113,7 +113,8 @@ Anthropic 兼容全球站端点：
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimax.io/anthropic/v1",
+    "base_url": "https://api.minimax.io/anthropic",
+    "full_url": "https://api.minimax.io/anthropic/v1/messages",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
@@ -123,11 +124,14 @@ Anthropic 兼容中国站端点：
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimaxi.com/anthropic/v1",
+    "base_url": "https://api.minimaxi.com/anthropic",
+    "full_url": "https://api.minimaxi.com/anthropic/v1/messages",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
 ```
+
+MiniMax 将 `/anthropic` 作为 Anthropic SDK 的 base root；Agently 直接发送 HTTP 请求，因此用 `full_url` 指定完整的 Messages 端点。
 
 ## Doubao（豆包）
 

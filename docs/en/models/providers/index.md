@@ -113,7 +113,8 @@ Anthropic-compatible global endpoint:
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimax.io/anthropic/v1",
+    "base_url": "https://api.minimax.io/anthropic",
+    "full_url": "https://api.minimax.io/anthropic/v1/messages",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
@@ -123,11 +124,14 @@ Anthropic-compatible China endpoint:
 
 ```python
 Agently.set_settings("AnthropicCompatible", {
-    "base_url": "https://api.minimaxi.com/anthropic/v1",
+    "base_url": "https://api.minimaxi.com/anthropic",
+    "full_url": "https://api.minimaxi.com/anthropic/v1/messages",
     "api_key": "${ENV.MINIMAX_API_KEY}",
     "model": "${ENV.MINIMAX_MODEL}",
 })
 ```
+
+MiniMax publishes `/anthropic` as the Anthropic SDK base root. Agently sends HTTP directly, so `full_url` identifies the complete Messages endpoint.
 
 ## Doubao
 
