@@ -8,7 +8,7 @@ Read in this order:
 1. [Coding Agents](coding-agents.md): using the Agently-Skills companion repo with Codex, Claude Code, Cursor, and similar tools.
 2. [Skills Compatibility](skills-executor.md): framework-side Skill consumption through Agent APIs, plans, Actions, and the legacy SkillsExecutor facade.
 3. [Code Execution Provider Migration](code-execution-provider-migration.md): Workspace-backed provider contract and contributor-owned migration targets for external isolation providers.
-4. [Agently 4.1.4.7 Release Notes](release-notes-4.1.4.7.md): automatic Stage routing across provider-owned sync wrappers and TriggerFlow async runtime boundaries.
+4. [Agently 4.1.4.7 Development Notes](release-notes-4.1.4.7.md): automatic Stage routing across provider-owned sync wrappers and TriggerFlow async runtime boundaries.
 5. [Agently 4.1.4.6 Release Notes](release-notes-4.1.4.6.md): standard version inspection, unified compatible-provider reasoning events, and live sub-flow resources.
 6. [Agently 4.1.4.5 Release Notes](release-notes-4.1.4.5.md): opt-in long-output continuation and Stage-backed TriggerFlow task lifecycle ownership.
 7. [Agently 4.1.4.4 Release Notes](release-notes-4.1.4.4.md): stronger Pydantic constraints, recovery-aware TriggerFlow snapshots, and online-model-first release validation.

@@ -1,22 +1,22 @@
 ---
-title: Agently 4.1.4.7 Release Notes
+title: Agently 4.1.4.7 Development Notes
 description: Automatic mixed sync/async Stage routing for TriggerFlow integrations.
 keywords: Agently, 4.1.4.7, Agently-Stage, TriggerFlow, sync, async, carrier
 ---
 
-# Agently 4.1.4.7 Release Notes
+# Agently 4.1.4.7 Development Notes
 
-Agently 4.1.4.7 updates the minimum Stage dependency to
-`agently-stage >=0.3.6,<0.4.0`. It is the Agently integration release for the
+The Agently 4.1.4.7 development line updates the minimum Stage dependency to
+`agently-stage >=0.3.6,<0.4.0`. It is preparing the Agently integration for the
 runtime bug exposed by [Agently #347](https://github.com/AgentEra/Agently/issues/347),
 [Agently-Stage #24](https://github.com/AgentEra/Agently-Stage/issues/24), and
 [Agently-Stage #25](https://github.com/AgentEra/Agently-Stage/issues/25).
 
 The correction belongs primarily to Stage: synchronous and asynchronous scopes
 now distinguish inherited logical execution lineage from the physical thread
-and event loop that a call can safely block. Agently 4.1.4.7 ensures new
-installations receive that correction and adds an end-to-end TriggerFlow
-regression contract.
+and event loop that a call can safely block. The 4.1.4.7 development line adds
+an end-to-end TriggerFlow regression contract and will ensure later Agently
+installations receive that correction after the integration release.
 
 ## Developer-visible changes
 
@@ -76,5 +76,7 @@ lightweight adaptation.
 ## Upgrade
 
 No application source migration is required for the reported call chain.
-Install Agently 4.1.4.7 normally, or upgrade only Stage to 0.3.6 when the
-existing Agently installation already permits the 0.3 compatibility line.
+While Agently 4.1.4.7 remains under development, an existing Agently
+installation that permits the Stage 0.3 compatibility line can upgrade only
+Stage to 0.3.6. Install Agently 4.1.4.7 normally after that integration version
+is released.

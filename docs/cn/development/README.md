@@ -8,7 +8,7 @@
 1. [Coding Agents](coding-agents.md)：用 Agently-Skills companion repo 帮 Codex、Claude Code、Cursor 等工具获得当前 Agently 指引。
 2. [Skills Compatibility](skills-executor.md)：框架内通过 Agent API、plan、Actions 和 legacy SkillsExecutor facade 消费 runtime skills。
 3. [Code Execution Provider 迁移](code-execution-provider-migration.md)：Workspace-backed provider 契约和外部隔离 provider 的贡献者自有迁移目标。
-4. [Agently 4.1.4.7 Release Notes](release-notes-4.1.4.7.md)：工具提供方同步 wrapper 与 TriggerFlow 异步运行时之间的 Stage 自动路由。
+4. [Agently 4.1.4.7 开发说明](release-notes-4.1.4.7.md)：工具提供方同步 wrapper 与 TriggerFlow 异步运行时之间的 Stage 自动路由。
 5. [Agently 4.1.4.6 Release Notes](release-notes-4.1.4.6.md)：标准版本入口、兼容 provider 的统一 reasoning 事件和 live sub-flow resource。
 6. [Agently 4.1.4.5 Release Notes](release-notes-4.1.4.5.md)：可选长输出续写，以及由 Stage 直接支撑的 TriggerFlow task 生命周期。
 7. [Agently 4.1.4.4 Release Notes](release-notes-4.1.4.4.md)：更完整的 Pydantic 约束、具备恢复语义的 TriggerFlow 快照，以及线上模型优先的发布校验。

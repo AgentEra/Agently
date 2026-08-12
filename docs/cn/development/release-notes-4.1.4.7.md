@@ -1,21 +1,21 @@
 ---
-title: Agently 4.1.4.7 发布说明
+title: Agently 4.1.4.7 开发说明
 description: TriggerFlow 集成中的 Stage 混合同步/异步环境自动路由。
 keywords: Agently, 4.1.4.7, Agently-Stage, TriggerFlow, sync, async, carrier
 ---
 
-# Agently 4.1.4.7 发布说明
+# Agently 4.1.4.7 开发说明
 
-Agently 4.1.4.7 将 Stage 最低依赖更新为
-`agently-stage >=0.3.6,<0.4.0`。这是针对
+Agently 4.1.4.7 开发线将 Stage 最低依赖更新为
+`agently-stage >=0.3.6,<0.4.0`，用于准备针对
 [Agently #347](https://github.com/AgentEra/Agently/issues/347)、
 [Agently-Stage #24](https://github.com/AgentEra/Agently-Stage/issues/24) 与
 [Agently-Stage #25](https://github.com/AgentEra/Agently-Stage/issues/25)
-所暴露运行时问题的 Agently 集成版本。
+所暴露运行时问题的 Agently 集成。
 
 根因修正在 Stage：同步与异步 scope 现在会区分继承的逻辑执行 lineage，以及当前调用
-在物理上可以安全阻塞的线程和 event loop。Agently 4.1.4.7 确保后续安装默认取得该
-修正，并增加完整 TriggerFlow 链路的回归契约。
+在物理上可以安全阻塞的线程和 event loop。4.1.4.7 开发线增加完整 TriggerFlow
+链路的回归契约；待该集成版本发布后，后续 Agently 安装才会默认取得这项修正。
 
 ## 开发者可见变化
 
@@ -71,5 +71,6 @@ stream 转换、Stage/executor 注入、独立 close 与轻桥接继续由高级
 
 ## 升级
 
-报告中的调用链不需要修改应用源码。可以正常安装 Agently 4.1.4.7；如果现有 Agently
-安装已经允许 Stage 0.3 兼容线，也可以只把 Stage 升级到 0.3.6。
+报告中的调用链不需要修改应用源码。在 Agently 4.1.4.7 仍处于开发阶段时，如果现有
+Agently 安装已经允许 Stage 0.3 兼容线，可以只把 Stage 升级到 0.3.6；待该集成版本
+正式发布后，再正常安装 Agently 4.1.4.7。
