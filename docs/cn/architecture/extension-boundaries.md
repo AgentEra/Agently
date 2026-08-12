@@ -63,12 +63,17 @@ TriggerFlowExecution 与 AgentExecution 仍是语义 owner。应用与插件不�
 所谓“Stage runtime”，也不应把 Stage 对象放入 execution state。Stage
 EventEmitter 不替换 EventCenter/SignalNet。Agently 内部的同步/异步调用适配
 统一使用 `StageCallBridge`；`FunctionShifter` 只作为 deprecated 公共兼容
-facade 保留，并委托给同一个 bridge。
-调用形态转换默认使用轻桥接。只有 TriggerFlow、EventCenter 这类真正拥有调度
+facade 保留。其中标量 `syncify()` / `asyncify()` 委托给具有独立作用域的
+`Stage.as_sync()` / `Stage.as_async()` 深接口，future 与 stream 兼容方法继续使用
+高级 bridge。
+`StageCallBridge` 调用形态转换默认使用轻桥接。只有 TriggerFlow、EventCenter 这类真正拥有调度
 生命周期的边界才请求 `managed=True`，避免兼容 helper 仅仅因为转换 sync/async
 形态就改变业务错误或取消语义。
 
-Agently 依赖 Agently-Stage 0.3.x 兼容线中的 0.3.5 或更高版本。
+Agently 依赖 Agently-Stage 0.3.x 兼容线中的 0.3.6 或更高版本。Stage 负责在混合同步/
+异步边界自动选择物理上安全的 carrier；TriggerFlow 仍负责 workflow 生命周期与公开
+state。复用安全 carrier 不会合并两个 Stage scope 的 settlement 清单，也不会把
+carrier 概念暴露为 Agently 的公开生命周期。
 `LocalTaskScope` 不是 Agently 的集成接口；它只是 Agently-Stage 中为兼容保留、
 并计划在 Agently-Stage 0.4 移除的 deprecated shim。
 

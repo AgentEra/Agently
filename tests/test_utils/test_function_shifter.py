@@ -2,6 +2,7 @@ import asyncio
 import threading
 
 import pytest
+from agently_stage import Stage
 from agently.utils import FunctionShifter, filter_callable_options
 
 
@@ -28,6 +29,47 @@ def test_filter_callable_options_is_the_non_runtime_owner():
 
     filtered = filter_callable_options(test_func)
     assert filtered(a="1", b=2, ignored=True) == 3
+
+
+def test_syncify_delegates_to_scoped_stage_adapter(monkeypatch):
+    observed = []
+
+    def fake_as_sync(func):
+        observed.append(func)
+        return lambda value: func(value)
+
+    async def source(value):
+        return value
+
+    monkeypatch.setattr(Stage, "as_sync", fake_as_sync)
+    with pytest.warns(DeprecationWarning, match="Stage.as_sync/as_async"):
+        adapted = FunctionShifter.syncify(source)
+
+    assert observed == [source]
+    coroutine = adapted("ok")
+    assert asyncio.run(coroutine) == "ok"
+
+
+def test_asyncify_delegates_to_scoped_stage_adapter(monkeypatch):
+    observed = []
+
+    def fake_as_async(func):
+        observed.append(func)
+
+        async def adapted(value):
+            return func(value)
+
+        return adapted
+
+    def source(value):
+        return value
+
+    monkeypatch.setattr(Stage, "as_async", fake_as_async)
+    with pytest.warns(DeprecationWarning, match="Stage.as_sync/as_async"):
+        adapted = FunctionShifter.asyncify(source)
+
+    assert observed == [source]
+    assert asyncio.run(adapted("ok")) == "ok"
 
 
 @pytest.mark.asyncio

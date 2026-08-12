@@ -16,7 +16,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
-from agently_stage import default_stage_call_bridge
+from agently_stage import Stage, default_stage_call_bridge
 
 from .CallableUtils import filter_callable_options
 from .DeprecationWarnings import DeprecationWarnings
@@ -31,15 +31,20 @@ R = TypeVar("R")
 
 
 def _warn(method: str) -> None:
+    replacement = (
+        "Stage.as_sync/as_async, StageCallBridge for advanced bridging, or filter_callable_options"
+        if method in {"syncify", "asyncify"}
+        else "Agently StageCallBridge or filter_callable_options"
+    )
     DeprecationWarnings.warn_deprecated_once(
         f"FunctionShifter.{method}",
-        f"FunctionShifter.{method} is deprecated; use Agently StageCallBridge or filter_callable_options",
+        f"FunctionShifter.{method} is deprecated; use {replacement}",
         stacklevel=3,
     )
 
 
 class FunctionShifter:
-    """Deprecated compatibility facade over StageCallBridge."""
+    """Deprecated compatibility facade over Agently-Stage adapters."""
 
     @staticmethod
     def run_async_func_in_thread(
@@ -53,12 +58,12 @@ class FunctionShifter:
     @staticmethod
     def syncify(func: Callable[P, R | Awaitable[R]]) -> Callable[P, R]:
         _warn("syncify")
-        return default_stage_call_bridge.as_sync(func)
+        return Stage.as_sync(func)
 
     @staticmethod
     def asyncify(func: Callable[P, R | Awaitable[R]]) -> Callable[P, Coroutine[Any, Any, R]]:
         _warn("asyncify")
-        return default_stage_call_bridge.as_async(func)
+        return Stage.as_async(func)
 
     @staticmethod
     def future(func: Callable[P, R | Awaitable[R]]) -> Callable[P, StageHandle[R]]:

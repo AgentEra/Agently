@@ -42,6 +42,11 @@ API：
 emit 与 stream 方法，让 execution 留在 owner loop。Sync facade 仍可在其他上下文
 兼容使用，但会阻塞调用线程，主要面向 sync chunk 与 sync caller。
 
+同步 chunk 可以调用工具提供方的同步 wrapper；wrapper 内部即使使用 `with Stage()`
+等待异步 SDK，返回后也可以继续调用 `data.set_state(...)`。Agently-Stage 0.3.6 会
+自动识别外层物理运行环境；工具提供方无需发现 TriggerFlow 私有使用了 Stage，也无需
+把自己的公开同步方法强制改成异步方法。
+
 `set_state(...)` 表示完整替换；list、mapping、set 和空集合都不会与旧值合并。只有
 确实需要 list 累加时才使用 `append_state(...)`。mapping 状态迁移应先构造完整的新
 mapping，再一次 set，旧 key 不会被保留。单次 set 的本地修改会在事件通知派发前完成，

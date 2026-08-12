@@ -26,7 +26,8 @@
     "4.1.4.3": "compatibility/releases/4.1.4.3.json",
     "4.1.4.4": "compatibility/releases/4.1.4.4.json",
     "4.1.4.5": "compatibility/releases/4.1.4.5.json",
-    "4.1.4.6": "compatibility/releases/4.1.4.6.json"
+    "4.1.4.6": "compatibility/releases/4.1.4.6.json",
+    "4.1.4.7": "compatibility/releases/4.1.4.7.json"
   },
-  "latest_release": "4.1.4.6"
+  "latest_release": "4.1.4.7"
 }

@@ -43,6 +43,12 @@ write, append, delete, emit, and stream methods so execution stays on its owner
 loop. Sync facades remain compatible from other contexts, but they block the
 calling thread and are intended for sync chunks and sync callers.
 
+A sync chunk may call a provider-owned synchronous wrapper that internally
+uses `with Stage()` to await an async SDK, then continue with
+`data.set_state(...)`. Agently-Stage 0.3.6 detects the surrounding physical
+runtime automatically; providers do not need to discover TriggerFlow's private
+Stage usage or redesign their public method as async.
+
 `set_state(...)` is replacement, including for lists, mappings, sets, and empty
 collections. Use `append_state(...)` only when list accumulation is intended.
 For a mapping transition, compute the complete next mapping and set it; stale

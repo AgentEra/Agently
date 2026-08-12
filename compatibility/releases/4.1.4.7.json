@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "framework": "agently",
-  "target_version": "4.1.4.7",
-  "release_train": "2026-08-4.1.4.7-dev",
-  "notes": "4.1.4.7 development line: requires Agently-Stage >=0.3.6,<0.4.0 so mixed sync/async boundaries automatically select a physically safe carrier. A synchronous TriggerFlow chunk may call a provider-owned sync wrapper that uses with Stage() for an async tool and may then re-enter TriggerFlow's synchronous state facade without knowing that the framework already uses Stage. FunctionShifter.syncify/asyncify retain their compatibility names and deprecation warnings but now delegate to Stage.as_sync/as_async; internal lightweight default_stage_call_bridge usage remains unchanged. Stage is still a private Agently mechanism dependency, TriggerFlowExecution remains the semantic lifecycle owner, and Stage types or carrier state do not enter public execution state. The 4.1.4.6 contracts remain intact: agently.__version__ and Agently.__version__ are the standard package version surfaces, provider reasoning and compatible SSE retry boundaries remain normalized, and live TriggerFlow sub-flow resources preserve identity. The 4.1.4.5 runtime line also remains intact: AgentExecution ensure_long_output() uses TriggerFlow-visible continuation and TaskWorkspace owns staged file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
+  "framework_version": "4.1.4.7",
+  "release_train": "2026-08-4.1.4.7",
+  "released_at": "2026-08-13",
+  "notes": "Version-scoped companion compatibility manifest for Agently 4.1.4.7. This patch requires Agently-Stage 0.3.6 so mixed sync/async boundaries automatically select a physically safe Stage carrier while preserving TriggerFlow ownership, settlement, and public state semantics.",
   "runtime_support": {
     "agently_stage": {
       "version_specifier": ">=0.3.6,<0.4.0",

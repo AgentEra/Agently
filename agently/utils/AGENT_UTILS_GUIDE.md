@@ -55,26 +55,29 @@ When to use:
 - Mapping UI updates to schema paths.
 
 ### FunctionShifter
-Purpose: deprecated compatibility facade over Agently-Stage `StageCallBridge`.
+Purpose: deprecated compatibility facade over Agently-Stage adapters.
 
 Key methods:
-- `syncify(func)`: delegates to `StageCallBridge.as_sync()`.
-- `asyncify(func)`: delegates to `StageCallBridge.as_async()`.
+- `syncify(func)`: delegates to `Stage.as_sync()`.
+- `asyncify(func)`: delegates to `Stage.as_async()`.
 - `future(func)`: returns a loop-neutral `StageHandle`.
 - `syncify_async_generator(async_gen)`: delegates to `StageCallBridge.iter_sync()`.
 - `asyncify_sync_generator(sync_gen)`: delegates to `StageCallBridge.iter_async()`.
 - `auto_options_func(func)`: delegates to the pure `filter_callable_options()` helper.
 
-`syncify()` and `asyncify()` use the light bridge. They do not claim ownership
-of descendant tasks or wait for a blocking thread after cancellation. Runtime
-schedulers that own that lifecycle use `StageCallBridge(..., managed=True)`
-directly instead of changing `FunctionShifter` compatibility semantics.
+Each `syncify()` / `asyncify()` call owns one automatic Stage scope and waits
+for Stage-owned settlement. Advanced stream conversion, injected Stage or
+executor ownership, and explicitly lightweight adaptation remain
+`StageCallBridge` responsibilities. Runtime schedulers that own a broader
+lifecycle may continue to use `StageCallBridge(..., managed=True)` directly.
 
 When to use:
 - Only for compatibility with existing integrations.
-- New runtime code should import `default_stage_call_bridge` from
-  `agently_stage`; signature-only option filtering should use
-  `filter_callable_options` from `agently.utils`.
+- New scalar adapters should use `Stage.as_sync()` / `Stage.as_async()`.
+- Runtime code that requires lightweight or advanced bridge behavior should
+  import `default_stage_call_bridge` or `StageCallBridge` from `agently_stage`.
+- Signature-only option filtering should use `filter_callable_options` from
+  `agently.utils`.
 
 ### GeneratorConsumer
 Purpose: fan out a generator or async generator to multiple consumers, replay history, and handle errors.

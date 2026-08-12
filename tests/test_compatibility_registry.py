@@ -28,18 +28,16 @@ def test_current_release_manifest_matches_registry_release_file() -> None:
     current_manifest = get_current_release_manifest()
 
     assert index["latest_release"] == CURRENT_FRAMEWORK_VERSION
-    assert current_manifest["framework"] == release_manifest["framework"]
-    assert current_manifest["framework_version"] == release_manifest["framework_version"]
-    assert current_manifest["release_train"] == release_manifest["release_train"]
+    assert current_manifest == release_manifest
 
 
-def test_4_1_4_6_release_manifest_pins_stage_native_runtime_contract() -> None:
+def test_4_1_4_7_release_manifest_pins_stage_native_runtime_contract() -> None:
     manifest = get_current_release_manifest()
 
-    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.6"
-    assert CURRENT_RELEASE_TRAIN == "2026-07-4.1.4.6"
+    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.7"
+    assert CURRENT_RELEASE_TRAIN == "2026-08-4.1.4.7"
     stage_support = manifest["runtime_support"]["agently_stage"]
-    assert stage_support["version_specifier"] == ">=0.3.5,<0.4.0"
+    assert stage_support["version_specifier"] == ">=0.3.6,<0.4.0"
     assert stage_support["task_mechanism_owners"] == ["TriggerFlowExecution"]
     assert stage_support["public_runtime_surface"] is False
     assert "EventCenter background task settlement" in stage_support[
@@ -59,21 +57,21 @@ def test_companion_views_still_derive_from_released_manifest() -> None:
     assert skills["authoring_protocol"] == current["companions"]["skills"]["authoring_protocol"]
 
 
-def test_in_development_manifest_declares_4_1_4_6_owner_boundaries() -> None:
+def test_in_development_manifest_declares_4_1_4_7_owner_boundaries() -> None:
     manifest = _development_manifest()
 
-    assert manifest["target_version"] == "4.1.4.6"
-    assert manifest["release_train"] == "2026-07-4.1.4.6-dev"
-    assert "agently.__version__" in manifest["notes"]
-    assert "agently.version" in manifest["notes"]
-    assert "removed rather than retained as compatibility aliases" in manifest["notes"]
-    assert "ensure_long_output()" in manifest["notes"]
-    assert "TriggerFlow-visible continuation" in manifest["notes"]
-    assert "TaskWorkspace owns staged file truth" in manifest["notes"]
-    assert "Agently-Stage >=0.3.5,<0.4.0" in manifest["notes"]
+    assert manifest["target_version"] == "4.1.4.7"
+    assert manifest["release_train"] == "2026-08-4.1.4.7-dev"
+    assert "Agently-Stage >=0.3.6,<0.4.0" in manifest["notes"]
+    assert "physically safe carrier" in manifest["notes"]
+    assert "provider-owned sync wrapper" in manifest["notes"]
+    assert "FunctionShifter.syncify/asyncify" in manifest["notes"]
+    assert "Stage.as_sync/as_async" in manifest["notes"]
+    assert "default_stage_call_bridge usage remains unchanged" in manifest["notes"]
+    assert "TriggerFlowExecution remains the semantic lifecycle owner" in manifest["notes"]
 
     stage_support = manifest["runtime_support"]["agently_stage"]
-    assert stage_support["version_specifier"] == ">=0.3.5,<0.4.0"
+    assert stage_support["version_specifier"] == ">=0.3.6,<0.4.0"
     assert stage_support["public_runtime_surface"] is False
     assert stage_support["task_mechanism_owners"] == ["TriggerFlowExecution"]
     assert "EventCenter background task settlement" in stage_support[

@@ -41,8 +41,8 @@ def test_private_stage_runtime_stream_transport_exists() -> None:
 def test_project_declares_supported_stage_dependency() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
-    assert "agently-stage (>=0.3.5,<0.4.0)" in pyproject
-    assert Version(importlib.metadata.version("agently-stage")) >= Version("0.3.5")
+    assert "agently-stage (>=0.3.6,<0.4.0)" in pyproject
+    assert Version(importlib.metadata.version("agently-stage")) >= Version("0.3.6")
     assert not hasattr(agently, "Stage")
     assert not hasattr(agently, "Tunnel")
     assert not hasattr(agently, "LocalTaskScope")

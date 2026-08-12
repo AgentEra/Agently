@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from agently_stage import default_stage_call_bridge
+from agently_stage import Stage, default_stage_call_bridge
 
 from agently import Agently, TriggerFlow, TriggerFlowRuntimeData
 from agently.types.data import RunContext
@@ -26,6 +26,42 @@ def test_trigger_flow_sync_start_returns_close_snapshot():
     another_execution = flow.create_execution(auto_close_timeout=0.0)
     with pytest.warns(DeprecationWarning, match="wait_for_result"):
         assert another_execution.start("ok", wait_for_result=False) == {"$final_result": {"value": "ok"}}
+
+
+def test_sync_chunk_can_wrap_async_provider_with_stage_and_reenter_execution_state():
+    flow = TriggerFlow(name="sync-provider-stage-roundtrip")
+
+    async def provider(value: str) -> str:
+        await asyncio.sleep(0)
+        return value.upper()
+
+    async def registered_action(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(provider, value)
+
+    def sync_provider(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(registered_action, value)
+
+    def transform(data: TriggerFlowRuntimeData):
+        result = sync_provider(data.value)
+        data.set_state("result", result, emit=False)
+        data.set_state("steps", [result], emit=False)
+        data.append_state("steps", "settled", emit=False)
+        data.set_state("temporary", True, emit=False)
+        data.del_state("temporary", emit=False)
+        return {
+            "result": result,
+            "steps": data.get_state("steps"),
+            "temporary": data.get_state("temporary"),
+        }
+
+    flow.to(transform)
+
+    assert flow.start("stage") == {
+        "result": "STAGE",
+        "steps": ["STAGE", "settled"],
+    }
 
 
 def test_trigger_flow_start_waits_for_auto_close_snapshot_without_end():

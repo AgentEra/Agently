@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__: str = "4.1.4.6"
+__version__: str = "4.1.4.7"
