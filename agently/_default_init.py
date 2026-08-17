@@ -38,6 +38,7 @@ def _load_default_plugins(plugin_manager: "PluginManager"):
         ACPExecutionResourceProvider,
         BashExecutionResourceProvider,
         BrowserExecutionResourceProvider,
+        BubblewrapExecutionResourceProvider,
         DockerExecutionResourceProvider,
         GVisorDockerExecutionResourceProvider,
         SeatbeltExecutionResourceProvider,
@@ -64,6 +65,7 @@ def _load_default_plugins(plugin_manager: "PluginManager"):
     plugin_manager.register("ExecutionResourceProvider", GVisorDockerExecutionResourceProvider, activate=False)
     plugin_manager.register("ExecutionResourceProvider", SeatbeltExecutionResourceProvider, activate=False)
     plugin_manager.register("ExecutionResourceProvider", BrowserExecutionResourceProvider, activate=False)
+    plugin_manager.register("ExecutionResourceProvider", BubblewrapExecutionResourceProvider, activate=False)
     plugin_manager.register("ExecutionResourceProvider", SQLiteExecutionResourceProvider, activate=False)
     plugin_manager.register("ExecutionResourceProvider", TrustedLocalExecutionResourceProvider, activate=False)
 

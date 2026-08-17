@@ -22,6 +22,7 @@ from agently.builtins.plugins.AgentOrchestrator import AgentlyAgentOrchestrator
 from agently.builtins.plugins.ExecutionResourceProvider import (
     BashExecutionResourceProvider,
     BrowserExecutionResourceProvider,
+    BubblewrapExecutionResourceProvider,
     DockerExecutionResourceProvider,
     GVisorDockerExecutionResourceProvider,
     SeatbeltExecutionResourceProvider,
@@ -79,6 +80,7 @@ def test_builtin_execution_resource_providers_match_protocol():
     providers = [
         BashExecutionResourceProvider(),
         BrowserExecutionResourceProvider(),
+        BubblewrapExecutionResourceProvider(),
         DockerExecutionResourceProvider(),
         GVisorDockerExecutionResourceProvider(),
         SeatbeltExecutionResourceProvider(),

@@ -172,6 +172,7 @@ def test_v2_default_plugins_are_registered():
         "GVisorDockerExecutionResourceProvider",
         "SeatbeltExecutionResourceProvider",
         "BrowserExecutionResourceProvider",
+        "BubblewrapExecutionResourceProvider",
         "SQLiteExecutionResourceProvider",
     }.issubset(environment_providers)
 

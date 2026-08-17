@@ -23,6 +23,7 @@ from .ActionRuntime import AgentlyActionRuntime
 from .ExecutionResourceProvider import (
     ACPExecutionResourceProvider,
     BashExecutionResourceProvider,
+    BubblewrapExecutionResourceProvider,
     GVisorDockerExecutionResourceProvider,
     SeatbeltExecutionResourceProvider,
     MCPExecutionResourceProvider,
