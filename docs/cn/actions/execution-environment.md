@@ -76,7 +76,7 @@ Browser、SQLite action 可以声明自己的 requirement，Action dispatcher �
 | `mcp` | `agent.use_mcp(...)` / MCP actions | MCP transport resource |
 | `bash` | `sandbox="trusted_local"` shell actions | 配置后的本地命令 runner |
 | `docker` | 隔离 shell actions、direct Docker Actions，以及一个 `code_execution` provider 候选 | Docker CLI runner 与镜像 provisioning |
-| `code_execution` | `agent.enable_python(...)`、`agent.enable_nodejs(...)`、`agent.enable_code_runtime(...)` 与已授权 Skill script Actions | provider-neutral、Workspace-bound 执行；内置包括 Docker、可选的 gVisor/runsc、可选的 macOS Seatbelt 与显式无防护 `trusted_local` fallback |
+| `code_execution` | `agent.enable_python(...)`、`agent.enable_nodejs(...)`、`agent.enable_code_runtime(...)` 与已授权 Skill script Actions | provider-neutral、Workspace-bound 执行；内置包括 Docker、可选的 gVisor/runsc、可选的 macOS Seatbelt、可选的 Linux Bubblewrap 与显式无防护 `trusted_local` fallback |
 | `browser` | 选择托管 browser resource 的 Browse actions | 托管 browser/page/session wrapper |
 | `sqlite` | `agent.enable_sqlite(...)` / SQLite executor actions | SQLite connection |
 
@@ -158,6 +158,21 @@ TaskWorkspace grant 派生。它不接受 raw SBPL 或额外宿主写路径，�
 或 `trusted_local`。为了兼容宿主 toolchain 与动态库，初版 profile 允许较宽的宿主读取，
 因此会如实上报 `host_filesystem_restricted=false`，helper 使用 preferred 而不是 required
 isolation；需要宿主读取隔离时应选择 Docker/gVisor。
+
+### Linux Bubblewrap
+
+在 Linux 上可以显式选择可选的 Bubblewrap provider：
+
+```python
+agent.enable_python(sandbox="bubblewrap")
+```
+
+Bubblewrap 创建 user、PID、IPC、UTS、cgroup namespace，并默认隔离 network
+namespace。provider 自有的系统/toolchain roots 以只读方式挂载，TaskWorkspace
+roots 严格按 grant 挂载。它不接受 raw bwrap 参数、额外 bind 或 tmpfs 路径，也不会
+回退到 Docker 或 `trusted_local`。Bubblewrap 不负责 syscall filtering，因此如实上报
+`syscalls_restricted=false` 并使用 preferred isolation。当 AppArmor 或宿主 userns
+策略阻止 bwrap 时，provider 会 fail closed；Agently 不建议放宽宿主安全策略来绕过。
 
 代码请求最多声明 128 个 expected outputs；每条路径都有长度边界、必须规范化并位于
 `output/` 下，缺少任一声明制品都会使 Action 失败。stdout/stderr 有界保留，取消会终止
