@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import inspect
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Coroutine, Literal, ParamSpec, TypeVar, cast, get_args, get_origin, get_type_hints
@@ -21,7 +23,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Coroutine, Literal, 
 from agently.core.operation.Action import ActionDispatcher, ActionRegistry
 from agently.core.operation.Action.ActionMetadata import sanitize_action_spec_for_metadata, summarize_action_records
 from agently.types.plugins import ToolManager
-from agently.utils import DataFormatter, DeprecationWarnings, FunctionShifter, LazyImport, SettingsNamespace
+from agently.utils import DataFormatter, DeprecationWarnings, LazyImport, SettingsNamespace
 from agently.utils.MCP import normalize_mcp_transport
 from agently.types.data import ActionSpec
 
@@ -57,8 +59,8 @@ class AgentlyToolManager(ToolManager):
         self.action_funcs: dict[str, Callable[..., Any]] = {}
         self.tool_funcs = self.action_funcs
 
-        self.use_action_mcp = FunctionShifter.syncify(self.async_use_action_mcp)
-        self.use_mcp = FunctionShifter.syncify(self.async_use_mcp)
+        self.use_action_mcp = default_stage_call_bridge.as_sync(self.async_use_action_mcp)
+        self.use_mcp = default_stage_call_bridge.as_sync(self.async_use_mcp)
 
     @staticmethod
     def _on_register():
@@ -304,9 +306,9 @@ class AgentlyToolManager(ToolManager):
             return None
         match shift:
             case "sync":
-                return FunctionShifter.syncify(action_func)
+                return default_stage_call_bridge.as_sync(action_func)
             case "async":
-                return FunctionShifter.asyncify(action_func)
+                return default_stage_call_bridge.as_async(action_func)
             case None:
                 return action_func
 
@@ -374,7 +376,7 @@ class AgentlyToolManager(ToolManager):
         return self._legacy_result(result, as_tool=False)
 
     def call_action(self, name: str, kwargs: dict[str, Any]) -> Any:
-        return FunctionShifter.syncify(self.async_call_action)(name, kwargs)
+        return default_stage_call_bridge.as_sync(self.async_call_action)(name, kwargs)
 
     async def async_call_tool(self, name: str, kwargs: dict[str, Any]) -> Any:
         if not self.action_registry.has(name):
@@ -383,7 +385,7 @@ class AgentlyToolManager(ToolManager):
         return self._legacy_result(result, as_tool=True)
 
     def call_tool(self, name: str, kwargs: dict[str, Any]) -> Any:
-        return FunctionShifter.syncify(self.async_call_tool)(name, kwargs)
+        return default_stage_call_bridge.as_sync(self.async_call_tool)(name, kwargs)
 
     async def async_use_action_mcp(
         self,

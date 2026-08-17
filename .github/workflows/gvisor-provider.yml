@@ -1,0 +1,55 @@
+name: gVisor provider
+
+on:
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - ".github/workflows/gvisor-provider.yml"
+      - "agently/builtins/plugins/ExecutionResourceProvider/GVisorDockerExecutionResourceProvider.py"
+      - "agently/builtins/plugins/ExecutionResourceProvider/DockerExecutionResourceProvider.py"
+      - "agently/core/operation/Action/ActionResourceRegistrar.py"
+      - "tests/test_gvisor_execution_provider.py"
+      - "tests/test_gvisor_execution_provider_integration.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runsc-mechanism:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install gVisor runsc from the official apt repository
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor --yes -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}'
+
+      - name: Install Agently test environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest pytest-asyncio
+
+      - name: Prepare the pinned mechanism-test image
+        run: docker pull alpine:3.20
+
+      - name: Run deterministic and observed gVisor tests
+        run: |
+          python -W error::RuntimeWarning -m pytest tests/test_gvisor_execution_provider.py -q
+          python -m pytest tests/test_gvisor_execution_provider_integration.py -q -rs

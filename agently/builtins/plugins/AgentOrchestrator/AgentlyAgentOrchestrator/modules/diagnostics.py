@@ -176,7 +176,7 @@ def _action_log_key(log: dict[str, Any]) -> str:
 
 
 def build_execution_meta(owner: "AgentExecution") -> dict[str, Any]:
-    return {
+    meta = {
         "execution_id": owner.id,
         "status": owner.status,
         "strategy": owner.strategy_name,
@@ -197,3 +197,9 @@ def build_execution_meta(owner: "AgentExecution") -> dict[str, Any]:
         "record_refs": DataFormatter.sanitize(owner.record_refs),
         "guidance_items": DataFormatter.sanitize(getattr(owner, "guidance_items", [])),
     }
+    if getattr(owner, "_ensure_long_output_enabled", False):
+        meta["long_output"] = DataFormatter.sanitize(
+            getattr(owner, "_long_output_meta", {})
+            or {"enabled": True, "status": owner.status}
+        )
+    return meta

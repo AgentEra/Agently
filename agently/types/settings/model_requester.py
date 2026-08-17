@@ -88,6 +88,7 @@ class OpenAIResponsesCompatibleSettings(AgentlyConfigModel):
     default_model: str | None = None
     timeout_mode: Literal["http", "first_token"] | None = None
     stream_idle_timeout: float | None = None
+    request_retry: _RequestRetrySettings | dict[str, int | bool | None] | bool | None = None
     client_options: dict[str, Any] | None = None
     headers: dict[str, Any] | None = None
     proxy: str | None = None
@@ -110,6 +111,7 @@ class AnthropicCompatibleSettings(AgentlyConfigModel):
     default_model: str | None = None
     timeout_mode: Literal["http", "first_token"] | None = None
     stream_idle_timeout: float | None = None
+    request_retry: _RequestRetrySettings | dict[str, int | bool | None] | bool | None = None
     client_options: dict[str, Any] | None = None
     headers: dict[str, Any] | None = None
     proxy: str | None = None

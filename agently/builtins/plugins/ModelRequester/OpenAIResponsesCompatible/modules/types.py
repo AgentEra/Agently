@@ -22,6 +22,7 @@ class OpenAIResponsesCompatibleSettings(TypedDict, total=False):
     model: str
     timeout_mode: Literal["http", "first_token"]
     stream_idle_timeout: float | None
+    request_retry: dict[str, int | bool] | bool
     client_options: dict[str, SerializableValue]
     headers: dict[str, SerializableValue]
     proxy: str

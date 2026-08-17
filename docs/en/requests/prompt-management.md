@@ -48,6 +48,37 @@ independently owned/versioned or product-edited, or genuinely generated or
 conditional. Do not move a one-use schema or prompt step elsewhere merely to
 make the Agently request chain look shorter.
 
+## Request-local context
+
+Each prompt slot is request-local only when it changes what the current request
+asks, permits, forbids, or needs to produce. Use the five roles deliberately:
+`agent` supplies stable role and capabilities; `input` supplies current facts;
+`info` supplies authoritative contract and evidence; `instruct` supplies task
+rules; and `output` supplies the required result shape. Together, they must
+give the model a self-contained account of the current request rather than
+assuming unexplained project context.
+
+Apply the removal counterfactual to every candidate item: if removing it would
+not change the current request's effective task, contract, evidence, or
+decision, remove or rewrite it. Project-level origin is not a removal test:
+retain a shared policy or fact when it changes this request. A proper name may
+remain only when it identifies a real domain contract, allowlist, evidence item,
+input fact, or capability boundary that changes the current request. Otherwise,
+rewrite an unexplained implementation name as its request-relevant role, or
+remove it.
+
+| | `info` |
+|---|---|
+| Bad | “Follow the project’s worker-manager convention.” |
+| Good | “Allowed actions: approve or reject. Evidence: the attached request and its policy record.” |
+
+Audit at two levels: first review each slot against its role and the removal
+counterfactual; then inspect the rendered request, including mappings and
+references. Before dispatch, `execution.get_prompt_text()` renders the current
+execution draft so you can verify that context is self-contained and
+request-local. After the execution starts, the same method prefers the prompt
+snapshot captured for that run.
+
 ## Strict external interface contracts
 
 When model output will be passed directly to a documented API request, module

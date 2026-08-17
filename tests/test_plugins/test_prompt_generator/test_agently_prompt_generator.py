@@ -1,9 +1,13 @@
 from collections.abc import Mapping
+import warnings
 
 import pytest
 
 from agently.core import Prompt
 from agently import Agently
+from agently.builtins.plugins.PromptGenerator.modules.output_contract import (
+    output_schema_to_json_schema,
+)
 
 
 def test_to_prompt_object():
@@ -335,6 +339,131 @@ def test_output_model():
     assert hasattr(output_from_raw_list, "root") and getattr(output_from_raw_list, "root") == [456]
     assert list(output_from_raw_list) == [456]
     assert list(output_from_raw_list)[0] == 456
+
+
+def test_output_model_nested_list_serializes_validated_items_without_warning():
+    Agently.set_settings("plugins.PromptGenerator.name", "AgentlyPromptGenerator")
+    prompt = Prompt(Agently.plugin_manager, Agently.settings)
+    prompt.set(
+        "output",
+        {
+            "groups": [
+                {
+                    "title": (str,),
+                    "options": [
+                        {
+                            "name": (str,),
+                            "enabled": (bool,),
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+    OutputModel = prompt.to_output_model(strict_output=True)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        value = OutputModel.model_validate(
+            {
+                "groups": [
+                    {
+                        "title": "g1",
+                        "options": [{"name": "a", "enabled": True}],
+                    }
+                ]
+            }
+        ).model_dump(mode="json", warnings="warn")
+
+    assert value == {
+        "groups": [
+            {
+                "title": "g1",
+                "options": [{"name": "a", "enabled": True}],
+            }
+        ]
+    }
+    assert not [
+        item
+        for item in caught
+        if "PydanticSerializationUnexpectedValue" in str(item.message)
+    ]
+
+
+def test_output_json_schema_projection_preserves_nested_list_contract():
+    projected = output_schema_to_json_schema(
+        {
+            "title": (str, "group title", True),
+            "options": [
+                {
+                    "name": (str, "option name", True),
+                    "enabled": (bool, "selection state", True),
+                }
+            ],
+        },
+        strict_output=True,
+    )
+
+    assert projected["type"] == "object"
+    assert projected["required"] == ["title", "options"]
+    options = projected["properties"]["options"]
+    assert options["type"] == "array"
+    assert options["items"]["required"] == ["name", "enabled"]
+    assert options["items"]["properties"]["enabled"]["type"] == "boolean"
+
+
+def test_projected_pydantic_fragment_model_preserves_nested_constraints():
+    from typing import Annotated
+
+    from pydantic import BaseModel, Field, ValidationError
+
+    class Net(BaseModel):
+        name: str
+        sinks: Annotated[list[str], Field(min_length=1, max_length=2)]
+
+    class Package(BaseModel):
+        nets: Annotated[list[Net], Field(min_length=2, max_length=2)]
+
+    Agently.set_settings(
+        "plugins.PromptGenerator.name",
+        "AgentlyPromptGenerator",
+    )
+    source_prompt = Prompt(Agently.plugin_manager, Agently.settings)
+    source_prompt.set("output", Package)
+    projected_package = source_prompt.to_prompt_object().output
+
+    fragment_prompt = Prompt(Agently.plugin_manager, Agently.settings)
+    fragment_prompt.update(
+        {
+            "output": {"value": projected_package},
+            "output_format": "json",
+            "ensure_all_keys": True,
+        }
+    )
+    FragmentModel = fragment_prompt.to_output_model(strict_output=True)
+
+    valid = FragmentModel.model_validate(
+        {
+            "value": {
+                "nets": [
+                    {"name": "a", "sinks": ["x"]},
+                    {"name": "b", "sinks": ["y", "z"]},
+                ]
+            }
+        }
+    )
+    assert len(valid.model_dump()["value"]["nets"]) == 2
+    with pytest.raises(ValidationError):
+        FragmentModel.model_validate(
+            {
+                "value": {
+                    "nets": [
+                        {"name": "a", "sinks": []},
+                        {"name": "b", "sinks": ["y"]},
+                    ]
+                }
+            }
+        )
 
 
 def test_pydantic_output_model_preserves_declared_type_and_exposes_structural_prompt():

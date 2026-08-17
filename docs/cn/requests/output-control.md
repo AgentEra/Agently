@@ -79,6 +79,135 @@ opt-in 格式，不进入 auto；`flat_markdown` 仅作为显式兼容模式保�
 | `json` | 需要最稳定的机器契约、嵌套数据、数组、外部系统互通、兼容旧 prompt/测试，或下游明确依赖原始 JSON 行为。 | 大段嵌入文档或代码会让转义变脆弱，也更难让模型稳定生成。 |
 | 纯文本 | 请求只要一个自由文本成品：文章、邮件、解释、报告、Markdown 页面、HTML 页面，或其他单一多段落文档。不要调用 `output()`；直接用 `start()` / `async_start()`，或读取 `result.get_text()`。 | 需要可单独寻址的字段、路径校验、`ensure_keys`、typed object 或下游分支。 |
 
+### 可能超过单次模型输出窗口的结果
+
+当一个业务结果可能超过 provider 的单次输出窗口时，在尚未启动的
+`AgentExecution` 上使用 `.ensure_long_output()`：
+
+```python
+netlist = (
+    agent
+    .input({"requirements": requirements})
+    .info({"component_rules": component_rules})
+    .instruct("生成完整网表。")
+    .output(
+        {
+            "components": [
+                {
+                    "refdes": (str, "唯一元件位号", True),
+                    "value": (str, "元件参数", True),
+                }
+            ],
+            "nets": [
+                {
+                    "name": (str, "网络名", True),
+                    "connections": [(str, "refdes.pin", True)],
+                }
+            ],
+        },
+        format="json",
+    )
+    .ensure_long_output()
+    .get_data()
+)
+```
+
+该选项默认关闭；`.ensure_long_output(False)` 可在同一个未启动 draft 上关闭。
+它约束的是整次 execution，而不是 `.output(...)` 或某个结果读取器，因此
+`get_data()`、`get_text()`、`get_data_object()`、`get_result()` 和 generator
+consumer 看到的是同一份冻结策略。execution 启动后再调用，会触发现有的一次运行
+生命周期错误。
+
+第一次模型请求保持原样。若归一化终态是 `stop`，继续使用普通单请求结果与校验
+路径；若 provider 报告 `length` / `incomplete`，Agently 才启动一个
+TriggerFlow 可见的续写循环。已接受单元会写入该 execution 的私有
+TaskWorkspace，每次写入都完整读回并核对 SHA-256；最终 candidate 从 manifest
+重放后，再执行原始 Pydantic/schema、ensure 与自定义 validator。每个结构化更新在
+推进 manifest 前，还会单独通过所属 assembly slot 的 JSON Schema 校验。
+
+当前可无损组装的 carrier 是纯文本和显式/解析后的 `json`。启用该选项时，
+`flat_markdown`、`hybrid`、`xml_field`、`yaml_literal` 和不透明 custom carrier
+会在模型 dispatch 前失败。结构化续写只保留 provider 文本中真实出现闭合定界符的
+值；由不完整 JSON 修复生成的值带
+`completion_source="synthetic_repair"`，必须重新生成，不能提交为已接受单元。
+
+续写采用 append-only revision：
+
+- 纯文本精确保留首次 prefix，再按顺序追加已闭合文本块，不做模糊 overlap 删除。
+  每次逻辑 continuation 只提交一个文本块，使下一处拼接一定基于刷新后的已接受正文
+  后缀生成；若响应给出多个文本 update，会保留第一个合法块并重新生成其余 tail；
+- JSON list item 和声明值只在可信 completion boundary 且通过局部 slot schema
+  校验后提交；
+- 模型可见的 slot contract 从原始 Agently output 声明投影，保留嵌套
+  array/object 形状以及 Pydantic 的长度、数值边界、倍数和 pattern 约束；独立生成的
+  Pydantic slot model 仍是提交前的权威校验器，因此嵌套字段不合法的业务单元不会先
+  进入 manifest、等到最终校验才被发现；
+- 精确 Pydantic list 边界会在增量阶段执行：达到 `maxItems` 后不再提供该 slot，
+  未完成的精确 list 会阻止后续依赖 slot 提前生成。结构化续写还会收到有界、只读的
+  canonical accepted JSON 证据，用来保持已有语言、命名和跨字段事实；
+- 真实闭合的空 list 会作为空容器 manifest 事实保留；缺失的 list path 不会被合成
+  为空，已有 item 或已有空容器声明之后的重复声明也会被拒绝；
+- 真实闭合的空字符串也会作为 text slot 的存在事实保留。在信任 continuation
+  `is_final` 之前，Agently 要求每个已声明 ensure path 都已有 manifest 事实；缺失
+  required path 会继续交付循环，不消耗调用方的最终 validation retry 额度；
+- 真实闭合的结构化字符串是一个原子 schema value；提交后不会再提供给 continuation，
+  也不能追加或改写。若一个结构化值超过 4000 字符单元上限，应在原 output contract
+  中建模为有序 chunk list；若结果本身就是一个自由文本成品，则使用纯文本 carrier；
+- 如果某段先产生合法连续前缀、随后出现坏更新，前缀继续保留，坏更新及其后续 tail
+  不会被跳过提交，而是从下一个 `unit_index` 重新生成；
+- continuation packet 会携带 slot value contract，并明确区分私有零基
+  `unit_index` 与业务值内部可能存在的 `index` 字段；packet 大小也受到约束，以便在
+  provider 窗口内形成可提交的闭合单元。每个 slot 只暴露一个需要模型原样返回的
+  mnemonic `path_key`（例如 `p1:components`），不再同时暴露第二个可复制 schema
+  path；宿主仍按完整 offered key 做授权，而不是解析后缀取得权限；
+- 每个 continuation 都先输出并闭合最小控制头 `base_revision`、`base_digest` 和
+  `anchor`，再开始业务 update。anchor 是最后一个已接受单元的短 digest；对纯文本，
+  有界的文首样式片段、精确正文后缀和由宿主计数的已接受字符总数会另行作为只读
+  continuity context 提供。这样既保留全局格式和局部拼接依据，也不要求模型把一大段
+  业务正文逐字复制进控制头或自行估算已有长度。若 provider 在控制头闭合前就以
+  `length` 终止，该次被记录为
+  无进展，已接受 manifest 保持不变；下一次有界恢复请求会要求先闭合控制头，并且
+  最多输出一个 update；
+- 旧 revision、错误 digest、未知 path、非连续 unit index 和坏 update 都不会进入
+  manifest；连续三次无进展会携带最后一个 reason code fail closed，而不是无限循环；
+- continuation 修正由 `LongOutputDelivery` 独占，不再嵌套一层
+  `ModelRequest` 重试。每个 continuation 对应一次真实请求；provider-complete
+  响应若不满足私有 envelope，会先持久化并记为有界
+  `continuation_envelope_invalid` 无进展。调用方的 `max_retries` 只留给最终组装值
+  的 validation repair；
+- provider 报告 `length` 后，零更新的 `is_final` 声明仍属于无进展，不能单独证明
+  被截断的业务结果已经完整；
+- 续写请求不继承 Action/tool handler，因此只输出的续写不会重复副作用；
+- 私有 continuation envelope 不会进入公开文本流。
+
+当大型 JSON 的 instant parser 已经延迟增量解析时，provider-complete 的权威 final
+parse 仍是最终结果；observed-boundary 事件不能用旧 provisional snapshot 覆盖它。
+只有 final JSON parse 失败或 provider 以 `length` 结束时，真实闭合的 observed
+value 才作为局部单元接受依据。
+
+如果模型错误地声明完成，而 manifest 重放后的 candidate 仍未通过原始 schema、
+ensure rule 或已声明 validator，Agently 会保留所有已接受单元，并使用现有的有界
+validation retry 额度，只请求缺少或需要追加的单元。manifest、readback、digest 或
+lineage 不一致属于完整性故障，绝不会交给模型“修复”，而是立即失败。
+
+这是直接 ModelRequest 的交付策略。未显式选择 task strategy 时，它会选择 direct
+route；若与显式 AgentTask strategy 混用，则在任务执行前失败。规划/工具工作继续放在
+AgentTask，超长最终 artifact 使用独立的 direct delivery execution。
+
+`get_meta()["long_output"]` 会报告 request/segment/unit 数、重放与拒绝单元数、
+无进展事件数、最终 validation 修正次数、已接受 digest、校验状态和实际保证等级。
+失败运行的 `execution.diagnostics["long_output_no_progress"]` 会保留有界的
+reason/header/manifest 事实，但不复制原始 provider 正文。transport 与 schema 完整
+并不等于业务清单必然穷尽；如果必须证明覆盖率，应通过 `ensure_keys`、Pydantic
+constraint 或 `.validate(...)` 声明 expected count/key/reference 规则。没有这类规则时，
+`semantic_exhaustiveness` 保持 `"not_claimed"`。
+
+可运行示例见
+[`examples/basic/ensure_long_output.py`](../../../examples/basic/ensure_long_output.py)：
+它生成 75 个 JSON 元件，声明 count/order coverage validator，并设置有界的真实模型
+请求预算。2026-07-28 的 Qwen 记录运行跨多个截断窗口保留了全部 75 个元件，并通过
+一次最终 validation 修正请求只补充缺少的 summary。
+
 ### Instant Streaming
 
 当调用方需要在完整响应结束前看到字段级更新时，使用

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import inspect
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -24,7 +26,6 @@ from typing_extensions import Self
 from agently.core import BaseAgent
 from agently.core.application.SkillLibrary import SkillBinding, SkillPackageRevision
 from agently.types.data import SkillMode, SkillScriptAuthorization
-from agently.utils import FunctionShifter
 from agently.utils.DataGuardian import _copy_public, _ensure_dict, _ensure_list
 
 from .SkillActionBinder import BoundSkillAction, SkillActionBinder
@@ -592,7 +593,7 @@ class SkillsExtension(BaseAgent):
         }
 
     def resolve_skills_plan(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return FunctionShifter.syncify(self.async_resolve_skills_plan)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_resolve_skills_plan)(*args, **kwargs)
 
     async def async_run_skills_task(
         self,
@@ -634,7 +635,7 @@ class SkillsExtension(BaseAgent):
         return SkillRunCompatibilityResult(execution=execution, output=result)
 
     def run_skills_task(self, *args: Any, **kwargs: Any) -> SkillRunCompatibilityResult:
-        return FunctionShifter.syncify(self.async_run_skills_task)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_run_skills_task)(*args, **kwargs)
 
 
 __all__ = ["SkillRunCompatibilityResult", "SkillsExtension"]

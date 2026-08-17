@@ -33,6 +33,7 @@ Agently.set_settings("AnthropicCompatible", {
 | `anthropic_version` | API 版本 header（默认近期稳定版本） |
 | `anthropic_beta` | 可选 beta-feature header（字符串或字符串列表） |
 | `stream_idle_timeout` | 可选 liveness deadline，约束流式事件间隔和非流式响应生成等待 |
+| `request_retry` | 临时传输错误重试策略；默认 `{"max_attempts": 2, "after_output": true}` |
 | `request_options` | 转给底层 HTTP client 的额外 dict |
 
 公开 coordinator 在 [agently/builtins/plugins/ModelRequester/AnthropicCompatible/plugin.py](../../../agently/builtins/plugins/ModelRequester/AnthropicCompatible/plugin.py)，私有实现模块放在 `modules/` 下。
@@ -65,6 +66,10 @@ agent.set_settings("AnthropicCompatible", {"model": "${ENV.ANTHROPIC_MODEL_FAST}
 ## 流式
 
 `result.get_generator(type="delta")` / `get_async_generator(type="delta")` 产出增量文本。`type="instant"` 结构化流式与 `OpenAICompatible` 上一样 —— 区别仅在上游解析。
+
+物理 SSE 连接与其他 compatible adapter 共用同一套公开请求 attempt 生命周期。
+设置 `request_retry=False` 或 `max_attempts=1` 可关闭重放；设置
+`after_output=False` 可阻止 partial 输出后的重放。transport 不会执行未报告的内部重连。
 
 ## Beta 特性
 

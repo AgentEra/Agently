@@ -1222,6 +1222,11 @@ class AgentExecutionStream:
         graph_id: str | None = None,
         is_complete: bool | None = None,
         event_type: Literal["delta", "done"] = "done",
+        completion_source: Literal[
+            "observed_boundary",
+            "final_reconciliation",
+            "synthetic_repair",
+        ] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> AgentExecutionStreamData:
         item_meta = dict(meta or {})
@@ -1239,6 +1244,7 @@ class AgentExecutionStream:
             full_data=DataFormatter.sanitize(full_data),
             is_complete=completed,
             event_type=event_type,
+            completion_source=completion_source,
             source=source,
             route=route,
             stage_id=stage_id,
@@ -1321,6 +1327,7 @@ class AgentExecutionStream:
             graph_id=graph_id,
             is_complete=bool(getattr(item, "is_complete", event_type == "done")),
             event_type=event_type,
+            completion_source=getattr(item, "completion_source", None),
             meta=item_meta,
         )
 

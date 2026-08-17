@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import json
 import sys
@@ -21,7 +23,6 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 from agently.types.data import PolicyApprovalDecision, PolicyApprovalHandler, PolicyApprovalRequest
-from agently.utils import FunctionShifter
 from agently.utils.DataGuardian import _copy_public
 from .AccessControlPolicy import access_policy_auto_allow, merge_access_control_policy
 
@@ -45,8 +46,8 @@ class PolicyApprovalManager:
         self.register_handler("auto_approve", self._auto_approve, replace=True)
         self.register_handler("input", self._input, replace=True)
 
-        self.resolve = FunctionShifter.syncify(self.async_resolve)
-        self.gate = FunctionShifter.syncify(self.async_gate)
+        self.resolve = default_stage_call_bridge.as_sync(self.async_resolve)
+        self.gate = default_stage_call_bridge.as_sync(self.async_gate)
 
     def register_handler(
         self,
@@ -194,7 +195,7 @@ class PolicyApprovalManager:
                 handler=handler_name,
             )
         else:
-            result = await FunctionShifter.asyncify(selected)(normalized_request)
+            result = await default_stage_call_bridge.as_async(selected)(normalized_request)
             decision = self.normalize_decision(result, handler=handler_name)
         await self._emit(f"policy.approval.{ decision.get('status', 'pending') }", normalized_request, decision)
         return decision

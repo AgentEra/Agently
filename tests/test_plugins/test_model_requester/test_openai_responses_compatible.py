@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 import pytest
+from httpx import ReadError
 from httpx_sse import SSEError
 
 from types import SimpleNamespace
@@ -29,6 +30,51 @@ def build_plugin(config: dict, prompt_values: dict | None = None):
 
 def generate_request(config: dict, prompt_values: dict | None = None):
     return build_plugin(config, prompt_values).generate_request_data().model_dump()
+
+
+@pytest.mark.asyncio
+async def test_request_retry_uses_public_attempt_boundary(monkeypatch):
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "request_retry": {"max_attempts": 2, "after_output": True},
+        },
+        {"input": "hello"},
+    )
+    calls = 0
+
+    async def fake_legacy(_request_data):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield "response.output_text.delta", '{"delta":"partial"}'
+            yield "error", ReadError("responses SSE disconnected")
+            return
+        yield "response.completed", '{"response":{"status":"completed"}}'
+
+    monkeypatch.setattr(plugin, "_request_model_legacy", fake_legacy)
+    events = [
+        item
+        async for item in plugin.request_model(plugin.generate_request_data())
+    ]
+
+    assert calls == 2
+    assert events[1] == (
+        "status",
+        {
+            "status": "failed",
+            "attempt_index": 1,
+            "retry": True,
+            "next_attempt_index": 2,
+            "reason": "responses SSE disconnected",
+            "error_type": "ReadError",
+        },
+    )
+    assert events[-1] == (
+        "status",
+        {"status": "completed", "attempt_index": 2, "retry": False},
+    )
 
 
 async def capture_request_headers(monkeypatch: pytest.MonkeyPatch, config: dict, prompt_values: dict | None = None):
@@ -208,6 +254,26 @@ def test_generate_request_maps_rich_content_and_preserves_instructions():
     assert content[3] == {"type": "input_file", "file_id": "file_123"}
 
 
+def test_generate_request_preserves_responses_reasoning_options():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com/v1",
+            "request_options": {
+                "reasoning": {
+                    "effort": "low",
+                    "summary": "auto",
+                },
+            },
+        },
+        {"input": "hello"},
+    )
+
+    assert request["request_options"]["reasoning"] == {
+        "effort": "low",
+        "summary": "auto",
+    }
+
+
 def test_prompt_tools_are_converted_and_explicit_tools_override_by_name():
     request = generate_request(
         {
@@ -321,6 +387,155 @@ def test_broadcast_response_maps_text_stream_and_meta():
     assert ("reasoning_done", "") in events
     assert ("original_done", final_response) in events
     assert ("meta", {"id": "resp_1", "model": "gpt-5.5", "status": "completed", "usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}, "finish_reason": "stop"}) in events
+
+
+def test_broadcast_response_maps_reasoning_summary_and_preserves_core_status():
+    plugin = build_plugin({"base_url": "https://api.example.com/v1"}, {"input": "hello"})
+    final_response = {
+        "id": "resp_reasoning",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-5.5",
+        "output": [
+            {
+                "id": "rs_1",
+                "type": "reasoning",
+                "summary": [
+                    {"type": "summary_text", "text": "First, inspect the request. "},
+                    {"type": "summary_text", "text": "Then answer it."},
+                ],
+            },
+            {
+                "id": "msg_1",
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "Done"}],
+            },
+        ],
+        "reasoning": {"effort": "low", "summary": "auto"},
+    }
+    completed_status = {"status": "completed", "attempt_index": 1, "retry": False}
+
+    events = collect_events(
+        plugin,
+        [
+            (
+                "response.reasoning_summary_text.delta",
+                json.dumps(
+                    {
+                        "type": "response.reasoning_summary_text.delta",
+                        "item_id": "rs_1",
+                        "output_index": 0,
+                        "summary_index": 0,
+                        "delta": "First, inspect the request. ",
+                    }
+                ),
+            ),
+            (
+                "response.reasoning_summary_text.delta",
+                json.dumps(
+                    {
+                        "type": "response.reasoning_summary_text.delta",
+                        "item_id": "rs_1",
+                        "output_index": 0,
+                        "summary_index": 1,
+                        "delta": "Then answer it.",
+                    }
+                ),
+            ),
+            (
+                "response.reasoning_summary_text.done",
+                json.dumps(
+                    {
+                        "type": "response.reasoning_summary_text.done",
+                        "item_id": "rs_1",
+                        "output_index": 0,
+                        "summary_index": 1,
+                        "text": "Then answer it.",
+                    }
+                ),
+            ),
+            ("response.completed", json.dumps({"type": "response.completed", "response": final_response})),
+            ("status", completed_status),
+        ],
+    )
+
+    assert [data for event, data in events if event == "reasoning_delta"] == [
+        "First, inspect the request. ",
+        "Then answer it.",
+    ]
+    assert ("reasoning_done", "First, inspect the request. Then answer it.") in events
+    assert ("status", completed_status) in events
+    assert ("original_done", final_response) in events
+
+
+def test_broadcast_response_does_not_expose_reasoning_summary_configuration_as_content():
+    plugin = build_plugin({"base_url": "https://api.example.com/v1"}, {"input": "hello"})
+    final_response = {
+        "id": "resp_no_reasoning",
+        "object": "response",
+        "status": "completed",
+        "output": [],
+        "reasoning": {"effort": "low", "summary": "auto"},
+    }
+
+    events = collect_events(
+        plugin,
+        [("response.completed", json.dumps({"type": "response.completed", "response": final_response}))],
+    )
+
+    assert ("reasoning_done", "") in events
+
+
+def test_broadcast_response_maps_incomplete_terminal_to_length():
+    plugin = build_plugin({"base_url": "https://api.example.com/v1"}, {"input": "hello"})
+    incomplete_response = {
+        "id": "resp_incomplete",
+        "object": "response",
+        "status": "incomplete",
+        "model": "gpt-5.5",
+        "output": [
+            {
+                "id": "msg_incomplete",
+                "type": "message",
+                "status": "incomplete",
+                "role": "assistant",
+                "content": [{"type": "output_text", "text": "partial output"}],
+            }
+        ],
+        "incomplete_details": {"reason": "max_output_tokens"},
+    }
+    events = collect_events(
+        plugin,
+        [
+            (
+                "response.output_text.delta",
+                json.dumps({"type": "response.output_text.delta", "delta": "partial output"}),
+            ),
+            (
+                "response.incomplete",
+                json.dumps(
+                    {
+                        "type": "response.incomplete",
+                        "response": incomplete_response,
+                    }
+                ),
+            ),
+        ],
+    )
+
+    assert ("done", "partial output") in events
+    assert ("original_done", incomplete_response) in events
+    assert (
+        "meta",
+        {
+            "id": "resp_incomplete",
+            "model": "gpt-5.5",
+            "status": "incomplete",
+            "finish_reason": "length",
+        },
+    ) in events
 
 
 def test_broadcast_response_preserves_core_status_record():
@@ -616,6 +831,7 @@ async def test_first_token_timeout_returns_timeout_error_event(monkeypatch: pyte
             "base_url": "https://api.example.com/v1",
             "model": "m1",
             "stream": True,
+            "request_retry": {"max_attempts": 1},
             "timeout": {"connect": 1.0, "read": 0.01, "write": 2.0, "pool": 3.0},
         },
         {"input": "hello"},
@@ -635,6 +851,67 @@ async def test_first_token_timeout_returns_timeout_error_event(monkeypatch: pyte
     assert events[1][0] == "error"
     assert isinstance(events[1][1], TimeoutError)
     assert "First token timeout after 0.01 seconds." in str(events[1][1])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_event", ["response.completed", "response.incomplete"])
+async def test_streaming_stops_transport_after_terminal_response(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_event: str,
+):
+    late_event_reached = False
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            self.headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aclose(self):
+            return None
+
+    async def fake_aiter_sse_with_retry(self, client, method, url, *, headers, json):
+        del self, client, method, url, headers, json
+
+        async def generator():
+            nonlocal late_event_reached
+            status = terminal_event.removeprefix("response.")
+            yield SimpleNamespace(
+                event=terminal_event,
+                data=(
+                    f'{{"type":"{terminal_event}","response":'
+                    f'{{"id":"resp_1","status":"{status}","output":[]}}}}'
+                ),
+            )
+            late_event_reached = True
+            yield SimpleNamespace(
+                event="response.output_text.delta",
+                data='{"type":"response.output_text.delta","delta":"late"}',
+            )
+
+        return generator()
+
+    monkeypatch.setattr(responses_module, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(OpenAIResponsesCompatible, "_aiter_sse_with_retry", fake_aiter_sse_with_retry)
+
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+        },
+        {"input": "hello"},
+    )
+
+    events = [item async for item in plugin.request_model(plugin.generate_request_data())]
+
+    assert late_event_reached is False
+    assert [event for event, _payload in events] == [terminal_event, "status"]
+    assert events[-1][1]["status"] == "completed"
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 import uuid
 import asyncio
 import warnings
@@ -32,7 +34,7 @@ from agently.types.trigger_flow import (
     TriggerFlowInterruptEvent,
 )
 from agently.types.data import RunContext
-from agently.utils import DeprecationWarnings, Settings, StateData, FunctionShifter
+from agently.utils import DeprecationWarnings, Settings, StateData
 from agently.core.runtime.RuntimeContext import resolve_parent_run_context
 from .BluePrint import TriggerFlowBlueprint
 from .Process import TriggerFlowProcess
@@ -83,14 +85,14 @@ class TriggerFlow(Generic[InputT, StreamT, ResultT]):
         self.set_settings = self.settings.set_settings
         self.load_settings = self.settings.load
 
-        self._set_flow_data = FunctionShifter.syncify(self._async_set_flow_data)
-        self._append_flow_data = FunctionShifter.syncify(self._async_append_flow_data)
-        self._del_flow_data = FunctionShifter.syncify(self._async_del_flow_data)
-        self.set_flow_data = FunctionShifter.syncify(self.async_set_flow_data)
-        self.append_flow_data = FunctionShifter.syncify(self.async_append_flow_data)
-        self.del_flow_data = FunctionShifter.syncify(self.async_del_flow_data)
+        self._set_flow_data = default_stage_call_bridge.as_sync(self._async_set_flow_data)
+        self._append_flow_data = default_stage_call_bridge.as_sync(self._async_append_flow_data)
+        self._del_flow_data = default_stage_call_bridge.as_sync(self._async_del_flow_data)
+        self.set_flow_data = default_stage_call_bridge.as_sync(self.async_set_flow_data)
+        self.append_flow_data = default_stage_call_bridge.as_sync(self.async_append_flow_data)
+        self.del_flow_data = default_stage_call_bridge.as_sync(self.async_del_flow_data)
 
-        self.start_execution = FunctionShifter.syncify(self.async_start_execution)
+        self.start_execution = default_stage_call_bridge.as_sync(self.async_start_execution)
         self.register_chunk_handler = self._blue_print.register_chunk_handler
         self.register_condition_handler = self._blue_print.register_condition_handler
         self.set_runtime_resource = self._set_runtime_resource
@@ -733,7 +735,7 @@ class TriggerFlow(Generic[InputT, StreamT, ResultT]):
         owner_id: str | None = None,
         lease_ttl: float | None = None,
     ) -> Any:
-        return FunctionShifter.syncify(self.async_start)(
+        return default_stage_call_bridge.as_sync(self.async_start)(
             initial_value,
             wait_for_result=wait_for_result,
             timeout=timeout,

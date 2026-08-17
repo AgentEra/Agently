@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "framework": "agently",
+  "framework_version": "4.1.4.6",
+  "release_train": "2026-07-4.1.4.6",
+  "released_at": "2026-07-31",
+  "notes": "Version-scoped companion compatibility manifest for Agently 4.1.4.6. This patch exposes the standard agently.__version__ and Agently.__version__ surfaces, normalizes reasoning lifecycle events across OpenAI-compatible Chat Completions, Anthropic-compatible Messages, and Responses adapters, makes the public request retry lifecycle the sole owner of physical SSE connections across all three compatible adapters, and preserves live runtime-resource identity across TriggerFlow sub-flow boundaries.",
+  "runtime_support": {
+    "agently_stage": {
+      "version_specifier": ">=0.3.5,<0.4.0",
+      "public_runtime_surface": false,
+      "task_mechanism_owners": [
+        "TriggerFlowExecution"
+      ],
+      "stream_mechanism_owner": "TriggerFlow execution stream",
+      "rejected_mechanism_replacements": [
+        "EventCenter background task settlement",
+        "EventCenter and SignalNet event dispatch"
+      ],
+      "semantic_owners_unchanged": true,
+      "persistence_contract": "Stage task inventory, Tunnel cursors, handles, and carrier state are process-local and are not serialized."
+    }
+  },
+  "companions": {
+    "devtools": {
+      "companion_package": "agently-devtools",
+      "runtime_protocol": "agently-devtools.observation-runtime.v1",
+      "event_naming": {
+        "preferred_event_type": "RuntimeEvent",
+        "devtools_projection_type": "ObservationEvent",
+        "event_center_dispatch": "RuntimeEvent",
+        "compatibility_input_type": "ObservationEvent"
+      },
+      "runtime_control": {
+        "runtime_event_ownership": {
+          "official_event_producer": "core",
+          "plugin_contract": "plugins return observations/errors/decisions; core maps them to official RuntimeEvent records",
+          "builtin_direct_emitters_for_official_events": false,
+          "agent_execution_stream_owner": "agently.core.application.AgentExecution.AgentExecutionStream"
+        },
+        "record_store_contract": "RecordStore may persist canonical RuntimeEvent records when explicitly bound as runtime_event_store; TaskWorkspace is never an event store.",
+        "task_context_contract": "ContextPackage and ContextConsumption projections are bounded observation facts only and never drive route selection, verification, or task acceptance.",
+        "model_request_telemetry_contract": "Existing model RuntimeEvents may carry payload.model_request_telemetry observation facts; telemetry remains observation-only.",
+        "model_request_result_stream_status_contract": "ModelRequestResult reserves $status for completed, failed, and cancelled outcomes.",
+        "agent_execution_stream_completion_provenance": "StreamingData and AgentExecutionStreamData may add optional completion_source values observed_boundary, final_reconciliation, or synthetic_repair. The field is observation-only and additive.",
+        "agent_execution_limits": [
+          "max_seconds",
+          "max_no_progress_seconds"
+        ],
+        "provider_stream_idle_timeout": [
+          "OpenAICompatible.stream_idle_timeout",
+          "OpenAIResponsesCompatible.stream_idle_timeout",
+          "AnthropicCompatible.stream_idle_timeout"
+        ],
+        "response_materialization_idle_timeout": "response.materialization_idle_timeout",
+        "typed_stall_error": "RuntimeStageStallError",
+        "typed_provider_stall_stages": [
+          "response_first_event",
+          "response_stream",
+          "response_materialization"
+        ],
+        "action_runtime_stall_stages": [
+          "action_planning",
+          "tool_call_selection",
+          "action_execution",
+          "action_loop_close"
+        ],
+        "event_center_delivery_policy": {
+          "register_hook_parameter": "delivery_policy",
+          "hooker_attribute": "delivery_policy",
+          "fields": [
+            "mode",
+            "dispatch",
+            "emit_interval",
+            "max_items",
+            "high_frequency_only",
+            "max_summary_items"
+          ],
+          "background_reclaim": "idle_flush_and_explicit_flush",
+          "default_delivery": "raw",
+          "summary_marker": "meta.coalesced"
+        }
+      },
+      "recommended_version_specifier": ">=0.1.10,<0.2.0"
+    },
+    "skills": {
+      "repository": "Agently-Skills",
+      "authoring_protocol": "agently-skills.authoring.v2",
+      "authoring_format": "standard SKILL.md only",
+      "runtime_contract": {
+        "installed_truth_owner": "SkillLibrary immutable content-addressed revisions",
+        "selection_and_binding_owner": "AgentExecution structured semantic selection with host-issued keys and fail-closed validation",
+        "disclosure_owner": "TaskContext plus SkillContextSource plus consumer-bound ContextReader",
+        "compatibility_facade": "Agently.skills_executor supports local configure/install/list/inspect/read/context-pack/TaskDAG helpers only",
+        "execution_policy": "No Skills route, Skill-local strategy, stage engine, implicit script actionization, capability inference, or capability mounting; trusted exact-revision scripts require explicit host authorization and bind as ordinary Workspace-backed code_execution Actions",
+        "revision_binding_event": "skills.revisions.bound records exact revision availability without claiming activation",
+        "context_consumption_event": "skills.context.bound records concrete ModelRequest response-bound context consumption; availability alone is not consumption or Action evidence",
+        "remote_source_policy": "Registered SkillSourceProvider plugins materialize authorized local or Git sources to immutable local snapshots; SkillLibrary installs exact snapshots and records redacted provenance; remote compatibility installs default to untrusted and selected subpaths reject symlink escape"
+      },
+      "devtools_guidance_protocol": "agently-skills.devtools-guidance.v1",
+      "catalog_generation": "v2",
+      "recommended_bundle": "app",
+      "recommended_ref": "main",
+      "archived_catalog_generations": [
+        {
+          "generation": "v1",
+          "branch": "update/archive-legacy-v1-catalog",
+          "last_supported_framework_version": "4.1.1",
+          "status": "frozen"
+        }
+      ]
+    },
+    "blocks": {
+      "lifecycle_contract": "Blocks lowers validated ExecutionPlan data to TriggerFlow-backed ExecutionBlockGraph and maps results/evidence; it is not a Skill engine or persistence owner.",
+      "context_read_contract": "context_read consumes one caller-bound ContextReader and permits read/search/scoped_search only.",
+      "removed_block_kinds": [
+        "skill_activation",
+        "workspace_operation"
+      ],
+      "task_dag_contract": "TaskDAGExecutor validates submitted DAG data before direct TriggerFlow execution; compile_blocks and async_run_blocks are explicit opt-in carriers."
+    },
+    "docs": {
+      "repository": "docs",
+      "public_surface_protocol": "agently-docs.public-surface.v1"
+    },
+    "action_runtime": {
+      "task_workspace_contract": "TaskWorkspace Actions own bounded file read/search/write/edit/patch/export operations. A TaskWorkspace-bound shell resolves relative workdir values inside the injected root and consumes an already root-prefixed logical .agently/files/<execution-id> locator exactly once; paths outside the root fail closed.",
+      "record_store_contract": "Action persistence is explicit and does not follow from a TaskWorkspace binding.",
+      "code_execution_contract": "TaskWorkspace grant -> ordered provider selection/binding -> immutable CodeExecutionBundle materialization -> adapter-owned argv execution -> declared-output readback -> provider release -> grant close",
+      "code_execution_languages": [
+        "python>=3.10",
+        "nodejs>=18",
+        "go>=1.25",
+        "cpp20"
+      ],
+      "provider_selection_contract": "code_execution is the resource kind; provider candidates have stable provider_id values and optional candidate-local config; actual availability, normalized toolchain-version, TaskWorkspace access, safety, and typed isolation-axis probes select an eligible candidate; preferred capabilities are satisfied across the ordered set before an explicit fallback and selected facts remain in Action result metadata",
+      "provider_protocol_contract": "Directly registered ActionExecutor and ExecutionResourceProvider implementations satisfy runtime behavior protocols only. PluginManager-loaded implementations additionally satisfy the separate Agently plugin lifecycle contract at that boundary.",
+      "code_execution_output_contract": "expected_outputs contains at most 128 bounded normalized output/ paths; missing declared outputs fail the Action; retained stdout/stderr is bounded and timeout/cancellation stops the owned process or container",
+      "release_failure_contract": "provider release failures quarantine the handle and turn an otherwise successful Action into an error",
+      "unsafe_fallback_contract": "trusted_local is explicit unsafe host execution, requires allow_unsafe_local authorization and snapshot access, and cannot satisfy isolation=required",
+      "community_provider_contract": "PR #325 and #327 retain contributor ownership of concrete gVisor and Seatbelt implementations; the base branch provides only provider-neutral contracts, synthetic conformance fixtures, and migration guidance"
+    },
+    "triggerflow": {
+      "record_store_resource": "flow.create_execution(record_store=...); record_store=False opts out",
+      "task_workspace_contract": "TriggerFlow does not create or infer a TaskWorkspace.",
+      "durability_contract": "RecordStore or another explicit provider supplies snapshot, runtime-event, lease, and artifact-ref ports.",
+      "snapshot_projection_contract": "Execution snapshots use schema v2 and load full schema-v1 snapshots. Full values remain the default; set_snapshot_projection_policy(...) opts into idle-only digest projection for eligible terminal interrupt values and completed SignalNet resume metadata while pending recovery state remains complete. Canonical SHA-256 digest plus encoded size preserves duplicate/conflicting resume_request_id checks. This projection is separate from RuntimeEvent compaction and does not promise a whole-snapshot byte limit.",
+      "snapshot_retention_contract": "The built-in local RecordStore keeps the latest three execution snapshot versions per run_id by default; RecordStore(snapshot_retention={\"keep_last\": N|None}) configures or disables provider pruning, while execution.set_snapshot_retention_policy(...) is the persisted higher-precedence override. execution.async_prune_recovery_snapshots(keep_last=...) uses execution.run_id and preserves recovery; store.prune_snapshots(run_id, keep_last=...) is the explicit provider boundary. Generic put_checkpoint(...) writes are not automatically pruned. Providers declaring supports_retention for distributed recovery must expose prune_snapshots. This is an intentional in-development default behavior change and is separate from snapshot projection, RuntimeEvent compaction, business-state persistence, and full delete_snapshot(run_id) cleanup.",
+      "active_sub_flow_control": "Running to_sub_flow children register serializable frames before start. Explicit parent executions may signal or cancel one live child by frame id; cancelled children skip write-back and continuation. Live child handles are process-local, so active-frame snapshots fail closed on load while waiting interrupt frames remain resumable."
+    },
+    "task_context": {
+      "owner": "TaskContext",
+      "reader": "ContextReader",
+      "package": "ContextPackage",
+      "derived_index_owner": "TaskContext internal ContextIndex",
+      "source_protocol": "ContextSource async_enumerate_descriptors plus async_read_exact, with optional ContextSourceScopedRead for deterministic bounded location only after one canonical ref is selected; sources own canonical truth while TaskContext owns disposable derived partitions",
+      "source_kinds": "open adapter vocabulary",
+      "source_adapters": [
+        "SkillContextSource",
+        "TaskWorkspaceContextSource",
+        "RecordStoreContextSource",
+        "AgentlyMemoryContextSource"
+      ],
+      "selection_contract": "ContextIndex owns structural, lexical, and optional hybrid candidate retrieval; ContextReader owns consumer-local offsets, exact or selected-ref scoped readback, budgets, and optional ModelRequest structured selection with host-issued keys. An exact non-wildcard path with one authorized candidate is host-selected without another semantic request. Required and explicit blocks cannot be silently dropped; unknown source kinds fail before enumeration.",
+      "model_hot_projection_contract": "ContextPackage retains full omission and diagnostic facts for audit. AgentTask joins every scoped body one-to-one against host-side execution-block, ContextBlock, source-revision, binding, and canonical-ref identity before disclosure; missing or ambiguous joins exclude the body with diagnostics. Model-hot projections expose one host-issued reference_id plus task-relevant source labels, omit opaque host identities, bound repetitive optional omission details with aggregate reason counts, and do not duplicate the same body in the evidence ledger. A scoped plan may reserve at most 64 model-visible results per execution batch across query-group max_results; an otherwise valid larger TaskBoard plan is deterministically split into bounded Context-owned batches plus a dependent continuation without changing source kinds or silently truncating, while an individually over-capacity or invalid group fails closed for structured replanning."
+    },
+    "task_workspace": {
+      "surface": [
+        "TaskWorkspace",
+        "TaskWorkspace.register_file_io_handler",
+        "Agent.use_task_workspace",
+        "Agent.enable_task_workspace_file_actions"
+      ],
+      "default_root": "<entry-directory>/.agently/task_workspaces/<agent-id>",
+      "ownership": "Task files, path policy, physical readback, digest, file refs, scoped execution grants, immutable bundle materialization, and declared-output collection",
+      "terminal_artifact_contract": "Required AgentTask deliverables remain digest-pinned staged candidates through verifier acceptance, then use atomic target promotion and complete post-promotion readback; failure blocks delivery without overwriting the prior accepted target. A sufficient completed control result with a draftable manifest but no body enters the dedicated artifact-draft stage with the same bounded canonical evidence ledger; framework-owned materialization is not semantic remaining work."
+    },
+    "record_store": {
+      "surface": [
+        "RecordStore",
+        "RecordStoreRegistry",
+        "Agent.use_record_store",
+        "TriggerFlow.create_execution(record_store=...)"
+      ],
+      "local_state": "<root>/.agently/records/records.db",
+      "ownership": "Records, indexes, links, checkpoints, snapshots, snapshot version retention and cleanup, runtime events, leases, and memory persistence"
+    },
+    "session_memory": {
+      "storage_owner": "RecordStore",
+      "strategy_owner": "SessionMemory plugin",
+      "recall_owner": "TaskContext via AgentlyMemoryContextSource",
+      "task_file_dependency": false
+    }
+  },
+  "request_input": {
+    "structured_output": {
+      "surface": [
+        "ModelRequest.output",
+        "AgentExecution.output",
+        "ModelRequestResult.get_data_object"
+      ],
+      "contract": "Pydantic v2 BaseModel classes are recursively projected into prompt schemas; required, nullability, length, count, numeric range, pattern, enum, and format constraints are rendered as output requirements. Final Pydantic validation failures feed bounded correction feedback into retries, and accepted typed results remain reusable through object, data, and text readers."
+    },
+    "agent_execution_request_scope": {
+      "surface": [
+        "AgentExecution",
+        "AgentExecutionResult",
+        "AgentExecution.ensure_long_output"
+      ],
+      "contract": "Each call owns an isolated AgentExecution draft. Completed executions are immutable run records; prompt/config mutation after start fails fast. ensure_long_output(enabled=True) is a per-draft direct-delivery policy: the first request keeps its original contract, observed length termination enters TriggerFlow continuation with private TaskWorkspace staging, model-visible slot contracts preserve nested containers from the original output declaration, structured values pass an independent local slot-schema validator before append-only commit, explicitly observed empty lists and empty text are retained without synthesizing missing paths, and successful completion requires final manifest replay plus the original validation contracts. Continuation closes the base_revision/base_digest/anchor control header before business updates; a length terminal before header closure is observable bounded no progress that leaves the manifest unchanged, and three consecutive no-progress continuations terminate. Continuation finality is accepted only after declared ensure paths have manifest facts; this delivery barrier does not consume the caller's final-validation retry allowance. A valid contiguous prefix survives a rejected tail, and model-repairable final validation failures retain every accepted unit while using the bounded validation-retry allowance for missing or additional units. It currently supports plain text and JSON, does not inherit Actions/tools into continuation requests, fails closed on unknown terminals, invalid assembly, or integrity mismatches, and cannot be combined with an explicit AgentTask strategy."
+    },
+    "agent_execution_task_loop": {
+      "surface": [
+        "Agent.goal",
+        "Agent.goals",
+        "Agent.create_task",
+        "Agent.resume",
+        "Agent.async_resume",
+        "AgentExecution.strategy(\"auto\"|\"direct\"|\"flat\"|\"taskboard\")"
+      ],
+      "context_contract": "AgentExecution and AgentTask share one TaskContext and one execution-scoped TaskWorkspace view.",
+      "durability_contract": "Process state stays in memory/logs by default; record_store_recovery is opt-in.",
+      "evidence_replan_contract": "A material-evidence replan_segment without an unresolved mounted capability first uses a dedicated ModelRequest to choose bounded semantic queries from host-offered TaskContext source kinds, then creates one or more Context-owned evidence-reacquisition cards before a dependent artifact-repair card. The host requires evidence_use to bind the exact new body-bearing owner/locator/content_version/range identities added to EvidenceLedger, excludes final-artifact self-readback from progress, and permits another repair only when a newly acquired reference is consumed by the original failed criterion or stable exact material-claim subject.",
+      "taskboard_live_evidence_contract": "Dependency readback evidence is canonicalized before prompt construction; prompt projection, host binding validation, acceptance indexing, result persistence, and a dedicated manifest-to-body artifact draft share one live ledger identity domain. A control result with sufficient=false cannot become completed through next_board_action=finalize; a sufficient completed draftable manifest may hand framework-owned materialization to the artifact-draft stage without being blocked by semantic remaining_work."
+    },
+    "skills": {
+      "surface": [
+        "AgentExecution.use_skills",
+        "AgentExecution.require_skills",
+        "AgentExecution.use_skills_packs",
+        "AgentExecution.async_prepare_task_context",
+        "AgentExecution.async_read_task_context",
+        "Agent.run_skills_task",
+        "Agently.skills_executor"
+      ],
+      "contract": "Direct AgentExecution binding is canonical; async_read_task_context binds consumer/phase and accepts an optional string or ContextReadIntent override; run_skills_task is a result-shaped adapter and Agently.skills_executor is management/context compatibility only."
+    }
+  },
+  "public_typing": {
+    "status": "required",
+    "surface": "compatibility/public-typing-allowlist.json",
+    "contract": "New public methods default to typed parameters and returns; Any boundaries require explicit allowlist reasons.",
+    "compatibility_policy": "The allowlist records deliberate Any boundaries; it is not a public-method allowlist."
+  }
+}

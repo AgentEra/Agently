@@ -79,7 +79,7 @@ def configure_leaf_model_settings(provider: str) -> None:
         Agently.set_settings("OpenAICompatible.base_url", os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
         Agently.set_settings("OpenAICompatible.auth", os.getenv("DEEPSEEK_API_KEY"))
         Agently.set_settings("OpenAICompatible.model_type", "chat")
-        Agently.set_settings("OpenAICompatible.model", os.getenv("AGENT_EXECUTION_EXAMPLE_MODEL", "deepseek-chat"))
+        Agently.set_settings("OpenAICompatible.model", os.getenv("AGENT_EXECUTION_EXAMPLE_MODEL", "deepseek-v4-flash"))
         return
     Agently.set_settings("OpenAICompatible.base_url", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1"))
     Agently.set_settings("OpenAICompatible.auth", os.getenv("OLLAMA_API_KEY", "ollama"))

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import json
 import time
@@ -21,7 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from agently.core.application.AgentExecution import RuntimeStageStallError
 from agently.core.runtime.RuntimeContext import get_current_agent_execution_context, get_current_tool_phase_run_context
-from agently.utils import FunctionShifter, SettingsNamespace
+from agently.utils import SettingsNamespace
 
 if TYPE_CHECKING:
     from agently.core import Prompt
@@ -68,21 +70,21 @@ class AgentlyActionRuntime:
         if handler is None:
             self._planning_handler = self._default_planning_handler
         else:
-            self._planning_handler = FunctionShifter.asyncify(handler)
+            self._planning_handler = default_stage_call_bridge.as_async(handler)
         return self
 
     def register_action_execution_handler(self, handler):
         if handler is None:
             self._execution_handler = self._default_action_execution_handler
         else:
-            self._execution_handler = FunctionShifter.asyncify(handler)
+            self._execution_handler = default_stage_call_bridge.as_async(handler)
         return self
 
     def resolve_planning_handler(self, handler=None):
         selected = handler if handler is not None else self._planning_handler
         if selected is None:
             raise RuntimeError("[Agently Action] Action planning handler is required.")
-        resolved = FunctionShifter.asyncify(selected)
+        resolved = default_stage_call_bridge.as_async(selected)
 
         async def wrapped(context, request):
             settings = context.get("settings", self.settings) if isinstance(context, dict) else self.settings
@@ -101,7 +103,7 @@ class AgentlyActionRuntime:
         selected = handler if handler is not None else self._execution_handler
         if selected is None:
             raise RuntimeError("[Agently Action] Action execution handler is required.")
-        resolved = FunctionShifter.asyncify(selected)
+        resolved = default_stage_call_bridge.as_async(selected)
 
         async def wrapped(context, request):
             settings = context.get("settings", self.settings) if isinstance(context, dict) else self.settings

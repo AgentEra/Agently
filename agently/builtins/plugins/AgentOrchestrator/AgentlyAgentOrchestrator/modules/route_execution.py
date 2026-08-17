@@ -21,6 +21,7 @@ from agently.core.application.AgentExecution import AgentExecutionLimitExceeded,
 from agently.core.runtime.RuntimeContext import bind_runtime_context
 from agently.utils import DataFormatter
 
+from .long_output import LongOutputError
 from .routes import run_model_request_route
 from .runtime_guidance import mark_pending_guidance_not_applied
 from .task_strategy import run_agent_task_route
@@ -83,6 +84,13 @@ async def async_execute_route(
                 ),
                 "route_policy": route_meta.get("route_policy"),
             }
+        if route == "agent_task" and owner._ensure_long_output_enabled:
+            raise LongOutputError(
+                "ensure_long_output is a direct ModelRequest delivery policy and cannot be "
+                "mixed with an explicitly selected AgentTask execution. Keep the long deliverable "
+                "as a direct execution, or let AgentTask produce bounded planning results and start "
+                "a separate direct delivery execution."
+            )
         if route == "agent_task":
             result = await run_agent_task_route(owner, route_meta)
         else:

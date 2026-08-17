@@ -159,6 +159,12 @@ class OpenAICompatibleResponseAdapterMixin:
                         reasoning_mapping,
                         style=content_mapping_style,
                     )
+                if reasoning_content is None and self.model_type == "chat":
+                    reasoning_content = DataLocator.locate_path_in_dict(
+                        message_record,
+                        "choices[0].message.reasoning_content",
+                        style="dot",
+                    )
                 if reasoning_content:
                     yield "reasoning_done", reasoning_content
                 else:
@@ -172,6 +178,10 @@ class OpenAICompatibleResponseAdapterMixin:
                             "role": meta["role"] if "role" in meta else "assistant",
                             "content": done_content if done_content else content_buffer,
                         }
+                        if reasoning_content or reasoning_buffer:
+                            assistant_message["reasoning_content"] = (
+                                reasoning_content if reasoning_content else reasoning_buffer
+                            )
                         # Some OpenAI-compatible gateways send a usage-only final chunk with an
                         # empty or missing "choices" array (e.g. YuDing, MiMo). Guard against it so
                         # the accumulated content is preserved instead of raising IndexError/KeyError.

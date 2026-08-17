@@ -10,22 +10,28 @@ settings = Settings()
 settings.set_settings(
     OpenAICompatibleSettings(
         base_url="https://api.deepseek.com/v1",
-        model="deepseek-chat",
+        model="deepseek-v4-flash",
         api_key="${ENV.DEEPSEEK_API_KEY}",
-        request_options={"temperature": 0},
+        request_options={
+            "thinking": {"type": "disabled"},
+            "temperature": 0,
+        },
     )
 )
 
-settings.set("model_pool", {"support-chat": "deepseek-chat-prod"})
+settings.set("model_pool", {"support-chat": "deepseek-v4-flash-prod"})
 settings.set(
     "model_profiles",
     {
-        "deepseek-chat-prod": {
+        "deepseek-v4-flash-prod": {
             "provider": "OpenAICompatible",
             "base_url": "https://api.deepseek.com/v1",
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "api_key_pool": "deepseek-prod",
-            "request_options": {"temperature": 0},
+            "request_options": {
+                "thinking": {"type": "disabled"},
+                "temperature": 0,
+            },
         }
     },
 )
@@ -50,7 +56,7 @@ print("temperature", resolved.get("request_options", {}).get("temperature"))
 
 # Expected key output from this infrastructure-only configuration probe:
 # provider OpenAICompatible
-# model deepseek-chat
+# model deepseek-v4-flash
 # base_url https://api.deepseek.com/v1
 # api_key example-key
 # temperature 0

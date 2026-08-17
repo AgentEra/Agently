@@ -35,6 +35,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     PlainValidator,
+    PlainSerializer,
     TypeAdapter,
     Field,
     ValidationInfo,
@@ -47,6 +48,7 @@ from agently.types.data import PromptModel, ChatMessageContent, TextMessageConte
 from agently.types.data.prompt import _classify_field_spec
 from agently.utils import SettingsNamespace, DataFormatter, DataPathBuilder, TimeInfo
 from .modules.output_contract import (
+    PYDANTIC_CONTRACT_META_KEY,
     generate_output_requirement_lines,
     pydantic_model_to_output_schema,
 )
@@ -1142,12 +1144,47 @@ class AgentlyPromptGenerator(PromptGenerator):
                 casted.append(target_type(item))
             return casted
 
+        def field_constraint_kwargs(
+            field_schema: Any,
+        ) -> dict[str, Any]:
+            if not isinstance(field_schema, tuple) or len(field_schema) < 4:
+                return {}
+            metadata = field_schema[3]
+            if not isinstance(metadata, Mapping):
+                return {}
+            contract = metadata.get(PYDANTIC_CONTRACT_META_KEY)
+            if not isinstance(contract, Mapping):
+                return {}
+            constraints = contract.get("constraints")
+            if not isinstance(constraints, Mapping):
+                return {}
+            field_key_map = {
+                "minLength": "min_length",
+                "maxLength": "max_length",
+                "minItems": "min_length",
+                "maxItems": "max_length",
+                "minimum": "ge",
+                "maximum": "le",
+                "exclusiveMinimum": "gt",
+                "exclusiveMaximum": "lt",
+                "multipleOf": "multiple_of",
+                "pattern": "pattern",
+            }
+            return {
+                field_key_map[key]: value
+                for key, value in constraints.items()
+                if key in field_key_map
+            }
+
         if isinstance(schema, Mapping):
             for field_name, field_type_schema in schema.items():
                 field_type = Any
                 field_desc = None
                 default_value = None
                 field_required = False
+                field_constraints = field_constraint_kwargs(
+                    field_type_schema
+                )
                 if isinstance(field_type_schema, str):
                     field_desc = field_type_schema
                     field_required = strict_output
@@ -1166,7 +1203,24 @@ class AgentlyPromptGenerator(PromptGenerator):
                     field_required = strict_output or ensure_marker
                     if field_required:
                         default_value = ...
-                    if isinstance(value_type, type) or get_origin(value_type) is not None:
+                    if isinstance(value_type, Mapping):
+                        field_type = self._generate_output_model(
+                            f"{ name }_{ field_name.capitalize() }",
+                            value_type,
+                            strict_output=strict_output,
+                        )
+                        field_desc = desc
+                    elif (
+                        isinstance(value_type, Sequence)
+                        and not isinstance(value_type, (str, bytes))
+                    ):
+                        field_type = self._generate_output_model(
+                            f"{ name }_{ field_name.capitalize() }",
+                            list(value_type),
+                            strict_output=strict_output,
+                        )
+                        field_desc = desc
+                    elif isinstance(value_type, type) or get_origin(value_type) is not None:
                         field_type = value_type
                         field_desc = desc
                     else:
@@ -1185,7 +1239,7 @@ class AgentlyPromptGenerator(PromptGenerator):
                     field_desc = str(field_type_schema)
                     field_required = strict_output
                 if field_required and field_type is not Any:
-                    field_annotation = field_type | None
+                    field_annotation = cast(Any, field_type) | None
                 else:
                     field_annotation = field_type
                 if get_origin(field_type) in (list, List):
@@ -1200,8 +1254,13 @@ class AgentlyPromptGenerator(PromptGenerator):
                                 Annotated[
                                     field_annotation,
                                     PlainValidator(lambda value: ensure_list_and_cast(value, elem_type)),
+                                    PlainSerializer(lambda value: value, return_type=Any),
                                 ],
-                                Field(default_value, description=field_desc),
+                                Field(
+                                    default_value,
+                                    description=field_desc,
+                                    **field_constraints,
+                                ),
                             )
                         }
                     )
@@ -1214,7 +1273,11 @@ class AgentlyPromptGenerator(PromptGenerator):
                                     field_annotation,
                                     PlainValidator(make_enum_validator(enum_type)),
                                 ],
-                                Field(default_value, description=field_desc),
+                                Field(
+                                    default_value,
+                                    description=field_desc,
+                                    **field_constraints,
+                                ),
                             )
                         }
                     )
@@ -1223,7 +1286,11 @@ class AgentlyPromptGenerator(PromptGenerator):
                         {
                             field_name: (
                                 field_annotation,
-                                Field(default_value, description=field_desc),
+                                Field(
+                                    default_value,
+                                    description=field_desc,
+                                    **field_constraints,
+                                ),
                             )
                         }
                     )
@@ -1269,6 +1336,7 @@ class AgentlyPromptGenerator(PromptGenerator):
             return Annotated[
                 list[item_type | None] | None,
                 PlainValidator(lambda v: ensure_list_and_cast(v, cast(type, item_type))),
+                PlainSerializer(lambda value: value, return_type=Any),
             ]
 
     def to_output_model(self, *args, strict_output: bool | None = None, **kwargs) -> type["BaseModel"]:

@@ -80,11 +80,32 @@ class OpenAIResponsesCompatibleResponseAdapterMixin:
 
     @staticmethod
     def _extract_reasoning_summary(response_record: dict[str, Any]) -> str:
+        output_items = response_record.get("output")
+        if isinstance(output_items, list):
+            output_texts: list[str] = []
+            for output_item in output_items:
+                if not isinstance(output_item, dict) or output_item.get("type") != "reasoning":
+                    continue
+                summary = output_item.get("summary")
+                if not isinstance(summary, list):
+                    continue
+                for summary_part in summary:
+                    if isinstance(summary_part, str):
+                        output_texts.append(summary_part)
+                    elif isinstance(summary_part, dict) and isinstance(summary_part.get("text"), str):
+                        output_texts.append(str(summary_part["text"]))
+            if output_texts:
+                return "".join(output_texts)
+
+        # Retain compatibility with gateways that put generated reasoning
+        # directly on the response-level reasoning object.
         reasoning = response_record.get("reasoning")
         if not isinstance(reasoning, dict):
             return ""
         summary = reasoning.get("summary")
         if isinstance(summary, str):
+            if summary.strip().lower() in {"auto", "concise", "detailed", "none"}:
+                return ""
             return summary
         if isinstance(summary, list):
             texts: list[str] = []
@@ -177,6 +198,18 @@ class OpenAIResponsesCompatibleResponseAdapterMixin:
                     content_buffer = final_text
                 continue
 
+            if payload_type == "response.reasoning_summary_text.delta":
+                delta = str(loaded_message.get("delta", ""))
+                reasoning_buffer += delta
+                yield "reasoning_delta", delta
+                continue
+
+            if payload_type == "response.reasoning_summary_text.done":
+                final_reasoning = str(loaded_message.get("text", ""))
+                if final_reasoning and not reasoning_buffer:
+                    reasoning_buffer = final_reasoning
+                continue
+
             if payload_type == "response.function_call_arguments.delta":
                 call_id = str(loaded_message.get("call_id", ""))
                 if call_id == "":
@@ -228,12 +261,12 @@ class OpenAIResponsesCompatibleResponseAdapterMixin:
                             )
                 continue
 
-            if payload_type == "response.completed":
+            if payload_type in {"response.completed", "response.incomplete"}:
                 response_payload = loaded_message.get("response", loaded_message)
                 if isinstance(response_payload, dict):
                     response_record.update(response_payload)
                 completed = True
-                break
+                continue
 
         if not saw_any_event:
             return
@@ -257,10 +290,12 @@ class OpenAIResponsesCompatibleResponseAdapterMixin:
         done_content = self._collect_assistant_text(response_output_items)
         if done_content == "":
             done_content = content_buffer
-        reasoning_buffer = self._extract_reasoning_summary(response_record)
+        reasoning_done = self._extract_reasoning_summary(response_record)
+        if reasoning_done == "":
+            reasoning_done = reasoning_buffer
 
         yield "done", done_content
-        yield "reasoning_done", reasoning_buffer
+        yield "reasoning_done", reasoning_done
         yield "original_done", response_record
 
         if "id" in response_record:

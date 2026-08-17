@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 from typing import Any, Callable
 
-from agently.utils import FunctionShifter
 
 
 class LocalFunctionActionExecutor:
@@ -40,5 +41,5 @@ class LocalFunctionActionExecutor:
         action_input = action_call.get("action_input", {})
         if not isinstance(action_input, dict):
             action_input = {}
-        func = FunctionShifter.asyncify(self.func)
+        func = default_stage_call_bridge.as_async(self.func)
         return await func(**action_input)

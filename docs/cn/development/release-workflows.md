@@ -44,6 +44,30 @@ metadata。
 更大的目标，而 `compatibility/in-development.json` 描述将要发布这个已验收切片的当前工作
 版本。
 
+## 伴随仓管理
+
+Agently 按角色协调各仓库，不把所有 companion 当成相同依赖类型：
+
+| 仓库 | 角色 | 发布门禁 |
+|---|---|---|
+| Agently-Stage | 必需运行时依赖 | 提高 Agently 最低版本前，先发布并验证 Stage |
+| Agently-Skills | Coding-agent 指导 | 用户可见行为变化时同步 Skill、catalog、bundle、compatibility support 与 Codex 本地副本 |
+| Agently-Devtools | 可选观测伴随仓 | RuntimeEvent、ObservationEvent 或 run-lineage 合同变化时评审 |
+
+Agently-Stage 与 Agently 不采用同步版本号。Agently 在 `pyproject.toml` 和
+`runtime_support.agently_stage` 记录兼容范围，lock 记录发布验证使用的精确产物。
+
+需要 Stage 变更时，必须按以下顺序执行：
+
+1. 在 Stage 支持的 Python 矩阵上校验并构建候选 wheel；
+2. 使用该 wheel 运行受影响的 Agently 集成测试和全量测试；
+3. 发布不可变 Stage tag，验证 PyPI，并在空白环境安装；
+4. 更新 Agently 最低 Stage 版本、lock、compatibility manifest、测试和文档；
+5. 让 Stage 从 PyPI 解析，再次运行 Agently 校验。
+
+tag 和本地 wheel 只是候选证据，不是发布证据。所需 Stage 版本尚未出现在 PyPI 时，
+不得合并提高 Agently 最低版本的改动。
+
 ## 文档
 
 GitHub Pages 使用 `main` 分支里的 `docs/` 目录。
@@ -237,7 +261,10 @@ Desktop installers 不属于当前主仓库 release 流程。
 
 ## PyPI 发布
 
-当前主要 PyPI 自动化是 `Publish on version change`。它在 push 到 `main` 且改动 `pyproject.toml` 时运行，检测包版本是否变化；只有版本变化时才用 Poetry 发布。
+当前主要 PyPI 自动化是 `Publish on version change`。它在 push 到 `main` 且改动
+`pyproject.toml` 时运行。校验矩阵会从 PyPI 安装 lock 中的依赖（包括
+Agently-Stage），先运行 typing 与测试；随后 publish job 检测 Agently package version
+是否变化，并只在 version 变化时使用 Poetry 发布。
 
 PyPI 项目列表页展示的是包元数据 `Summary`，来源于 `pyproject.toml` 的 `[project].description`。项目内页展示完整 README，来源于 `[project].readme`。
 

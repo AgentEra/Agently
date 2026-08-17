@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any, cast
@@ -24,7 +26,7 @@ from agently.core.orchestration.TaskDAG import (
     TaskDAGValidator,
 )
 from agently.types.plugins import TaskDAGPlanner
-from agently.utils import FunctionShifter, SettingsNamespace
+from agently.utils import SettingsNamespace
 
 
 TASK_DAG_PLANNER_OUTPUT_SCHEMA: dict[str, Any] = {
@@ -273,7 +275,7 @@ class AgentlyTaskDAGPlanner(TaskDAGPlanner):
         *,
         max_retries: int = 3,
     ) -> Any:
-        return FunctionShifter.syncify(self.async_plan)(
+        return default_stage_call_bridge.as_sync(self.async_plan)(
             request,
             graph_input,
             max_retries=max_retries,

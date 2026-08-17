@@ -125,7 +125,14 @@ What close does, in order:
 3. close the runtime stream
 4. freeze and return the close snapshot
 
-`timeout=` on close is the **drain timeout** — the maximum wait for in-flight tasks before forcing the close. It is not the auto-close timer.
+`timeout=` on close is the **drain timeout** — the maximum wait for in-flight
+tasks before forcing cancellation. It is one monotonic settlement deadline:
+TriggerFlow does not grant the same timeout again after cancellation. If owned
+work suppresses cancellation past that deadline, close raises `TimeoutError`
+with its internal owner origin rather than claiming settlement. A top-level
+managed task that completed with an error before close is retained until close
+consumes that error exactly once; handler errors already consumed by their
+parent dispatch are not reported twice. This is not the auto-close timer.
 
 ## auto_close and auto_close_timeout
 

@@ -34,14 +34,16 @@ def setup_chat_completions() -> None:
 
     Settings aliases: "OpenAICompatible" / "OpenAI" / "OAIClient".
     """
+    request_options = {}
     if os.getenv("AGENTLY_EXAMPLE_CHAT_BASE_URL"):
         base_url = os.getenv("AGENTLY_EXAMPLE_CHAT_BASE_URL", "")
         model = os.getenv("AGENTLY_EXAMPLE_CHAT_MODEL", "")
         auth = os.getenv("AGENTLY_EXAMPLE_CHAT_API_KEY", "")
     elif os.getenv("DEEPSEEK_API_KEY"):
         base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-        model = os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat")
+        model = os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash")
         auth = os.getenv("DEEPSEEK_API_KEY", "")
+        request_options = {"thinking": {"type": "disabled"}}
     else:
         base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
         model = os.getenv("OLLAMA_DEFAULT_MODEL", "qwen2.5:7b")
@@ -54,6 +56,7 @@ def setup_chat_completions() -> None:
             "model": model,
             "model_type": "chat",
             "auth": auth,
+            "request_options": request_options,
         },
     )
 

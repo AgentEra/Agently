@@ -83,6 +83,111 @@ def _effective_json_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     return effective
 
 
+def _inline_local_json_schema_refs(
+    schema: Mapping[str, Any],
+) -> dict[str, Any]:
+    definitions = schema.get("$defs")
+    resolved_definitions = (
+        dict(definitions) if isinstance(definitions, Mapping) else {}
+    )
+
+    def resolve(value: Any, stack: frozenset[str] = frozenset()) -> Any:
+        if isinstance(value, list):
+            return [resolve(item, stack) for item in value]
+        if not isinstance(value, Mapping):
+            return value
+        ref = value.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/$defs/"):
+            name = ref.removeprefix("#/$defs/")
+            declared = resolved_definitions.get(name)
+            if isinstance(declared, Mapping) and name not in stack:
+                merged = {
+                    **dict(declared),
+                    **{
+                        key: item
+                        for key, item in value.items()
+                        if key != "$ref"
+                    },
+                }
+                return resolve(merged, stack | {name})
+        return {
+            key: resolve(item, stack)
+            for key, item in value.items()
+            if key != "$defs"
+        }
+
+    resolved = resolve(schema)
+    return dict(resolved) if isinstance(resolved, Mapping) else {}
+
+
+def _annotation_json_schema(annotation: Any) -> dict[str, Any]:
+    try:
+        schema = TypeAdapter(annotation).json_schema()
+    except Exception:
+        return {}
+    if not isinstance(schema, Mapping):
+        return {}
+    return _inline_local_json_schema_refs(_effective_json_schema(schema))
+
+
+def output_schema_to_json_schema(
+    output_schema: Any,
+    *,
+    strict_output: bool = False,
+) -> dict[str, Any]:
+    """Project an Agently output declaration without erasing nested containers."""
+
+    def field_is_required(field_schema: Any) -> bool:
+        if strict_output:
+            return True
+        if not isinstance(field_schema, tuple):
+            return False
+        pydantic_contract = _get_pydantic_contract(field_schema)
+        if pydantic_contract is not None:
+            return bool(pydantic_contract.get("required", False))
+        marker = field_schema[2] if len(field_schema) >= 3 else None
+        return DataPathBuilder.get_ensure_policy(marker) is not None
+
+    def project(value: Any) -> dict[str, Any]:
+        if isinstance(value, tuple):
+            declared = value[0] if value else Any
+            projected = project(declared)
+            if len(value) >= 2 and value[1]:
+                projected = {
+                    **projected,
+                    "description": str(value[1]),
+                }
+            return projected
+        if isinstance(value, Mapping):
+            properties = {
+                str(key): project(child)
+                for key, child in value.items()
+            }
+            required = [
+                str(key)
+                for key, child in value.items()
+                if field_is_required(child)
+            ]
+            projected: dict[str, Any] = {
+                "type": "object",
+                "properties": properties,
+                "additionalProperties": not strict_output,
+            }
+            if required:
+                projected["required"] = required
+            return projected
+        if isinstance(value, list):
+            return {
+                "type": "array",
+                "items": project(value[0]) if value else {},
+            }
+        if isinstance(value, str):
+            return {"description": value} if value else {}
+        return _annotation_json_schema(value)
+
+    return project(output_schema)
+
+
 def _pydantic_contract_meta(
     annotation: Any,
     *,

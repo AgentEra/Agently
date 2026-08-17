@@ -25,6 +25,7 @@ SerializableRuntimeDataNamespace = SerializableStateDataNamespace
 
 # from .Storage import Storage, AsyncStorage
 from .FunctionShifter import FunctionShifter
+from .CallableUtils import filter_callable_options
 from .DataFormatter import DataFormatter
 from .DataPathBuilder import DataPathBuilder
 from .LazyImport import LazyImport as LazyImport, LazyImportDependencyError as LazyImportDependencyError

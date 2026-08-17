@@ -54,6 +54,42 @@ Core should not directly become the feature catalog. For example,
 requirement, but it should not be the user-facing API for "do coding work in my
 repo".
 
+Agently-Stage is a private mechanism dependency at this boundary. TriggerFlow
+directly owns one Stage structured scope for caller-loop task creation,
+ownership, cancellation delivery, origin diagnostics, and settlement; Stage
+selects the caller loop lazily when the first task enters. TriggerFlow-created
+managed work uses `Stage.create_task(...)`; a genuinely pre-existing external
+task may use `Stage.adopt(...)`. Stage remains the single live task/origin
+registry. TriggerFlow retains only its business error projection, one-deadline
+close policy, and RuntimeEvent mapping; there is no Agently task-scope adapter
+or shadow registry. Stage's Tunnel supports
+TriggerFlow's process-local execution stream transport. EventCenter keeps its
+native background-task mechanism because the Stage-backed candidate had a
+measurable hot-path cost. EventCenter, RuntimeEvent, SignalNet,
+TriggerFlowExecution, and AgentExecution remain the semantic owners.
+An application or plugin may use Agently-Stage's public `with Stage()`,
+`Stage.as_sync()` / `Stage.as_async()`, `Tunnel`, or `EventEmitter` capabilities
+independently for its own process-local lifetime, call bridge, replay channel,
+or listener boundary. That does not make Stage the Agently workflow owner:
+integrations must not place Stage objects in execution state or use Stage
+EventEmitter to replace EventCenter/SignalNet. Agently's internal sync/async call adaptation uses
+`StageCallBridge`; `FunctionShifter` remains only as a deprecated public
+compatibility facade. Its scalar `syncify()` / `asyncify()` methods delegate to
+the scoped `Stage.as_sync()` / `Stage.as_async()` deep interface, while its
+future and stream compatibility methods retain the advanced bridge.
+`StageCallBridge` call-shape conversion is light by default. Only a scheduling owner such as
+TriggerFlow or EventCenter requests `managed=True`; this prevents compatibility
+helpers from changing error or cancellation semantics merely because they adapt
+sync and async call shapes.
+
+Agently 4.1.4.7 depends on Agently-Stage 0.3.8 or newer in the 0.3 compatibility line.
+Stage owns automatic physical carrier selection across mixed sync/async
+boundaries; TriggerFlow still owns workflow lifecycle and public state. Reusing
+one safe carrier does not merge separate Stage scope inventories or expose
+carrier concepts through Agently's public lifecycle.
+`LocalTaskScope` is not an Agently integration surface; it is a deprecated
+Agently-Stage compatibility shim scheduled for removal in Agently-Stage 0.4.
+
 Core also should not own plugin output prompts, provider-specific defaults, or
 Agent Component convenience behavior when a lower layer already has a contract
 for them. Plugins can import core contracts; core cannot depend on built-in

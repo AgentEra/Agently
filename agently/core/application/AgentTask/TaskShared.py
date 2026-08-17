@@ -49,7 +49,7 @@ from agently.core.application.AgentExecution.Stream import (
 from agently.core.model.StructuredOutputParser import parse_output_contract_dict
 from agently.types.data import AgentExecutionStreamData, ReplanSignal, TaskBoardCardResult, TaskBoardRevision
 from agently.types.trigger_flow import TriggerFlowRuntimeData
-from agently.utils import DataFormatter, FunctionShifter
+from agently.utils import DataFormatter
 from agently.utils.LanguagePolicy import (
     apply_language_policy_to_prompt,
     language_policy_from_prompt_snapshot,
@@ -1060,7 +1060,6 @@ __all__ = [
     "CarrierOutputPolicy",
     "SCOPED_RETRIEVAL_RESULT_CAPACITY",
     "DataFormatter",
-    "FunctionShifter",
     "ReplanSignal",
     "TaskBoard",
     "TaskBoardCardResult",

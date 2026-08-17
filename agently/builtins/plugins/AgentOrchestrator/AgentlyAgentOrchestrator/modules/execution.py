@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import inspect
 import uuid
@@ -48,7 +50,7 @@ from agently.types.data import (
     SkillMode,
 )
 from agently.types.plugins import ContextSource
-from agently.utils import DataFormatter, FunctionShifter
+from agently.utils import DataFormatter
 
 from .bridges import (
     bridge_agent_task_stream_item as bridge_agent_task_stream_item_entry,
@@ -253,6 +255,9 @@ class AgentExecution:
         self._terminal_error_projection: dict[str, Any] | None = None
         self._terminal_status: Literal["completed", "failed", "cancelled"] | None = None
         self._model_request_result: Any = None
+        self._ensure_long_output_enabled = False
+        self._long_output_result_object: Any = None
+        self._long_output_meta: dict[str, Any] = {}
         self.status = "created"
         self._started = False
         self._completed = False
@@ -277,17 +282,17 @@ class AgentExecution:
         self._seen_action_log_keys: set[str] = set()
         self._key_waiter_handlers: dict[str, list[Any]] = {}
 
-        self.start = FunctionShifter.syncify(self.async_start)
-        self.get_data = FunctionShifter.syncify(self.async_get_data)
-        self.get_data_object = FunctionShifter.syncify(self.async_get_data_object)
-        self.get_full_data = FunctionShifter.syncify(self.async_get_full_data)
-        self.get_text = FunctionShifter.syncify(self.async_get_text)
-        self.get_meta = FunctionShifter.syncify(self.async_get_meta)
-        self.record_data = FunctionShifter.syncify(self.async_record_data)
-        self.add_guidance = FunctionShifter.syncify(self.async_add_guidance)
-        self.get_key_result = FunctionShifter.syncify(self.async_get_key_result)
-        self.start_waiter = FunctionShifter.syncify(self.async_start_waiter)
-        self.streaming_print = FunctionShifter.syncify(self.async_streaming_print)
+        self.start = default_stage_call_bridge.as_sync(self.async_start)
+        self.get_data = default_stage_call_bridge.as_sync(self.async_get_data)
+        self.get_data_object = default_stage_call_bridge.as_sync(self.async_get_data_object)
+        self.get_full_data = default_stage_call_bridge.as_sync(self.async_get_full_data)
+        self.get_text = default_stage_call_bridge.as_sync(self.async_get_text)
+        self.get_meta = default_stage_call_bridge.as_sync(self.async_get_meta)
+        self.record_data = default_stage_call_bridge.as_sync(self.async_record_data)
+        self.add_guidance = default_stage_call_bridge.as_sync(self.async_add_guidance)
+        self.get_key_result = default_stage_call_bridge.as_sync(self.async_get_key_result)
+        self.start_waiter = default_stage_call_bridge.as_sync(self.async_start_waiter)
+        self.streaming_print = default_stage_call_bridge.as_sync(self.async_streaming_print)
         self.when_key = self.on_key
         self.get_generator = self._get_generator
         self.run = self._compat_run
@@ -726,6 +731,13 @@ class AgentExecution:
         target._draft.output(*args, **kwargs)
         return target._refresh_prompt_snapshot()
 
+    def ensure_long_output(self, enabled: bool = True) -> "AgentExecution":
+        """Require this execution to preserve and validate output across model windows."""
+
+        target = self._reconfiguration_target()
+        target._ensure_long_output_enabled = bool(enabled)
+        return target
+
     def attachment(self, *args: Any, **kwargs: Any) -> "AgentExecution":
         target = self._reconfiguration_target()
         target._draft.attachment(*args, **kwargs)
@@ -754,7 +766,7 @@ class AgentExecution:
         )
 
     def resolve_skills_plan(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        return FunctionShifter.syncify(self.async_resolve_skills_plan)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_resolve_skills_plan)(*args, **kwargs)
 
     async def async_resolve_skills_plan(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         kwargs = self._with_local_skill_kwargs(kwargs)
@@ -787,7 +799,7 @@ class AgentExecution:
         return cast(Any, await project(self, mode=mode))
 
     def run_skills_task(self, *args: Any, **kwargs: Any) -> Any:
-        return FunctionShifter.syncify(self.async_run_skills_task)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_run_skills_task)(*args, **kwargs)
 
     async def async_run_skills_task(self, *args: Any, **kwargs: Any) -> Any:
         kwargs = self._with_local_skill_kwargs(kwargs)
@@ -985,7 +997,7 @@ class AgentExecution:
         *,
         must_in_prompt: bool = False,
     ) -> Generator[tuple[str, Any], None, None]:
-        return FunctionShifter.syncify_async_generator(
+        return default_stage_call_bridge.iter_sync(
             self.async_wait_keys(keys, must_in_prompt=must_in_prompt)
         )
 
@@ -1004,7 +1016,7 @@ class AgentExecution:
         tasks: list[asyncio.Task[tuple[str, Any, Any]]] = []
 
         async def handler_wrapper(path: str, value: Any, handler: Any) -> tuple[str, Any, Any]:
-            return path, value, await FunctionShifter.asyncify(handler)(value)
+            return path, value, await default_stage_call_bridge.as_async(handler)(value)
 
         async for path, value in self.async_wait_keys(keys, must_in_prompt=False):
             for handler in self._key_waiter_handlers.get(path, []):
@@ -1536,6 +1548,11 @@ class AgentExecution:
                 "goals": list(self.goal_items),
                 "success_criteria": list(self.success_criteria_items),
                 "generated_success_criteria": list(self.generated_success_criteria),
+            }
+        elif self._ensure_long_output_enabled:
+            route, route_meta = "model_request", {
+                "strategy": "direct",
+                "selected_by": "ensure_long_output",
             }
         elif self.required_action_ids() and self.route_planner.route_allowed("model_request"):
             route, route_meta = "model_request", {

@@ -45,10 +45,11 @@ def configure_model(provider: ProviderName, *, temperature: float = 0.0):
             "OpenAICompatible",
             {
                 "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-                "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"),
+                "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash"),
                 "model_type": "chat",
                 "auth": api_key,
                 "request_options": {
+                    "thinking": {"type": "disabled"},
                     "temperature": temperature,
                 },
             },

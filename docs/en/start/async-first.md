@@ -6,12 +6,39 @@ keywords: Agently, async, async_get, get_async_generator, async_start
 
 # Async First
 
-Agently is async-native at the runtime layer. Sync methods are convenience wrappers generated from the async ones via `FunctionShifter.syncify()`. For real services, async should be the default path.
+Agently is async-native at the runtime layer. Internal compatibility methods
+cross the boundary through Agently-Stage's `StageCallBridge`; the bridge stays
+light unless the owning runtime explicitly requests managed settlement.
+Deprecated `FunctionShifter.syncify()` / `asyncify()` now delegate to the
+scoped `Stage.as_sync()` / `Stage.as_async()` adapters. For real services,
+async should be the default path.
 
 ## When sync is fine
 
 - One-off scripts, notebooks, teaching demos.
 - Code that doesn't share an event loop with anything else.
+
+Sync compatibility is also valid at an interface you do not own. For example,
+a tool provider may intentionally expose a synchronous method even when its
+underlying SDK is async:
+
+```python
+from agently_stage import Stage
+
+
+def search(query: str):
+    with Stage() as stage:
+        return stage.get(search_tool.search, query)
+```
+
+Agently-Stage 0.3.8 automatically reuses or selects a physically safe carrier,
+including when this method runs inside a synchronous TriggerFlow chunk. The
+provider does not need to know that TriggerFlow also uses Stage, and may call
+sync execution-data methods such as `data.set_state(...)` afterward. This is a
+synchronous boundary and blocks its worker thread; when you own the surrounding
+async API, direct `await` and the native async Agently methods remain preferable.
+An object that is bound to the caller's event loop cannot be moved to another
+carrier; await that work on its owner loop.
 
 ## When async is the default
 
@@ -89,6 +116,7 @@ data namespace.
 | `flow.start()` | `flow.async_start()` |
 | `execution.start()` / `execution.close()` | `execution.async_start()` / `execution.async_close()` |
 | `data.set_state(...)` / `data.emit(...)` | `data.async_set_state(...)` / `data.async_emit(...)` |
+| `agent.add_chat_history(...)` | `await agent.async_add_chat_history(...)` |
 
 ## Minimal async example
 

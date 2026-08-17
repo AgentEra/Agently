@@ -423,13 +423,14 @@ Action planning 是模型拥有的步骤。如果 Agent 使用 `model_pool`，�
 `action.planning_model_key` 设置为负责规划 action round 的业务模型 key：
 
 ```python
-agent.set_settings("model_pool", {"task-main": "deepseek-chat-prod"})
+agent.set_settings("model_pool", {"task-main": "deepseek-v4-flash-prod"})
 agent.set_settings("model_profiles", {
-    "deepseek-chat-prod": {
+    "deepseek-v4-flash-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
+        "request_options": {"thinking": {"type": "disabled"}},
     }
 })
 agent.set_settings("action.planning_model_key", "task-main")

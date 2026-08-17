@@ -46,6 +46,15 @@ Common `capture` paths:
 
 The right column is mapped onto the child's input or resources by the keys on the left.
 
+Value, state, and `flow_data` captures are isolated copies. A
+`resources -> resources` capture forwards the same live object by identity; it
+does not deep-copy clients, callbacks, locks, events, or other live handles. If
+a paused sub-flow is restored, the binding resolves against the resource
+currently re-injected into the parent execution rather than retaining an old
+object in the snapshot. Flow-level `runtime_resources` already configured on
+the child template are also inherited by identity when TriggerFlow creates the
+isolated child flow instance.
+
 ## write_back — child result → parent
 
 `write_back` maps the child's final result back into the parent:
@@ -122,10 +131,10 @@ Items pushed via `data.async_put_into_stream(...)` inside the child show up in t
 ## Control a running child by frame id
 
 `capture` and `write_back` are boundary bindings, not live bindings: `capture`
-copies the selected parent values when the child starts, and `write_back` runs
-only after successful child completion. When the host needs to inspect, signal,
-or cancel an active child, keep an explicit parent execution handle and use its
-sub-flow frame:
+copies selected serializable parent values when the child starts, forwards
+selected live resources by identity, and `write_back` runs only after successful
+child completion. When the host needs to inspect, signal, or cancel an active
+child, keep an explicit parent execution handle and use its sub-flow frame:
 
 ```python
 execution = parent_flow.create_execution(auto_close=False)

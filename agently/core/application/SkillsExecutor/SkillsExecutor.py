@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -29,7 +31,6 @@ from agently.core.application.SkillLibrary import (
 )
 from agently.core.context import TaskContext
 from agently.types.data import ContextBudget, ContextReadIntent, SkillSourceRequest
-from agently.utils import FunctionShifter
 
 if TYPE_CHECKING:
     from agently.core import PluginManager
@@ -648,7 +649,7 @@ class SkillsExecutor:
         )
 
     def build_context_pack(self, **kwargs: Any) -> dict[str, Any]:
-        return FunctionShifter.syncify(self.async_build_context_pack)(**kwargs)
+        return default_stage_call_bridge.as_sync(self.async_build_context_pack)(**kwargs)
 
     def task_dag_resolver(
         self,

@@ -46,6 +46,13 @@ parent.to(prepare_request).to_sub_flow(
 
 右列按左列 key 映射到子的 input 或 resource。
 
+对 value、state 与 `flow_data` 的 capture 会生成隔离副本。
+`resources -> resources` capture 则按对象身份传递同一个 live object，不会
+deep-copy client、callback、lock、event 或其他 live handle。暂停的子流程恢复时，
+该绑定会解析父 execution 当前重新注入的 resource，不会从 snapshot 保留旧对象。
+TriggerFlow 创建隔离的子 flow 实例时，也会按对象身份继承 child template 上已有的
+flow-level `runtime_resources`。
+
 ## write_back —— 子结果 → 父
 
 `write_back` 把子的最终结果映回父：
@@ -122,9 +129,9 @@ def build_parent_flow():
 ## 按 frame id 控制运行中的子流
 
 `capture` 和 `write_back` 是边界绑定，不是实时绑定：`capture` 在子流启动时
-复制选定的父值，`write_back` 只在子流成功完成后执行。host 如需检查、发送
-信号或取消运行中的子流，应保留显式父 execution handle，并使用 sub-flow
-frame：
+复制选定的可序列化父值，并按对象身份传递选中的 live resources；`write_back`
+只在子流成功完成后执行。host 如需检查、发送信号或取消运行中的子流，应保留
+显式父 execution handle，并使用 sub-flow frame：
 
 ```python
 execution = parent_flow.create_execution(auto_close=False)

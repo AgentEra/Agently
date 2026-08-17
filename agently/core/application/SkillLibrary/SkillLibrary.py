@@ -14,13 +14,14 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import re
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, cast
 
 from agently.types.data import SkillSourceRequest
 from agently.types.plugins import SkillSourceProvider
-from agently.utils import FunctionShifter
 
 from .Package import SkillPackageRevision, SkillPackRevision, SkillResourceRead
 from .Parser import ParsedSkillPackage, SkillPackageError, parse_skill_package
@@ -53,8 +54,8 @@ class SkillLibrary:
         )
         self.register_source_provider(local_provider)
         self._library_owned_source_provider_ids.add(id(local_provider))
-        self.install_source = FunctionShifter.syncify(self.async_install_source)
-        self.install_pack_source = FunctionShifter.syncify(
+        self.install_source = default_stage_call_bridge.as_sync(self.async_install_source)
+        self.install_pack_source = default_stage_call_bridge.as_sync(
             self.async_install_pack_source
         )
 

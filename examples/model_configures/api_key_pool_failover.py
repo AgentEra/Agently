@@ -15,15 +15,16 @@ from typing import Any, cast
 
 settings = Settings()
 settings.set("plugins.ModelRequester.activate", "OpenAICompatible")
-settings.set("model_pool", {"support-chat": "deepseek-chat-prod"})
+settings.set("model_pool", {"support-chat": "deepseek-v4-flash-prod"})
 settings.set(
     "model_profiles",
     {
-        "deepseek-chat-prod": {
+        "deepseek-v4-flash-prod": {
             "provider": "OpenAICompatible",
             "base_url": "https://api.deepseek.com/v1",
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "api_key_pool": "deepseek-prod",
+            "request_options": {"thinking": {"type": "disabled"}},
         }
     },
 )

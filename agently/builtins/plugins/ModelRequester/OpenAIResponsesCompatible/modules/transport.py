@@ -16,12 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Literal, cast
 
-from httpx import AsyncClient, HTTPStatusError, ReadError, RequestError, Timeout
+from httpx import AsyncClient, HTTPStatusError, RequestError, Timeout
 from httpx_sse import SSEError, aconnect_sse
-from stamina import retry
 
 from agently.core.application.AgentExecution import RuntimeStageStallError
 from agently.types.data import AgentlyRequestData, SerializableValue
@@ -205,28 +203,26 @@ class OpenAIResponsesCompatibleTransportMixin:
         headers: dict[str, Any],
         json: "SerializableValue",
     ):
-        last_event_id = ""
-        reconnection_delay = 0.0
+        """Open one SSE connection for the current public request attempt."""
 
-        @retry(on=ReadError)
         async def _aiter_sse():
-            nonlocal last_event_id, reconnection_delay
-            time.sleep(reconnection_delay)
-            headers.update({"Accept": "text/event-stream"})
-            if last_event_id:
-                headers.update({"Last-Event-ID": last_event_id})
-
-            async with aconnect_sse(client, method, url, headers=headers, json=json) as event_source:
+            request_headers = dict(headers)
+            request_headers["Accept"] = "text/event-stream"
+            async with aconnect_sse(
+                client,
+                method,
+                url,
+                headers=request_headers,
+                json=json,
+            ) as event_source:
                 try:
                     async for sse in event_source.aiter_sse():
-                        last_event_id = sse.id
-                        if sse.retry is not None:
-                            reconnection_delay = sse.retry / 1000
                         yield sse
                 except GeneratorExit:
                     pass
 
         return _aiter_sse()
+
     async def _request_model_legacy(self, request_data: "AgentlyRequestData") -> AsyncGenerator[tuple[str, Any], None]:
         headers_with_auth = self._build_headers_with_auth(request_data)
         full_request_data = self._build_full_request_data(request_data)
@@ -262,6 +258,8 @@ class OpenAIResponsesCompatibleTransportMixin:
                                 continue
                             stream_started = True
                             yield sse.event, sse.data
+                            if sse.event in {"response.completed", "response.incomplete"}:
+                                break
                         break
                     except SSEError:
                         response = await client.post(

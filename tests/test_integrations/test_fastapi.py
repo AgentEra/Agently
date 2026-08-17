@@ -29,8 +29,8 @@ def _create_contract_flow():
     )
 
     async def worker(data: TriggerFlowRuntimeData[AskInput, StreamItem, FinalResult]):
-        data.put(StreamItem(stage="start"))
-        data.stop_stream()
+        await data.async_put(StreamItem(stage="start"))
+        await data.async_stop_stream()
         data.set_result(FinalResult(answer=data.value.question.upper()))
 
     flow.to(worker).end()

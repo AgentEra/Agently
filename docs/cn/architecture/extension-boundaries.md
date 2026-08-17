@@ -49,6 +49,37 @@ Core 负责：
 
 Core 不应该直接变成能力目录。例如，`ExecutionResourceManager` 应该知道如何管理 environment requirement，但它不应该成为“让模型在我的 repo 里做 coding 工作”的用户入口。
 
+Agently-Stage 在这个边界上属于私有机制依赖：TriggerFlow 直接持有一个 Stage
+structured scope，由 Stage 支撑 caller-loop task 创建、ownership、取消传递、
+origin 诊断与 settlement；Stage 在首个任务进入时才 lazy 选择 caller loop。
+TriggerFlow 自己创建的 managed work 使用 `Stage.create_task(...)`，只有真实存在于
+接管之前的外部 task 才使用 `Stage.adopt(...)`。Stage 是唯一的实时 task/origin
+registry；TriggerFlow 只保留业务错误投影、单 deadline close policy 与
+RuntimeEvent 映射，不再存在 Agently task-scope adapter 或影子 registry。
+Tunnel 支撑 TriggerFlow 的进程内 execution stream 传输。Event Center 保留原生
+后台任务机制，因为 Stage-backed 候选在热路径上存在可测量的额外开销。
+EventCenter、RuntimeEvent、SignalNet、
+TriggerFlowExecution 与 AgentExecution 仍是语义 owner。应用与插件可以独立使用
+Agently-Stage 公开的 `with Stage()`、`Stage.as_sync()` / `Stage.as_async()`、
+`Tunnel` 或 `EventEmitter`，分别承担自身进程内生命周期、调用桥接、回放通道或监听器
+边界；这不会使 Stage 成为 Agently 工作流 owner。集成代码不应把 Stage 对象放入
+execution state，也不应使用 Stage EventEmitter 替换 EventCenter/SignalNet。
+Agently 内部的同步/异步调用适配
+统一使用 `StageCallBridge`；`FunctionShifter` 只作为 deprecated 公共兼容
+facade 保留。其中标量 `syncify()` / `asyncify()` 委托给具有独立作用域的
+`Stage.as_sync()` / `Stage.as_async()` 深接口，future 与 stream 兼容方法继续使用
+高级 bridge。
+`StageCallBridge` 调用形态转换默认使用轻桥接。只有 TriggerFlow、EventCenter 这类真正拥有调度
+生命周期的边界才请求 `managed=True`，避免兼容 helper 仅仅因为转换 sync/async
+形态就改变业务错误或取消语义。
+
+Agently 4.1.4.7 依赖 Agently-Stage 0.3.x 兼容线中的 0.3.8 或更高版本。Stage 负责在混合同步/
+异步边界自动选择物理上安全的 carrier；TriggerFlow 仍负责 workflow 生命周期与公开
+state。复用安全 carrier 不会合并两个 Stage scope 的 settlement 清单，也不会把
+carrier 概念暴露为 Agently 的公开生命周期。
+`LocalTaskScope` 不是 Agently 的集成接口；它只是 Agently-Stage 中为兼容保留、
+并计划在 Agently-Stage 0.4 移除的 deprecated shim。
+
 当 plugin 或 Agent Component 层已经有相应职责时，Core 也不应该拥有 plugin output
 prompt、provider-specific default，或 Agent Component 的便利行为。Plugin 可以导入 core
 contract；core 不能依赖 built-in plugin 或 Agent Component 实现。

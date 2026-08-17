@@ -47,6 +47,25 @@ Agently.set_settings("OpenAIResponsesCompatible", {
 
 `OpenAIResponsesCompatible` 是 `OpenAICompatible` 的兄弟；按你端点暴露的协议选。两个插件都直接实现 `ModelRequester`，彼此不继承。
 
+Responses 的 reasoning 配置会通过 `request_options` 原样传递，例如：
+
+```python
+Agently.set_settings("OpenAIResponsesCompatible.request_options", {
+    "reasoning": {"effort": "low", "summary": "auto"},
+})
+```
+
+当端点返回 reasoning summary 时，插件会把
+`response.reasoning_summary_text.delta` 映射为 Agently
+`reasoning_delta`，并把最终 `reasoning` output item 中的
+`summary_text` 合并为 `reasoning_done`；完整 Responses 对象仍通过
+`original_done` 保留。`response.completed` 与 `response.incomplete`
+终态事件会结束 provider stream，同时继续传递 Agently 的最终生命周期状态。
+
+DeepSeek 当前提供 Chat Completions 与 Anthropic Messages 兼容入口，没有
+Responses endpoint。DeepSeek 应选择前两种 requester；这里的 Responses 映射适用于
+OpenAI 以及确实暴露 `/responses` 的兼容网关。
+
 ## 「OpenAI 兼容」实际覆盖什么
 
 provider 满足 OpenAI 兼容当其端点：
@@ -93,6 +112,8 @@ agent.set_settings("OpenAICompatible", {"model": "${ENV.OPENAI_MODEL_FAST}"})
 发生的断流，因此 stream 消费者必须处理保留的 `$status` 记录、处理纯文本 delta 的
 `"<$retry>{reason}</$retry>"` 标记，或只读取最终结果。设置
 `"request_retry": {"max_attempts": 1}` 或 `"request_retry": False` 可以关闭这次重放。
+这也会关闭物理 SSE 重连：每次物理连接都由同一套公开 attempt 生命周期管理，transport
+不会执行未报告的内部重连。
 只有当消费者无法在 retry 边界清空临时输出时，才设置 `request_retry.after_output=False`：
 
 ```python

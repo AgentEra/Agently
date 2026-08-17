@@ -14,7 +14,7 @@
 
 import json
 import json5
-from typing import Any, AsyncGenerator, List, TYPE_CHECKING
+from typing import Any, AsyncGenerator, List, Literal, TYPE_CHECKING
 import copy
 
 from agently.utils import DataLocator, DataPathBuilder, StreamingJSONCompleter
@@ -159,6 +159,146 @@ class StreamingJSONParser:
         self.current_data = parsed_data
         return True
 
+    @staticmethod
+    def _observed_complete_values(text: str) -> list[tuple[str, Any]]:
+        """Parse only values whose closing token is present in the raw stream.
+
+        The ordinary incremental parser intentionally repairs the open suffix so
+        callers can render provisional data. This bounded recursive descent is
+        the independent evidence path used for completion provenance: it never
+        inserts a quote, delimiter, or container closer.
+        """
+
+        decoder = json.JSONDecoder()
+        length = len(text)
+        completed: list[tuple[str, Any]] = []
+
+        def skip_space(index: int) -> int:
+            while index < length and text[index].isspace():
+                index += 1
+            return index
+
+        def dot_path(parts: list[str | int]) -> str:
+            return DataPathBuilder.build_dot_path(parts)
+
+        def parse_value(index: int, parts: list[str | int]) -> tuple[Any, int, bool]:
+            index = skip_space(index)
+            if index >= length:
+                return None, index, False
+            char = text[index]
+            if char == "{":
+                value: dict[str, Any] = {}
+                cursor = skip_space(index + 1)
+                if cursor < length and text[cursor] == "}":
+                    path = dot_path(parts)
+                    if path:
+                        completed.append((path, value))
+                    return value, cursor + 1, True
+                while cursor < length:
+                    try:
+                        key, key_end = decoder.raw_decode(text, cursor)
+                    except (json.JSONDecodeError, ValueError):
+                        return value, cursor, False
+                    if not isinstance(key, str):
+                        return value, cursor, False
+                    cursor = skip_space(key_end)
+                    if cursor >= length or text[cursor] != ":":
+                        return value, cursor, False
+                    child, cursor, child_complete = parse_value(
+                        cursor + 1,
+                        [*parts, key],
+                    )
+                    if not child_complete:
+                        return value, cursor, False
+                    value[key] = child
+                    cursor = skip_space(cursor)
+                    if cursor < length and text[cursor] == ",":
+                        cursor = skip_space(cursor + 1)
+                        continue
+                    if cursor < length and text[cursor] == "}":
+                        path = dot_path(parts)
+                        if path:
+                            completed.append((path, value))
+                        return value, cursor + 1, True
+                    return value, cursor, False
+                return value, cursor, False
+            if char == "[":
+                value_list: list[Any] = []
+                cursor = skip_space(index + 1)
+                if cursor < length and text[cursor] == "]":
+                    path = dot_path(parts)
+                    if path:
+                        completed.append((path, value_list))
+                    return value_list, cursor + 1, True
+                item_index = 0
+                while cursor < length:
+                    child, cursor, child_complete = parse_value(
+                        cursor,
+                        [*parts, item_index],
+                    )
+                    if not child_complete:
+                        return value_list, cursor, False
+                    value_list.append(child)
+                    cursor = skip_space(cursor)
+                    if cursor < length and text[cursor] == ",":
+                        item_index += 1
+                        cursor = skip_space(cursor + 1)
+                        continue
+                    if cursor < length and text[cursor] == "]":
+                        path = dot_path(parts)
+                        if path:
+                            completed.append((path, value_list))
+                        return value_list, cursor + 1, True
+                    return value_list, cursor, False
+                return value_list, cursor, False
+            try:
+                value, end = decoder.raw_decode(text, index)
+            except (json.JSONDecodeError, ValueError):
+                return None, index, False
+            boundary = skip_space(end)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and boundary >= length
+            ):
+                # A number at the current transport boundary may still grow
+                # when the next chunk arrives (for example, `2` -> `25`).
+                return None, index, False
+            if boundary < length and text[boundary] not in {",", "]", "}"}:
+                return None, index, False
+            path = dot_path(parts)
+            if path:
+                completed.append((path, value))
+            return value, end, True
+
+        start_candidates = [
+            index
+            for index in (text.find("{"), text.find("["))
+            if index >= 0
+        ]
+        if not start_candidates:
+            return completed
+        parse_value(min(start_candidates), [])
+        return completed
+
+    async def _emit_observed_boundary_events(
+        self,
+    ) -> AsyncGenerator[StreamingData, None]:
+        raw_buffer = str(getattr(self.completer, "_buffer", "") or "")
+        for path, value in self._observed_complete_values(raw_buffer):
+            if path in self.field_completion_status:
+                continue
+            self.field_completion_status.add(path)
+            yield StreamingData(
+                path=path,
+                value=value,
+                delta=None,
+                is_complete=True,
+                event_type="done",
+                full_data=self.current_data,
+                completion_source="observed_boundary",
+            )
+
     async def _get_value_at_path(self, data: dict, path_keys: List[str | int]) -> Any:
         """
         Retrieve the value at the specified path from a nested dictionary/list structure.
@@ -297,6 +437,25 @@ class StreamingJSONParser:
             if current_value == previous_value and current_value is not None:
                 return True
 
+        # A later array sibling cannot begin until the previous item delimiter
+        # has actually appeared in the provider text. This is a trustworthy
+        # boundary even though the streaming completer also closes the
+        # currently open outer list/object for incremental parsing.
+        if current_value == previous_value and current_value is not None:
+            import re
+
+            indexed_path = re.match(r"^(.*)\[(\d+)\](?:\.|$)", path)
+            if indexed_path is not None:
+                prefix = indexed_path.group(1)
+                index = int(indexed_path.group(2))
+                sibling_pattern = re.compile(
+                    rf"^{re.escape(prefix)}\[(\d+)\](?:\.|$)"
+                )
+                for parsing_path in current_parsing_paths:
+                    sibling = sibling_pattern.match(parsing_path)
+                    if sibling is not None and int(sibling.group(1)) > index:
+                        return True
+
         # Special case: leaf fields with stable value and newer paths
         if not isinstance(current_value, (dict, list)) and current_value is not None:
             for parsing_path in current_parsing_paths:
@@ -366,7 +525,15 @@ class StreamingJSONParser:
         # Simple string/length-based comparison; can be improved for more complex cases
         return len(path1) < len(path2) or path1 < path2
 
-    async def _compare_and_generate_events(self) -> AsyncGenerator[StreamingData, None]:
+    async def _compare_and_generate_events(
+        self,
+        *,
+        completion_source: Literal[
+            "observed_boundary",
+            "final_reconciliation",
+            "synthetic_repair",
+        ] = "observed_boundary",
+    ) -> AsyncGenerator[StreamingData, None]:
         """
         Compare the current and previous data, and yield StreamingData events for
         incremental ("delta") updates and completions ("done").
@@ -409,6 +576,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
             # Handle primitive (non-string) types
@@ -433,6 +601,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
             # Handle dictionary/object types
@@ -456,6 +625,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
             # Handle list/array types
@@ -479,6 +649,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
         async for event in traverse_and_compare(self.current_data, self.previous_data):
@@ -497,7 +668,16 @@ class StreamingJSONParser:
         match = re.search(r'\[(\d+)\]', path)
         return int(match.group(1)) if match else 0
 
-    async def flush_final_data(self, final_data: Any) -> AsyncGenerator[StreamingData, None]:
+    async def flush_final_data(
+        self,
+        final_data: Any,
+        *,
+        completion_source: Literal[
+            "observed_boundary",
+            "final_reconciliation",
+            "synthetic_repair",
+        ] | None = None,
+    ) -> AsyncGenerator[StreamingData, None]:
         """
         Reconcile the parser state with a trusted final parsed result and emit any missing
         delta/done events needed to bring streaming consumers to the final state.
@@ -511,16 +691,36 @@ class StreamingJSONParser:
         if final_data is None:
             return
 
+        if completion_source is None:
+            raw_buffer = str(getattr(self.completer, "_buffer", "") or "")
+            completion_source = (
+                "final_reconciliation"
+                if self._looks_structurally_complete(raw_buffer)
+                else "synthetic_repair"
+            )
+
         if self.current_data != final_data:
             self.previous_data = copy.deepcopy(self.current_data)
             self.current_data = final_data
-            async for event in self._compare_and_generate_events():
+            async for event in self._compare_and_generate_events(
+                completion_source=completion_source,
+            ):
                 yield event
 
-        async for event in self.finalize():
+        async for event in self.finalize(
+            completion_source=completion_source,
+        ):
             yield event
 
-    async def finalize(self) -> AsyncGenerator[StreamingData, None]:
+    async def finalize(
+        self,
+        *,
+        completion_source: Literal[
+            "observed_boundary",
+            "final_reconciliation",
+            "synthetic_repair",
+        ] | None = None,
+    ) -> AsyncGenerator[StreamingData, None]:
         """
         Mark all remaining fields as complete and yield "done" events for every incomplete path.
         This should be called at the end of the stream to ensure all fields are finalized.
@@ -528,8 +728,18 @@ class StreamingJSONParser:
             StreamingData: The completion event for each remaining field.
         """
         raw_buffer = str(getattr(self.completer, "_buffer", "") or "")
-        if raw_buffer and (not self.current_data or self._looks_structurally_complete(raw_buffer)):
+        structurally_complete = self._looks_structurally_complete(raw_buffer)
+        if completion_source is None:
+            completion_source = (
+                "final_reconciliation"
+                if structurally_complete
+                else "synthetic_repair"
+            )
+        if raw_buffer and (not self.current_data or structurally_complete):
             self._parse_buffer_once()
+
+        async for event in self._emit_observed_boundary_events():
+            yield event
 
         async def mark_all_complete(data: Any, path_keys: List[str | int] = []):
             path = DataPathBuilder.build_dot_path(path_keys)
@@ -551,6 +761,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
             elif isinstance(data, list):
@@ -570,6 +781,7 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
             else:
@@ -583,9 +795,17 @@ class StreamingJSONParser:
                         is_complete=True,
                         event_type="done",
                         full_data=self.current_data,  # Pass the full current_data here
+                        completion_source=completion_source,
                     )
 
         async for event in mark_all_complete(self.current_data):
+            yield event
+
+    async def flush_observed_boundaries(
+        self,
+    ) -> AsyncGenerator[StreamingData, None]:
+        """Emit only values closed by delimiters already present in raw bytes."""
+        async for event in self._emit_observed_boundary_events():
             yield event
 
     async def parse_chunk(self, chunk: str) -> AsyncGenerator[StreamingData, None]:
@@ -602,9 +822,12 @@ class StreamingJSONParser:
             if not self._large_incremental_parse_deferred:
                 yield self._large_incremental_parse_status()
             return
-        if self._parse_buffer_once():
+        parsed = self._parse_buffer_once()
+        if parsed:
             async for event in self._compare_and_generate_events():
                 yield event
+        async for event in self._emit_observed_boundary_events():
+            yield event
 
     async def parse_stream(self, chunk_stream: AsyncGenerator[str, None]) -> AsyncGenerator[StreamingData, None]:
         """

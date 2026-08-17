@@ -30,6 +30,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import inspect
 import json
 import uuid
@@ -69,7 +71,7 @@ from agently.types.plugins import (
     StandardActionExecutionHandler,
     StandardActionPlanningHandler,
 )
-from agently.utils import DeprecationWarnings, FunctionShifter, Settings, SettingsNamespace
+from agently.utils import DeprecationWarnings, Settings, SettingsNamespace
 from agently.utils import DataFormatter
 
 from .ActionArtifactManager import ActionArtifactManager
@@ -164,12 +166,12 @@ class Action:
         self.flow = self.action_flow
         self._register_action_artifact_recall_action()
 
-        self.plan_and_execute = FunctionShifter.syncify(self.async_plan_and_execute)
-        self.generate_action_call = FunctionShifter.syncify(self.async_generate_action_call)
-        self.generate_tool_command = FunctionShifter.syncify(self.async_generate_tool_command)
-        self.use_action_mcp = FunctionShifter.syncify(self.async_use_action_mcp)
-        self.use_mcp = FunctionShifter.syncify(self.async_use_mcp)
-        self.read_action_artifact = FunctionShifter.syncify(self.async_read_action_artifact)
+        self.plan_and_execute = default_stage_call_bridge.as_sync(self.async_plan_and_execute)
+        self.generate_action_call = default_stage_call_bridge.as_sync(self.async_generate_action_call)
+        self.generate_tool_command = default_stage_call_bridge.as_sync(self.async_generate_tool_command)
+        self.use_action_mcp = default_stage_call_bridge.as_sync(self.async_use_action_mcp)
+        self.use_mcp = default_stage_call_bridge.as_sync(self.async_use_mcp)
+        self.read_action_artifact = default_stage_call_bridge.as_sync(self.async_read_action_artifact)
 
     def _register_action_artifact_recall_action(self):
         self.register_action(
@@ -921,9 +923,9 @@ class Action:
             return None
         match shift:
             case "sync":
-                return FunctionShifter.syncify(action_func)
+                return default_stage_call_bridge.as_sync(action_func)
             case "async":
-                return FunctionShifter.asyncify(action_func)
+                return default_stage_call_bridge.as_async(action_func)
             case None:
                 return action_func
 
@@ -1001,7 +1003,7 @@ class Action:
         return bounded[0] if bounded else returned
 
     def execute_action(self, name: str, kwargs: dict[str, Any], **kwargs_options):
-        return FunctionShifter.syncify(self.async_execute_action)(name, kwargs, **kwargs_options)
+        return default_stage_call_bridge.as_sync(self.async_execute_action)(name, kwargs, **kwargs_options)
 
     async def _async_call_action_with_scope(
         self,
@@ -1027,7 +1029,7 @@ class Action:
         )
 
     def call_action(self, name: str, kwargs: dict[str, Any]) -> Any:
-        return FunctionShifter.syncify(self.async_call_action)(name, kwargs)
+        return default_stage_call_bridge.as_sync(self.async_call_action)(name, kwargs)
 
     async def async_call_tool(self, name: str, kwargs: dict[str, Any]) -> Any:
         if not self.action_registry.has(name):
@@ -1036,7 +1038,7 @@ class Action:
         return self._legacy_result(result, as_tool=True)
 
     def call_tool(self, name: str, kwargs: dict[str, Any]) -> Any:
-        return FunctionShifter.syncify(self.async_call_tool)(name, kwargs)
+        return default_stage_call_bridge.as_sync(self.async_call_tool)(name, kwargs)
 
     async def async_use_action_mcp(
         self,

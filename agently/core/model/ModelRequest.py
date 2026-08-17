@@ -14,13 +14,15 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import os
 from typing import Any, AsyncGenerator, Literal, TYPE_CHECKING, overload, Generator, Mapping
 from typing_extensions import Self
 
 from agently.core.extension import ExtensionHandlers
 from agently.core.runtime import resolve_parent_run_context
-from agently.utils import Settings, FunctionShifter
+from agently.utils import Settings
 
 from .Prompt import Prompt
 from .ModelRequestRunner import ModelRequestRunner
@@ -396,7 +398,7 @@ class ModelRequest:
         raise_ensure_failure: bool = True,
         parent_run_context: "RunContext | None" = None,
     ) -> Any:
-        return FunctionShifter.syncify(self.async_get_data)(
+        return default_stage_call_bridge.as_sync(self.async_get_data)(
             type=type,
             ensure_keys=ensure_keys,
             ensure_all_keys=ensure_all_keys,
@@ -473,7 +475,7 @@ class ModelRequest:
         raise_ensure_failure: bool = True,
         parent_run_context: "RunContext | None" = None,
     ) -> "BaseModel | None":
-        return FunctionShifter.syncify(self.async_get_data_object)(
+        return default_stage_call_bridge.as_sync(self.async_get_data_object)(
             ensure_keys=ensure_keys,
             ensure_all_keys=ensure_all_keys,
             validate_handler=validate_handler,

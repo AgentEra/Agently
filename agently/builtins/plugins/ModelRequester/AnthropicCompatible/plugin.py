@@ -59,6 +59,10 @@ class AnthropicCompatible(
         "default_model": "claude-sonnet-4-20250514",
         "timeout_mode": "first_token",
         "stream_idle_timeout": None,
+        "request_retry": {
+            "max_attempts": 2,
+            "after_output": True,
+        },
         "client_options": {},
         "headers": {},
         "proxy": None,

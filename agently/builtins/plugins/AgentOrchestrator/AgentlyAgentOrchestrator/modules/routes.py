@@ -18,6 +18,8 @@ from typing import Any, Literal, TYPE_CHECKING
 
 from agently.utils import DataFormatter
 
+from .long_output import LongOutputDelivery, normalized_terminal
+
 if TYPE_CHECKING:
     from .execution import AgentExecution
     from agently.types.data import OutputValidateHandler
@@ -75,6 +77,18 @@ async def run_model_request_route(
     )
     if ensure_all_keys is not None:
         execution.request.prompt.set("ensure_all_keys", ensure_all_keys)
+    long_output_delivery: LongOutputDelivery | None = None
+    if execution._ensure_long_output_enabled:
+        long_output_delivery = LongOutputDelivery(
+            execution,
+            ensure_keys=ensure_keys,
+            ensure_all_keys=ensure_all_keys,
+            validate_handler=validate_handler,
+            key_style=key_style,
+            max_retries=max_retries,
+            raise_ensure_failure=raise_ensure_failure,
+        )
+        long_output_delivery.preflight()
     result = execution.request.get_result(parent_run_context=agent_execution_run_context)
     execution._model_request_result = result
     execution.record_model_response_id(result.id)
@@ -85,8 +99,11 @@ async def run_model_request_route(
         "attempt_index": result.attempt_index,
     }
     has_structured_stream = bool(execution.prompt_snapshot.get("output"))
+    structured_stream_events: list[Any] = []
     if has_structured_stream:
         async for item in result.get_async_generator(type="instant"):
+            if long_output_delivery is not None:
+                structured_stream_events.append(item)
             await execution.bridge_model_stream_item(
                 item,
                 route="model_request",
@@ -154,14 +171,57 @@ async def run_model_request_route(
                     source="model_request",
                     meta={**stream_meta, "specific_event": event},
                 )
-    data = await result.async_get_data(
-        type=type,
-        ensure_keys=ensure_keys,
-        validate_handler=validate_handler,
-        key_style=key_style,
-        max_retries=max_retries,
-        raise_ensure_failure=raise_ensure_failure,
-    )
+    if long_output_delivery is not None:
+        terminal = normalized_terminal(await result.async_get_meta())
+        if terminal == "length":
+            await long_output_delivery.accept_initial(
+                result,
+                streaming_events=structured_stream_events,
+            )
+            data = await long_output_delivery.run_continuation_flow()
+        else:
+            data = await result.async_get_data(
+                type=type,
+                ensure_keys=ensure_keys,
+                validate_handler=validate_handler,
+                key_style=key_style,
+                max_retries=max_retries,
+                raise_ensure_failure=raise_ensure_failure,
+            )
+            validation_handlers = execution.request.extension_handlers.get(
+                "validate_handlers",
+                [],
+            )
+            declared_coverage = bool(
+                ensure_keys
+                or validate_handler is not None
+                or validation_handlers
+            )
+            execution._long_output_meta = {
+                "enabled": True,
+                "status": "completed",
+                "request_count": 1,
+                "segment_count": 1,
+                "transport_complete": True,
+                "schema_complete": True,
+                "declared_coverage_complete": True if declared_coverage else None,
+                "semantic_exhaustiveness": "not_claimed",
+                "guarantee_level": (
+                    "single_request_with_declared_coverage"
+                    if declared_coverage
+                    else "single_request_validated"
+                ),
+            }
+            execution.diagnostics["long_output"] = dict(execution._long_output_meta)
+    else:
+        data = await result.async_get_data(
+            type=type,
+            ensure_keys=ensure_keys,
+            validate_handler=validate_handler,
+            key_style=key_style,
+            max_retries=max_retries,
+            raise_ensure_failure=raise_ensure_failure,
+        )
     execution.record_context_consumption(
         context_package,
         request_id=str(result.response_id or result.id),
@@ -205,6 +265,10 @@ async def run_model_request_route(
             "required_capabilities": capability_failure,
         }
     execution.close_snapshot = {"status": "success", "route": "model_request"}
+    if long_output_delivery is not None:
+        execution.close_snapshot["long_output"] = DataFormatter.sanitize(
+            getattr(execution, "_long_output_meta", {})
+        )
     return data
 
 

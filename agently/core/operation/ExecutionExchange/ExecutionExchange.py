@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import inspect
 import time
@@ -25,7 +27,6 @@ from agently.types.data import (
     ExecutionExchangeRouting,
     ExecutionExchangeView,
 )
-from agently.utils import FunctionShifter
 
 if TYPE_CHECKING:
     from agently.core.runtime.EventCenter import EventCenter
@@ -67,9 +68,9 @@ class ExecutionExchangeManager:
         self._posture_handler = self._posture_routing
         self.register_routing_handler("posture", self._posture_handler, replace=True)
 
-        self.respond = FunctionShifter.syncify(self.async_respond)
-        self.abandon = FunctionShifter.syncify(self.async_abandon)
-        self.hot_wait_pending = FunctionShifter.syncify(self.async_hot_wait_pending)
+        self.respond = default_stage_call_bridge.as_sync(self.async_respond)
+        self.abandon = default_stage_call_bridge.as_sync(self.async_abandon)
+        self.hot_wait_pending = default_stage_call_bridge.as_sync(self.async_hot_wait_pending)
 
     # ------------------------------------------------------------------ #
     # Provider registry (execution layer)
@@ -429,7 +430,7 @@ class ExecutionExchangeManager:
 
         try:
             if callable(await_response):
-                waiter = FunctionShifter.asyncify(await_response)(cast(ExecutionExchangeRequest, request))
+                waiter = default_stage_call_bridge.as_async(await_response)(cast(ExecutionExchangeRequest, request))
                 try:
                     if resolved_timeout is not None:
                         response = await asyncio.wait_for(waiter, timeout=resolved_timeout)

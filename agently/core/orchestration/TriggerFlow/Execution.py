@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import Stage, default_stage_call_bridge
+
 
 import uuid
 import asyncio
@@ -22,9 +24,11 @@ import copy
 import inspect
 import hashlib
 import importlib
+from collections import deque
 from pathlib import Path
 from contextvars import ContextVar
 
+from collections.abc import Coroutine
 from typing import Any, Literal, TYPE_CHECKING, overload, AsyncGenerator, Generator, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
@@ -34,12 +38,11 @@ if TYPE_CHECKING:
         ExecutionResourceHandle,
         ExecutionResourceRequirement,
         RunContext,
-        SerializableValue,
     )
     from agently.types.plugins import RuntimeEventStore
     from agently.types.trigger_flow import TriggerFlowExecutionSnapshotStore
 
-from agently.utils import DeprecationWarnings, StateData, FunctionShifter, GeneratorConsumer, Settings
+from agently.utils import DeprecationWarnings, StateData, Settings
 from agently.core.runtime.RuntimeContext import bind_runtime_context, get_current_chunk_run_context
 from agently.types.trigger_flow import (
     TriggerFlowContractMetadata,
@@ -79,6 +82,7 @@ from .ExecutionResult import TriggerFlowExecutionResult
 from .ExecutionInterrupts import TriggerFlowExecutionInterrupts
 from .ExecutionPersistence import TriggerFlowExecutionPersistence
 from .ExecutionRuntimeIO import TriggerFlowExecutionRuntimeIO
+from ._runtime_stream_transport import StageRuntimeStreamTransport
 from .ExecutionRetention import (
     TriggerFlowTerminalRetention,
     apply_triggerflow_terminal_retention,
@@ -108,6 +112,18 @@ DISTRIBUTED_SNAPSHOT_PROVIDER_METHODS = (
 DISTRIBUTED_RUNTIME_EVENT_PROVIDER_CAPABILITIES = (
     "supports_event_sequence",
 )
+
+
+def _create_deadline(timeout: float | None) -> float | None:
+    if timeout is None:
+        return None
+    return time.monotonic() + max(0.0, timeout)
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return max(0.0, deadline - time.monotonic())
 
 
 class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
@@ -210,8 +226,10 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._load_policy: dict[str, Any] = {}
         self._heartbeat_at: float | None = None
         self._lease_until: float | None = self._created_at + lease_ttl if lease_ttl is not None else None
-        self._pending_tasks: set[asyncio.Task[Any]] = set()
-        self._task_origins: dict[asyncio.Task[Any], str] = {}
+        self._task_stage = Stage(on_adopted_done=self._handle_managed_task_done)
+        self._retained_managed_tasks: set[asyncio.Task[Any]] = set()
+        self._retained_task_failures: deque[tuple[str, BaseException]] = deque()
+        self._task_stage_close_started = False
         self._accepted_signal_ids: set[str] = set()
         self._signal_net = TriggerFlowSignalNet(self)
         self._active_runtime_operation_count = 0
@@ -238,7 +256,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self.load_settings = self.settings.load
 
         # Emit
-        self.emit = FunctionShifter.syncify(self.async_emit)
+        self.emit = default_stage_call_bridge.as_sync(self.async_emit)
         self.emit_nowait = self._emit_nowait
 
         # Flow Data
@@ -259,13 +277,13 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
 
         # Runtime Data
         self.get_state = self._get_state
-        self.set_state = FunctionShifter.syncify(self.async_set_state)
-        self.append_state = FunctionShifter.syncify(self.async_append_state)
-        self.del_state = FunctionShifter.syncify(self.async_del_state)
+        self.set_state = default_stage_call_bridge.as_sync(self.async_set_state)
+        self.append_state = default_stage_call_bridge.as_sync(self.async_append_state)
+        self.del_state = default_stage_call_bridge.as_sync(self.async_del_state)
         self.get_runtime_data = self._deprecated_get_runtime_data
-        self.set_runtime_data = FunctionShifter.syncify(self.async_set_runtime_data)
-        self.append_runtime_data = FunctionShifter.syncify(self.async_append_runtime_data)
-        self.del_runtime_data = FunctionShifter.syncify(self.async_del_runtime_data)
+        self.set_runtime_data = default_stage_call_bridge.as_sync(self.async_set_runtime_data)
+        self.append_runtime_data = default_stage_call_bridge.as_sync(self.async_append_runtime_data)
+        self.del_runtime_data = default_stage_call_bridge.as_sync(self.async_del_runtime_data)
         self.set_runtime_resource = self._set_runtime_resource
         self.get_runtime_resource = self._get_runtime_resource
         self.del_runtime_resource = self._del_runtime_resource
@@ -277,24 +295,24 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self.set_snapshot_retention_policy = self._set_snapshot_retention_policy
 
         # Runtime Stream
-        self.put_into_stream = FunctionShifter.syncify(self.async_put_into_stream)
-        self.stop_stream = FunctionShifter.syncify(self.async_stop_stream)
+        self.put_into_stream = default_stage_call_bridge.as_sync(self.async_put_into_stream)
+        self.stop_stream = default_stage_call_bridge.as_sync(self.async_stop_stream)
 
         # Pause / Continue
-        self.pause_for = FunctionShifter.syncify(self.async_pause_for)
-        self.continue_with = FunctionShifter.syncify(self.async_continue_with)
-        self.intervene = FunctionShifter.syncify(self.async_intervene)
-        self.mark_intervention_consumed = FunctionShifter.syncify(self.async_mark_intervention_consumed)
-        self.emit_to_sub_flow = FunctionShifter.syncify(self.async_emit_to_sub_flow)
-        self.cancel_sub_flow = FunctionShifter.syncify(self.async_cancel_sub_flow)
+        self.pause_for = default_stage_call_bridge.as_sync(self.async_pause_for)
+        self.continue_with = default_stage_call_bridge.as_sync(self.async_continue_with)
+        self.intervene = default_stage_call_bridge.as_sync(self.async_intervene)
+        self.mark_intervention_consumed = default_stage_call_bridge.as_sync(self.async_mark_intervention_consumed)
+        self.emit_to_sub_flow = default_stage_call_bridge.as_sync(self.async_emit_to_sub_flow)
+        self.cancel_sub_flow = default_stage_call_bridge.as_sync(self.async_cancel_sub_flow)
 
         # Result
-        self.get_result = FunctionShifter.syncify(self.async_get_result)
+        self.get_result = default_stage_call_bridge.as_sync(self.async_get_result)
 
         # Lifecycle
-        self.seal = FunctionShifter.syncify(self.async_seal)
-        self.unseal = FunctionShifter.syncify(self.async_unseal)
-        self.close = FunctionShifter.syncify(self.async_close)
+        self.seal = default_stage_call_bridge.as_sync(self.async_seal)
+        self.unseal = default_stage_call_bridge.as_sync(self.async_unseal)
+        self.close = default_stage_call_bridge.as_sync(self.async_close)
 
         # Execution Status
         self._started = False
@@ -311,8 +329,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._system_runtime_data.set("last_signal", None)
         self._system_runtime_data.set("result", EMPTY)
         self._system_runtime_data.set("result_ready", asyncio.Event())
-        self._runtime_stream_queue = asyncio.Queue()
-        self._runtime_stream_consumer: GeneratorConsumer | None = None
+        self._runtime_stream_transport = StageRuntimeStreamTransport()
         self.result = TriggerFlowExecutionResult(self)
         self._interrupts = TriggerFlowExecutionInterrupts(self)
         self._persistence = TriggerFlowExecutionPersistence(self)
@@ -611,7 +628,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
     async def _async_auto_intervention_ids(self, context: dict[str, Any]):
         if self._intervention_policy is None:
             return self._builtin_auto_intervention_ids(context)
-        result = await FunctionShifter.asyncify(self._intervention_policy)(context)
+        result = await default_stage_call_bridge.as_async(self._intervention_policy, managed=True)(context)
         if result is None:
             return []
         if isinstance(result, str):
@@ -769,6 +786,22 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
             and not any(task is not self._auto_close_task and not task.done() for task in self._pending_tasks)
         )
 
+    @property
+    def _pending_tasks(self) -> tuple[asyncio.Task[Any], ...]:
+        """Private compatibility snapshot over the Stage-owned task inventory."""
+
+        return self._task_stage.adopted_tasks
+
+    @property
+    def _task_origins(self) -> dict[asyncio.Task[Any], str]:
+        """Private compatibility snapshot over owner-qualified task origins."""
+
+        return {
+            task: origin
+            for task in self._task_stage.adopted_tasks
+            if (origin := self._task_stage.origin_for_adopted(task)) is not None
+        }
+
     def _warn_runtime_data_api(self, method_name: str):
         DeprecationWarnings.warn_deprecated_once(
             f"TriggerFlowExecution.{ method_name }",
@@ -829,48 +862,107 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
     async def _async_wait_for_close_snapshot(self, *, timeout: float | None = None):
         return await self._runtime_io.async_wait_for_close_snapshot(timeout=timeout)
 
-    def _track_task(self, task: asyncio.Task[Any], *, origin: str):
-        self._pending_tasks.add(task)
-        self._task_origins[task] = origin
+    def _handle_managed_task_done(
+        self,
+        task: asyncio.Task[Any],
+        origin: str,
+    ) -> None:
+        retained = task in self._retained_managed_tasks
+        self._retained_managed_tasks.discard(task)
+        if retained and not task.cancelled():
+            error = task.exception()
+            if error is not None:
+                self._retained_task_failures.append((origin, error))
+        self._mark_activity()
+        if (
+            self._lifecycle_state == TRIGGER_FLOW_LIFECYCLE_CLOSED
+            and self._task_stage.adopted_count == 0
+            and not self._task_stage_close_started
+        ):
+            self._task_stage_close_started = True
+            asyncio.create_task(self._task_stage.async_close(timeout=0))
 
-        def _forget_task(done_task: asyncio.Task[Any]):
-            self._pending_tasks.discard(done_task)
-            self._task_origins.pop(done_task, None)
-            self._mark_activity()
+    def _create_managed_task(
+        self,
+        coroutine: Coroutine[Any, Any, Any],
+        *,
+        origin: str,
+        retain_outcome: bool | None = None,
+    ) -> asyncio.Task[Any]:
+        if retain_outcome is None:
+            retain_outcome = not origin.startswith("handler:")
+        task = self._task_stage.create_task(coroutine, origin=origin)
+        if retain_outcome:
+            self._retained_managed_tasks.add(task)
+        self._ensure_auto_close_monitor()
+        return task
 
-        task.add_done_callback(_forget_task)
+    def _track_task(
+        self,
+        task: asyncio.Task[Any],
+        *,
+        origin: str,
+        retain_outcome: bool | None = None,
+    ):
+        if retain_outcome is None:
+            retain_outcome = not origin.startswith("handler:")
+        if retain_outcome:
+            self._retained_managed_tasks.add(task)
+        try:
+            self._task_stage.adopt(task, origin=origin)
+        except BaseException:
+            self._retained_managed_tasks.discard(task)
+            raise
         self._ensure_auto_close_monitor()
         return task
 
     async def _drain_pending_tasks(self, *, timeout: float | None = None):
         current_task = asyncio.current_task()
-        started_at = time.time()
+        deadline = _create_deadline(timeout)
         results: list[Any] = []
 
+        def collect_retained_results() -> None:
+            while self._retained_task_failures:
+                _, error = self._retained_task_failures.popleft()
+                results.append(error)
+
+        collect_retained_results()
         while True:
             pending = [
                 task
-                for task in self._pending_tasks
+                for task in self._task_stage.adopted_tasks
                 if task is not current_task and task is not self._auto_close_task and not task.done()
             ]
-            if current_task in self._pending_tasks:
-                pending = [task for task in pending if not self._task_origins.get(task, "").startswith("emit")]
+            if current_task in self._task_stage.adopted_tasks:
+                pending = [
+                    task
+                    for task in pending
+                    if not (self._task_stage.origin_for_adopted(task) or "").startswith("emit")
+                ]
             if not pending:
+                await asyncio.sleep(0)
+                collect_retained_results()
                 return results
 
-            if timeout is None:
-                results.extend(await asyncio.gather(*pending, return_exceptions=True))
+            if deadline is None:
+                await asyncio.gather(*pending, return_exceptions=True)
+                await asyncio.sleep(0)
+                collect_retained_results()
                 continue
 
-            remaining_timeout = timeout - (time.time() - started_at)
-            if remaining_timeout <= 0:
-                done: set[asyncio.Task[Any]] = set()
-                remaining = set(pending)
-            else:
-                done, remaining = await asyncio.wait(pending, timeout=remaining_timeout)
-            if remaining:
+            _, unresolved = await asyncio.wait(
+                pending,
+                timeout=_remaining_timeout(deadline),
+            )
+            await asyncio.sleep(0)
+            collect_retained_results()
+            if unresolved:
+                unresolved_origins = sorted(
+                    self._task_stage.origin_for_adopted(task) or "<unknown>"
+                    for task in unresolved
+                )
                 warnings.warn(
-                    f"TriggerFlow execution { self.id } closed before { len(remaining) } pending task(s) finished.",
+                    f"TriggerFlow execution { self.id } closed before { len(unresolved) } pending task(s) finished.",
                     RuntimeWarning,
                     stacklevel=2,
                 )
@@ -879,20 +971,32 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                     level="WARNING",
                     message=f"TriggerFlow execution '{ self.id }' cancelled pending tasks during close.",
                     payload={
-                        "pending_task_count": len(remaining),
+                        "pending_task_count": len(unresolved),
                         "timeout": timeout,
+                        "pending_task_origins": unresolved_origins,
                     },
                 )
-                for task in remaining:
+                self._retained_managed_tasks.difference_update(unresolved)
+                for task in unresolved:
                     task.cancel()
-                await asyncio.gather(*remaining, return_exceptions=True)
-            for task in done:
-                if task.cancelled():
-                    results.append(asyncio.CancelledError())
-                    continue
-                error = task.exception()
-                results.append(task.result() if error is None else error)
-            if remaining:
+                await asyncio.sleep(0)
+                still_unresolved = {task for task in unresolved if not task.done()}
+                remaining = _remaining_timeout(deadline)
+                if still_unresolved and remaining is not None and remaining > 0:
+                    _, still_unresolved = await asyncio.wait(
+                        still_unresolved,
+                        timeout=remaining,
+                    )
+                if still_unresolved:
+                    origins = sorted(
+                        self._task_stage.origin_for_adopted(task) or "<unknown>"
+                        for task in still_unresolved
+                    )
+                    raise TimeoutError(
+                        "TriggerFlow managed-task cancellation did not settle before "
+                        f"the close deadline; unresolved origins: {origins}"
+                    )
+                collect_retained_results()
                 return results
 
     async def _raise_pending_task_errors(self, results: list[Any]):
@@ -1203,6 +1307,12 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                             postcommit_error = postcommit_error or error
                 self._closed_event.set()
                 self._trigger_flow.remove_execution(self)
+                if (
+                    self._task_stage.adopted_count == 0
+                    and not self._task_stage_close_started
+                ):
+                    self._task_stage_close_started = True
+                    await self._task_stage.async_close(timeout=0)
 
                 if self._auto_close_task is not None and self._auto_close_task is not asyncio.current_task():
                     self._auto_close_task.cancel()
@@ -2976,11 +3086,13 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._mark_activity()
         token = self._without_current_concurrency_permit_context()
         try:
-            task = asyncio.create_task(self._async_dispatch_signal(signal))
+            return self._create_managed_task(
+                self._async_dispatch_signal(signal),
+                origin=f"emit_nowait:{ trigger_type }:{ trigger_event }",
+            )
         finally:
             if token is not None:
                 self._concurrency_permit_held.reset(token)
-        return self._track_task(task, origin=f"emit_nowait:{ trigger_type }:{ trigger_event }")
 
     def _emit_nowait(
         self,
@@ -2995,7 +3107,8 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            return FunctionShifter.future(self.async_emit)(
+            return default_stage_call_bridge.submit(
+                self.async_emit,
                 trigger_event,
                 value,
                 _layer_marks,
@@ -3018,11 +3131,13 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
         self._mark_activity()
         token = self._without_current_concurrency_permit_context()
         try:
-            task = loop.create_task(self._async_dispatch_signal(signal))
+            return self._create_managed_task(
+                self._async_dispatch_signal(signal),
+                origin=f"emit_nowait:{ trigger_type }:{ trigger_event }",
+            )
         finally:
             if token is not None:
                 self._concurrency_permit_held.reset(token)
-        return self._track_task(task, origin=f"emit_nowait:{ trigger_type }:{ trigger_event }")
 
     async def _resume_interrupts_for_signal(self, signal: TriggerFlowSignal):
         return await self._interrupts.async_resume_for_signal(signal)
@@ -3182,7 +3297,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                         self._active_handler_count -= 1
                         self._mark_activity()
 
-                handler_func = FunctionShifter.asyncify(handler)
+                handler_func = default_stage_call_bridge.as_async(handler, managed=True)
                 handler_data = TriggerFlowRuntimeData(
                     trigger_event=signal.trigger_event,
                     trigger_type=signal.trigger_type,
@@ -3193,17 +3308,16 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                     chunk_run_context=chunk_run_context,
                 )
                 tasks.append(
-                    self._track_task(
-                        asyncio.ensure_future(
-                            run_handler(
-                                handler_func,
-                                handler_data,
-                                handler_id=handler_id,
-                                bound_operator=operator,
-                                bound_chunk_run_context=chunk_run_context,
-                            )
+                    self._create_managed_task(
+                        run_handler(
+                            handler_func,
+                            handler_data,
+                            handler_id=handler_id,
+                            bound_operator=operator,
+                            bound_chunk_run_context=chunk_run_context,
                         ),
                         origin=f"handler:{ handler_id }",
+                        retain_outcome=False,
                     )
                 )
 
@@ -3462,7 +3576,7 @@ class TriggerFlowExecution(Generic[InputT, StreamT, ResultT]):
                 "TriggerFlowExecution.start() with auto_close=False is not supported in sync mode. "
                 "Use await execution.async_start(...) and close the execution explicitly."
             )
-        return FunctionShifter.syncify(self.async_start)(
+        return default_stage_call_bridge.as_sync(self.async_start)(
             initial_value,
             wait_for_result=wait_for_result,
             timeout=timeout,

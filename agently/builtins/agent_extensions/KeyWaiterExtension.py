@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 
 import asyncio
 
 from typing import Any, Callable
 from agently.core import BaseAgent
-from agently.utils import FunctionShifter, GeneratorConsumer
+from agently.utils import GeneratorConsumer
 
 
 class KeyWaiterExtension(BaseAgent):
@@ -25,7 +27,7 @@ class KeyWaiterExtension(BaseAgent):
         super().__init__(*args, **kwargs)
         self.__when_handlers = {}
 
-        self.get_key_result = FunctionShifter.syncify(self.async_get_key_result)
+        self.get_key_result = default_stage_call_bridge.as_sync(self.async_get_key_result)
         self.when_key = self.on_key
 
     def __check_keys_in_output(
@@ -119,7 +121,7 @@ class KeyWaiterExtension(BaseAgent):
         tasks = []
 
         async def handler_wrapper(path: str, value: Any, handler: Callable[[Any], Any]) -> Any:
-            return path, value, await FunctionShifter.asyncify(handler)(value)
+            return path, value, await default_stage_call_bridge.as_async(handler)(value)
 
         async for data in consumer.get_async_generator():
             if data.path in handler_keys and data.is_complete:
@@ -150,7 +152,7 @@ class KeyWaiterExtension(BaseAgent):
                         (
                             data.path,
                             data.value,
-                            FunctionShifter.syncify(
+                            default_stage_call_bridge.as_sync(
                                 handler,
                             )(data.value),
                         )

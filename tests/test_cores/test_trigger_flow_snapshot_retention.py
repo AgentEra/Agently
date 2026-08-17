@@ -36,7 +36,7 @@ async def test_trigger_flow_execution_prunes_its_bound_recovery_history_without_
         record_store=store,
     )
     for index in range(4):
-        execution.set_state("index", index)
+        await execution.async_set_state("index", index)
         await execution.async_save(step_id=f"state-{index}")
 
     result = await execution.async_prune_recovery_snapshots()
@@ -66,7 +66,7 @@ async def test_trigger_flow_execution_snapshot_retention_overrides_provider_defa
     execution.set_snapshot_retention_policy(keep_last=2)
 
     for index in range(4):
-        execution.set_state("index", index)
+        await execution.async_set_state("index", index)
         await execution.async_save(step_id=f"state-{index}")
 
     history = await store.checkpoint_history(execution.run_id)
@@ -91,7 +91,7 @@ async def test_trigger_flow_execution_can_disable_provider_automatic_retention(
     execution.set_snapshot_retention_policy(keep_last=None)
 
     for index in range(4):
-        execution.set_state("index", index)
+        await execution.async_set_state("index", index)
         await execution.async_save(step_id=f"state-{index}")
 
     assert len(await store.checkpoint_history(execution.run_id)) == 4
@@ -122,7 +122,7 @@ async def test_trigger_flow_snapshot_retention_override_survives_save_and_load(
     )
     restored.load(snapshot)
     for index in range(4):
-        restored.set_state("index", index)
+        await restored.async_set_state("index", index)
         await restored.async_save(step_id=f"restored-{index}")
 
     assert len(await store.checkpoint_history(restored.run_id)) == 2

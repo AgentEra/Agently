@@ -1,6 +1,6 @@
 [project]
 name = "agently"
-version = "4.1.4.4"
+version = "4.1.4.7"
 description = "AI application development framework for stable structured outputs, observable actions, and durable workflows."
 authors = [
     {name = "Agently Team",email = "developer@agently.tech"},
@@ -18,7 +18,8 @@ dependencies = [
     "httpx-sse (>=0.4.1,<0.5.0)",
     "json5 (>=0.12.0,<0.13.0)",
     "greenlet (>=3.2.3,<4.0.0)",
-    "packaging (>=25.0,<26.0)"
+    "packaging (>=25.0,<26.0)",
+    "agently-stage (>=0.3.8,<0.4.0)"
 ]
 
 

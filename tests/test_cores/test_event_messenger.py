@@ -283,6 +283,36 @@ async def test_event_center_background_hook_does_not_block_emit_path_and_flush_r
 
 
 @pytest.mark.asyncio
+async def test_event_center_emit_nowait_tracks_dispatch_until_flush():
+    ec = EventCenter(idle_flush_seconds=None)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    observed = []
+
+    async def hook(event: RuntimeEvent):
+        started.set()
+        await release.wait()
+        observed.append(event.event_type)
+
+    ec.register_hook(hook, hook_name="tracked")
+    dispatch = ec.emit_nowait(
+        RuntimeEvent(
+            event_type="runtime.info",
+            source="emit-nowait-test",
+        )
+    )
+
+    assert isinstance(dispatch, asyncio.Task)
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert dispatch in ec._background_tasks
+
+    release.set()
+    await ec.async_flush()
+    assert observed == ["runtime.info"]
+    assert not ec._background_tasks
+
+
+@pytest.mark.asyncio
 async def test_event_center_idle_flush_recovers_background_delivery():
     ec = EventCenter(idle_flush_seconds=0.01, background_timeout=0.1)
     completed: list[str] = []

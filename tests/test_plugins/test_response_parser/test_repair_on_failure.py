@@ -239,6 +239,42 @@ async def test_instant_async_generator_defers_large_json_delta_when_setting_is_n
 
 
 @pytest.mark.asyncio
+async def test_instant_large_complete_json_keeps_authoritative_trailing_false(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        agently.base,
+        "async_emit_runtime",
+        _noop_async_emit_runtime,
+    )
+    payload = "x" * 1600
+    first_chunk = '{"payload":"' + payload[:500]
+    second_chunk = payload[500:] + '","is_final":false}'
+    complete_text = first_chunk + second_chunk
+
+    parser = create_response_parser(
+        [
+            ("delta", first_chunk),
+            ("delta", second_chunk),
+            ("done", complete_text),
+        ],
+        {"payload": None, "is_final": None},
+    )
+
+    events = []
+    async for event in parser.get_async_generator(type="instant"):
+        events.append(event)
+    parsed = await parser.async_get_data()
+
+    assert any(
+        event.path == "$status"
+        and event.value["status"] == "streaming_parse_deferred"
+        for event in events
+    )
+    assert parsed == {"payload": payload, "is_final": False}
+
+
+@pytest.mark.asyncio
 async def test_instant_async_generator_waits_until_done_before_repair(monkeypatch):
     monkeypatch.setattr(agently.base, "async_emit_runtime", _noop_async_emit_runtime)
 

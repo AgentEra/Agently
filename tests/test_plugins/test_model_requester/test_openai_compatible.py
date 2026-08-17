@@ -1,11 +1,16 @@
-import pytest
 import asyncio
+import json
+from contextlib import asynccontextmanager
 
-from httpx import RemoteProtocolError
+import pytest
+import stamina
+
+from httpx import ReadError, RemoteProtocolError
 from httpx_sse import SSEError
 
 from typing import Any, cast
 from agently import Agently
+from agently.core import ModelRequest, PluginManager
 from agently.core.application.AgentExecution import RuntimeStageStallError
 from agently.core.model.Prompt import Prompt
 from agently.utils import Settings
@@ -13,6 +18,9 @@ from agently.builtins.plugins.ModelRequester.OpenAICompatible import (
     OpenAICompatible,
 )
 import agently.builtins.plugins.ModelRequester.OpenAICompatible.plugin as openai_module
+import agently.builtins.plugins.ModelRequester.OpenAICompatible.modules.transport as openai_transport_module
+import agently.builtins.plugins.ModelRequester.AnthropicCompatible.modules.transport as anthropic_transport_module
+import agently.builtins.plugins.ModelRequester.OpenAIResponsesCompatible.modules.transport as responses_transport_module
 from collections import Counter
 from types import SimpleNamespace
 
@@ -23,6 +31,237 @@ def build_plugin(config: dict, prompt_values: dict | None = None):
     for key, value in (prompt_values or {}).items():
         prompt.set(key, value)
     return OpenAICompatible(prompt, settings)
+
+
+class _FakeSSE:
+    def __init__(self, data: str, *, event: str = "message"):
+        self.event = event
+        self.data = data
+        self.id = None
+        self.retry = None
+
+
+class _FakeStreamingAsyncClient:
+    def __init__(self, **kwargs):
+        self.headers = {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def aclose(self):
+        return None
+
+
+def _install_sse_source(monkeypatch: pytest.MonkeyPatch, source_factory):
+    async def fake_aiter_sse_with_retry(
+        self,
+        client,
+        method,
+        url,
+        *,
+        headers,
+        json,
+    ):
+        return source_factory()
+
+    monkeypatch.setattr(openai_module, "AsyncClient", _FakeStreamingAsyncClient)
+    monkeypatch.setattr(
+        OpenAICompatible,
+        "_aiter_sse_with_retry",
+        fake_aiter_sse_with_retry,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "request_retry",
+    [False, {"max_attempts": 1}],
+)
+async def test_request_retry_disabled_owns_physical_sse_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    request_retry,
+):
+    connections = 0
+
+    class FailingEventSource:
+        async def aiter_sse(self):
+            raise ReadError("dropped SSE connection")
+            yield
+
+    @asynccontextmanager
+    async def fake_aconnect_sse(*_args, **_kwargs):
+        nonlocal connections
+        connections += 1
+        yield FailingEventSource()
+
+    monkeypatch.setattr(openai_module, "AsyncClient", _FakeStreamingAsyncClient)
+    monkeypatch.setattr(
+        openai_transport_module,
+        "aconnect_sse",
+        fake_aconnect_sse,
+    )
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+            "request_retry": request_retry,
+        },
+        {"input": "hello"},
+    )
+
+    with stamina.set_testing(True, attempts=2):
+        events = [
+            item
+            async for item in plugin.request_model(
+                plugin.generate_request_data()
+            )
+        ]
+
+    assert connections == 1
+    assert any(
+        event == "error" and isinstance(payload, ReadError)
+        for event, payload in events
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("transport_module", "mixin_type"),
+    [
+        (
+            openai_transport_module,
+            openai_transport_module.OpenAICompatibleTransportMixin,
+        ),
+        (
+            anthropic_transport_module,
+            anthropic_transport_module.AnthropicCompatibleTransportMixin,
+        ),
+        (
+            responses_transport_module,
+            responses_transport_module.OpenAIResponsesCompatibleTransportMixin,
+        ),
+    ],
+)
+async def test_compatible_sse_transports_do_not_hide_physical_reconnects(
+    monkeypatch: pytest.MonkeyPatch,
+    transport_module,
+    mixin_type,
+):
+    connections = 0
+
+    class FailingEventSource:
+        async def aiter_sse(self):
+            raise ReadError("dropped SSE connection")
+            yield
+
+    @asynccontextmanager
+    async def fake_aconnect_sse(*_args, **_kwargs):
+        nonlocal connections
+        connections += 1
+        yield FailingEventSource()
+
+    monkeypatch.setattr(transport_module, "aconnect_sse", fake_aconnect_sse)
+    generator = await mixin_type()._aiter_sse_with_retry(
+        object(),
+        "POST",
+        "https://example.invalid/v1/stream",
+        headers={},
+        json={},
+    )
+
+    with stamina.set_testing(True, attempts=2):
+        with pytest.raises(ReadError, match="dropped SSE connection"):
+            await anext(generator)
+
+    assert connections == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("after_output", "expected_connections", "expected_retry"),
+    [(False, 1, False), (True, 2, True)],
+)
+async def test_request_retry_after_output_owns_physical_sse_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    after_output: bool,
+    expected_connections: int,
+    expected_retry: bool,
+):
+    connections = 0
+
+    class EventSource:
+        def __init__(self, connection_index: int):
+            self.connection_index = connection_index
+
+        async def aiter_sse(self):
+            if self.connection_index == 1:
+                yield _FakeSSE(
+                    '{"choices":[{"delta":{"content":"partial"}}]}'
+                )
+                raise ReadError("dropped SSE connection after output")
+            yield _FakeSSE(
+                '{"choices":[{"delta":{"content":"replacement"}}]}'
+            )
+            yield _FakeSSE("[DONE]")
+
+    @asynccontextmanager
+    async def fake_aconnect_sse(*_args, **_kwargs):
+        nonlocal connections
+        connections += 1
+        yield EventSource(connections)
+
+    monkeypatch.setattr(openai_module, "AsyncClient", _FakeStreamingAsyncClient)
+    monkeypatch.setattr(
+        openai_transport_module,
+        "aconnect_sse",
+        fake_aconnect_sse,
+    )
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+            "request_retry": {
+                "max_attempts": 2,
+                "after_output": after_output,
+            },
+        },
+        {"input": "hello"},
+    )
+
+    events = [
+        item
+        async for item in plugin.request_model(
+            plugin.generate_request_data()
+        )
+    ]
+
+    retry_statuses = [
+        payload
+        for event, payload in events
+        if event == "status" and payload.get("retry") is True
+    ]
+    assert connections == expected_connections
+    assert bool(retry_statuses) is expected_retry
+    if expected_retry:
+        assert retry_statuses == [
+            {
+                "status": "failed",
+                "attempt_index": 1,
+                "retry": True,
+                "next_attempt_index": 2,
+                "reason": "dropped SSE connection after output",
+                "error_type": "ReadError",
+            }
+        ]
+        assert events[-1] == (
+            "status",
+            {"status": "completed", "attempt_index": 2, "retry": False},
+        )
 
 
 def generate_request(config: dict, prompt_values: dict | None = None):
@@ -360,6 +599,70 @@ async def test_broadcast_response_maps_non_stream_chat_message_content():
 
 
 @pytest.mark.asyncio
+async def test_broadcast_response_maps_non_stream_chat_reasoning_content():
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "reasoning-model",
+            "stream": False,
+        },
+        {"input": "hello"},
+    )
+
+    async def response_generator():
+        yield "message", json.dumps(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "reasoning_content": "model reasoning",
+                            "content": "done text",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+        )
+        yield "message", "[DONE]"
+
+    events = [item async for item in plugin.broadcast_response(response_generator())]
+
+    assert ("reasoning_done", "model reasoning") in events
+    original_done = next(payload for event, payload in events if event == "original_done")
+    assert original_done["choices"][0]["message"]["reasoning_content"] == "model reasoning"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_response_preserves_streamed_reasoning_in_original_done():
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "reasoning-model",
+            "stream": True,
+        },
+        {"input": "hello"},
+    )
+
+    async def response_generator():
+        yield "message", '{"choices":[{"delta":{"role":"assistant","reasoning_content":"model "}}]}'
+        yield "message", '{"choices":[{"delta":{"reasoning_content":"reasoning"}}]}'
+        yield "message", '{"choices":[{"delta":{"content":"done text"}}]}'
+        yield "message", '{"choices":[{"delta":{},"finish_reason":"stop"}]}'
+        yield "message", "[DONE]"
+
+    events = [item async for item in plugin.broadcast_response(response_generator())]
+
+    assert ("reasoning_done", "model reasoning") in events
+    original_done = next(payload for event, payload in events if event == "original_done")
+    assert original_done["choices"][0]["message"] == {
+        "role": "assistant",
+        "content": "done text",
+        "reasoning_content": "model reasoning",
+    }
+
+
+@pytest.mark.asyncio
 async def test_broadcast_response_preserves_core_status_record():
     plugin = build_plugin({"base_url": "https://api.example.com/v1", "model": "m1"}, {"input": "hello"})
 
@@ -450,6 +753,19 @@ def test_request_options_override_legacy_plugin_root_options():
     )
 
     assert request["request_options"] == {"temperature": 0.2, "top_p": 0.5, "model": "m1", "stream": True}
+
+
+def test_nested_thinking_request_option_is_preserved():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "reasoning-model",
+            "request_options": {"thinking": {"type": "enabled"}},
+        },
+        {"input": "hello"},
+    )
+
+    assert request["request_options"]["thinking"] == {"type": "enabled"}
 
 
 def test_client_options_disable_environment_proxy_by_default():
@@ -560,6 +876,251 @@ async def test_streaming_done_is_not_emitted_twice(monkeypatch: pytest.MonkeyPat
     assert counts["done"] == 1
     assert counts["reasoning_done"] == 1
     assert counts["meta"] == 1
+
+
+@pytest.mark.asyncio
+async def test_streaming_done_stops_before_physical_tail_disconnect(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    tail_requested = False
+
+    async def source():
+        nonlocal tail_requested
+        yield _FakeSSE(
+            '{"id":"1","choices":[{"index":0,"delta":{"role":"assistant","content":"hello"},"finish_reason":null}]}'
+        )
+        yield _FakeSSE(
+            '{"id":"1","choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}],'
+            '"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}'
+        )
+        yield _FakeSSE("[DONE]")
+        tail_requested = True
+        raise RemoteProtocolError(
+            "peer closed connection without sending complete message body"
+        )
+
+    _install_sse_source(monkeypatch, source)
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+            "request_retry": {"max_attempts": 1},
+        },
+        {"input": "hello"},
+    )
+
+    events = [
+        item
+        async for item in plugin.broadcast_response(
+            plugin.request_model(plugin.generate_request_data())
+        )
+    ]
+
+    assert tail_requested is False
+    assert [payload for event, payload in events if event == "delta"] == [
+        "hello"
+    ]
+    assert [payload for event, payload in events if event == "done"] == [
+        "hello"
+    ]
+    assert not [payload for event, payload in events if event == "error"]
+    original_done = next(
+        payload for event, payload in events if event == "original_done"
+    )
+    assert original_done["choices"][0]["message"]["content"] == "hello"
+    assert original_done["choices"][0]["finish_reason"] == "stop"
+    assert original_done["usage"]["total_tokens"] == 3
+    meta = next(payload for event, payload in events if event == "meta")
+    assert meta["finish_reason"] == "stop"
+    assert meta["usage"]["completion_tokens"] == 2
+
+
+@pytest.mark.asyncio
+async def test_streaming_disconnect_before_done_remains_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def source():
+        yield _FakeSSE(
+            '{"id":"1","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}'
+        )
+        raise RemoteProtocolError(
+            "peer closed connection without sending complete message body"
+        )
+
+    _install_sse_source(monkeypatch, source)
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+            "request_retry": {"max_attempts": 1},
+        },
+        {"input": "hello"},
+    )
+
+    events = [
+        item
+        async for item in plugin.request_model(plugin.generate_request_data())
+    ]
+
+    assert [payload for event, payload in events if event == "message"] == [
+        '{"id":"1","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}'
+    ]
+    errors = [payload for event, payload in events if event == "error"]
+    assert len(errors) == 1
+    assert isinstance(errors[0], RemoteProtocolError)
+    assert not [
+        payload
+        for event, payload in events
+        if event == "message" and payload == "[DONE]"
+    ]
+    assert events[-2][0] == "status"
+    assert events[-2][1]["status"] == "failed"
+    assert events[-2][1]["retry"] is False
+
+
+@pytest.mark.asyncio
+async def test_streaming_does_not_consume_events_after_done(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    extra_requested = False
+
+    async def source():
+        nonlocal extra_requested
+        yield _FakeSSE(
+            '{"id":"1","choices":[{"index":0,"delta":{"content":"accepted"},"finish_reason":"stop"}]}'
+        )
+        yield _FakeSSE("[DONE]")
+        extra_requested = True
+        yield _FakeSSE(
+            '{"id":"1","choices":[{"index":0,"delta":{"content":"must-not-be-consumed"},"finish_reason":null}]}'
+        )
+
+    _install_sse_source(monkeypatch, source)
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model": "m1",
+            "stream": True,
+            "request_retry": {"max_attempts": 1},
+        },
+        {"input": "hello"},
+    )
+
+    events = [
+        item
+        async for item in plugin.request_model(plugin.generate_request_data())
+    ]
+
+    assert extra_requested is False
+    assert [payload for event, payload in events if event == "message"] == [
+        '{"id":"1","choices":[{"index":0,"delta":{"content":"accepted"},"finish_reason":"stop"}]}',
+        "[DONE]",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_structured_validation_retry_materializes_after_done_tail_disconnect(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    attempt_contents = [
+        '{"status":"draft"}',
+        '{"status":"ready"}',
+    ]
+    source_count = 0
+
+    async def source():
+        nonlocal source_count
+        attempt_index = source_count
+        source_count += 1
+        content = attempt_contents[attempt_index]
+        yield _FakeSSE(
+            json.dumps(
+                {
+                    "id": f"attempt-{ attempt_index + 1 }",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "role": "assistant",
+                                "content": content,
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+            )
+        )
+        yield _FakeSSE(
+            json.dumps(
+                {
+                    "id": f"attempt-{ attempt_index + 1 }",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": ""},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 2,
+                        "total_tokens": 3,
+                    },
+                }
+            )
+        )
+        yield _FakeSSE("[DONE]")
+        if attempt_index == 1:
+            raise RemoteProtocolError(
+                "peer closed connection without sending complete message body"
+            )
+
+    _install_sse_source(monkeypatch, source)
+    settings = Settings(
+        name="openai-done-validation-retry-Settings",
+        parent=Agently.settings,
+    )
+    plugin_manager = PluginManager(
+        settings,
+        parent=Agently.plugin_manager,
+        name="openai-done-validation-retry-PluginManager",
+    )
+    plugin_manager.register(
+        "ModelRequester",
+        OpenAICompatible,
+        activate=True,
+    )
+    settings.update(
+        {
+            "plugins": {
+                "ModelRequester": {
+                    "OpenAICompatible": {
+                        "base_url": "https://api.example.com/v1",
+                        "model": "m1",
+                        "stream": True,
+                        "request_retry": False,
+                    }
+                }
+            }
+        }
+    )
+    request = ModelRequest(
+        plugin_manager,
+        agent_name="openai-done-validation-retry",
+        agent_id="openai-done-validation-retry-id",
+        parent_settings=settings,
+    )
+    request.output({"status": (str,)}, format="json")
+    request.validate(
+        lambda result, _context: result["status"] == "ready"
+    )
+
+    result = await request.async_start(max_retries=1)
+
+    assert result == {"status": "ready"}
+    assert source_count == 2
 
 
 @pytest.mark.asyncio

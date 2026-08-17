@@ -160,6 +160,7 @@ authorization and a disclosed maximum call count or spend.
 When you audit or author guidance for Agently `4.1+`, these are the defaults coding agents should prefer:
 
 - API shape: apply Occam's razor. Do not add a new entity, method, facade, or compatibility patch when an existing surface already expresses the concept. If a name is unclear, prefer a narrow alias or documentation clarification over another overlapping method.
+- Request-local prompt context: include only facts, contracts, evidence, rules, and result shape that change the current request; apply the removal counterfactual, and inspect `execution.get_prompt_text()` before dispatch.
 - Structured output: for fixed required leaves, mark `(TypeExpr, "description", True)` directly in `.output(...)`. Use `(TypeExpr, "description", "not_null")` only when empty values must retry. Use manual `ensure_keys=` only for conditional or runtime-dependent paths.
 - Rule-first validation: if the model is expected to satisfy a business validator,
   state every non-sensitive, model-satisfiable rule in the initial

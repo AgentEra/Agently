@@ -36,7 +36,10 @@ def configure_model(*, temperature: float = 0.0) -> ProviderName:
                 "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash"),
                 "model_type": "chat",
                 "auth": api_key,
-                "request_options": {"temperature": temperature},
+                "request_options": {
+                    "thinking": {"type": "disabled"},
+                    "temperature": temperature,
+                },
             },
         )
         return "deepseek"

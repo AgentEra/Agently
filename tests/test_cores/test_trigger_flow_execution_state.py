@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 
 import pytest
+from agently_stage import Stage, default_stage_call_bridge
 
 from agently import Agently, TriggerFlow, TriggerFlowRuntimeData
 from agently.types.data import RunContext
 from agently.types.data.event import normalize_triggerflow_event_type
 from agently.types.trigger_flow import AGGREGATION_SCOPE_META_KEY
-from agently.utils import FunctionShifter
 
 
 def test_trigger_flow_sync_start_returns_close_snapshot():
@@ -26,6 +26,89 @@ def test_trigger_flow_sync_start_returns_close_snapshot():
     another_execution = flow.create_execution(auto_close_timeout=0.0)
     with pytest.warns(DeprecationWarning, match="wait_for_result"):
         assert another_execution.start("ok", wait_for_result=False) == {"$final_result": {"value": "ok"}}
+
+
+def test_sync_chunk_can_wrap_async_provider_with_stage_and_reenter_execution_state():
+    flow = TriggerFlow(name="sync-provider-stage-roundtrip")
+
+    async def provider(value: str) -> str:
+        await asyncio.sleep(0)
+        return value.upper()
+
+    async def registered_action(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(provider, value)
+
+    def sync_provider(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(registered_action, value)
+
+    def transform(data: TriggerFlowRuntimeData):
+        result = sync_provider(data.value)
+        data.set_state("result", result, emit=False)
+        data.set_state("steps", [result], emit=False)
+        data.append_state("steps", "settled", emit=False)
+        data.set_state("temporary", True, emit=False)
+        data.del_state("temporary", emit=False)
+        return {
+            "result": result,
+            "steps": data.get_state("steps"),
+            "temporary": data.get_state("temporary"),
+        }
+
+    flow.to(transform)
+
+    assert flow.start("stage") == {
+        "result": "STAGE",
+        "steps": ["STAGE", "settled"],
+    }
+
+
+def test_async_chunk_can_call_sync_stage_wrappers_and_sync_state_facade():
+    flow = TriggerFlow(name="async-chunk-sync-provider-stage-roundtrip")
+
+    async def provider(value: str) -> str:
+        await asyncio.sleep(0)
+        return value.upper()
+
+    def registered_action(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(provider, value)
+
+    def sync_provider(value: str) -> str:
+        with Stage() as stage:
+            return stage.get(registered_action, value)
+
+    async def transform(data: TriggerFlowRuntimeData):
+        result = sync_provider(data.value)
+        data.set_state("result", result, emit=False)
+        return result
+
+    flow.to(transform)
+
+    assert flow.start("stage") == {"result": "STAGE"}
+
+
+@pytest.mark.asyncio
+async def test_sync_chunk_worker_can_reenter_async_owner_loop_state_listener():
+    flow = TriggerFlow(name="sync-chunk-owner-loop-state-listener")
+
+    def transform(data: TriggerFlowRuntimeData):
+        data.set_state("result", data.value.upper())
+
+    async def observe_result(data: TriggerFlowRuntimeData):
+        await asyncio.sleep(0)
+        await data.async_set_state("observed", data.value, emit=False)
+
+    flow.to(transform)
+    flow.when({"runtime_data": "result"}).to(observe_result)
+
+    result = await flow.async_start("stage")
+
+    assert result == {
+        "result": "STAGE",
+        "observed": "STAGE",
+    }
 
 
 def test_trigger_flow_start_waits_for_auto_close_snapshot_without_end():
@@ -257,10 +340,10 @@ async def test_trigger_flow_defers_handler_awaitable_creation_until_concurrency_
         handler_started.set()
         await release_handler.wait()
 
-    original_asyncify = FunctionShifter.asyncify
+    original_asyncify = default_stage_call_bridge.as_async
 
-    def tracking_asyncify(func):
-        async_func = original_asyncify(func)
+    def tracking_asyncify(func, **options):
+        async_func = original_asyncify(func, **options)
         if func is not dynamic_handler:
             return async_func
 
@@ -271,7 +354,7 @@ async def test_trigger_flow_defers_handler_awaitable_creation_until_concurrency_
 
         return create_awaitable
 
-    monkeypatch.setattr(FunctionShifter, "asyncify", staticmethod(tracking_asyncify))
+    monkeypatch.setattr(default_stage_call_bridge, "as_async", tracking_asyncify)
     flow.to(prepare)
     execution = flow.create_execution(auto_close=False, concurrency=1)
     execution.on(
@@ -1126,3 +1209,30 @@ async def test_trigger_flow_runtime_stream_propagates_parent_run_context():
     assert event.run.agent_id == "agent-stream"
     assert event.run.agent_name == "stream-owner"
     assert event.run.session_id == "stream-session"
+
+
+@pytest.mark.asyncio
+async def test_hidden_runtime_stream_settles_and_closes_its_stage_tasks():
+    flow = TriggerFlow(name="stream-hidden-close")
+
+    async def stream_once(data: TriggerFlowRuntimeData):
+        await data.async_put_into_stream(data.value)
+        await data.async_stop_stream()
+
+    flow.to(stream_once)
+    execution = flow.create_execution(
+        auto_close_timeout=0.0,
+        resume_handle_exposed=False,
+    )
+
+    items = [
+        item
+        async for item in execution.get_async_runtime_stream(
+            "settled",
+            timeout=1,
+        )
+    ]
+
+    assert items == ["settled"]
+    assert execution.is_closed()
+    assert execution._task_stage.adopted_tasks == ()

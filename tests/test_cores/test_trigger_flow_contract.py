@@ -30,8 +30,8 @@ def _make_contract_flow():
 
     async def worker(data: TriggerFlowRuntimeData[Any, StreamItem, FinalResult]):
         assert isinstance(data.value, AskInput)
-        data.put(StreamItem(stage="start", question=data.value.question))
-        data.stop_stream()
+        await data.async_put(StreamItem(stage="start", question=data.value.question))
+        await data.async_stop_stream()
         data.set_result(FinalResult(answer=data.value.question.upper()))
 
     flow.to(worker).end()
@@ -68,7 +68,7 @@ def test_trigger_flow_contract_rejects_invalid_stream_item():
     flow = TriggerFlow().set_contract(stream=StreamItem)
 
     async def worker(data: TriggerFlowRuntimeData[Any, StreamItem, Any]):
-        data.put(cast(Any, {"stage": "missing-question"}))
+        await data.async_put(cast(Any, {"stage": "missing-question"}))
 
     flow.to(worker).end()
 

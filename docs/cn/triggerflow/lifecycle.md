@@ -122,7 +122,12 @@ close 顺序：
 3. 关 runtime stream
 4. 冻结并返回 close snapshot
 
-close 上的 `timeout=` 是 **drain timeout** —— 在途 task 的最大等待时间，与 auto-close 计时无关。
+close 上的 `timeout=` 是 **drain timeout** —— 在途 task 等待与强制取消共用同一个
+单调 settlement deadline，取消后不会重新获得一份完整 timeout。如果已拥有工作
+抑制取消并越过 deadline，close 会携带内部 owner origin 抛出 `TimeoutError`，
+不会声称已经结算。顶层 managed task 即使在 close 前已经失败，其错误也会保留到
+close 并且只消费一次；已被父 dispatch 消费的 handler error 不会重复报告。
+它与 auto-close 计时无关。
 
 ## auto_close 与 auto_close_timeout
 

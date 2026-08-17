@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Any, Literal, cast
@@ -943,9 +945,8 @@ class Browse:
         task_workspace = kwargs.pop("task_workspace", None)
         custom_method = self.__dict__.get(method_name)
         if callable(custom_method):
-            from agently.utils import FunctionShifter
 
-            output = await FunctionShifter.asyncify(custom_method)(**kwargs)
+            output = await default_stage_call_bridge.as_async(custom_method)(**kwargs)
             if isinstance(output, dict) and "status" in output:
                 return output
             return {

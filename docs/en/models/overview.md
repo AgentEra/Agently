@@ -86,7 +86,7 @@ The alias can be concrete and operational, such as `ollama-qwen2.5` or
 ```python
 agent.set_settings("model_pool", {
     "ollama-qwen2.5": "qwen2.5:7b",
-    "deepseek-v4": "deepseek-chat",
+    "deepseek-v4": "deepseek-v4-flash",
 })
 agent.set_settings("key_pool", {
     "local": "ollama",
@@ -95,7 +95,7 @@ agent.set_settings("key_pool", {
 })
 agent.set_settings("key_pool_strategy", {
     "qwen2.5:7b": {"mode": "fixed", "pool": ["local"]},
-    "deepseek-chat": {"mode": "round_robin", "pool": ["deepseek-main", "deepseek-backup"]},
+    "deepseek-v4-flash": {"mode": "round_robin", "pool": ["deepseek-main", "deepseek-backup"]},
 })
 
 result = (
@@ -128,6 +128,11 @@ provider status and response detail but do not append the serialized model
 request. Core `model.requester.error` RuntimeEvents retain structured
 `payload.request_data` for protected cold diagnostics, while the request stream
 propagates the provider error once through its normal terminal path.
+
+The three compatible requesters also share one public transport-retry
+lifecycle. `request_retry=False` or `max_attempts=1` means one physical SSE
+connection; enabled replays receive public, incrementing attempt indexes and
+retry boundaries. No requester performs a hidden inner SSE reconnect.
 
 ## Where the plugin code lives
 

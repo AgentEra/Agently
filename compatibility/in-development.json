@@ -1,9 +1,30 @@
 {
   "schema_version": 1,
   "framework": "agently",
-  "target_version": "4.1.4.4",
-  "release_train": "2026-07-4.1.4.4-dev",
-  "notes": "4.1.4.4 release candidate: Pydantic v2 field constraints are projected into structured-output prompts and final validation failures feed bounded correction feedback into retries. TriggerFlow adds opt-in digest projection for eligible terminal recovery values while keeping pending recovery complete; the built-in local RecordStore keeps the latest three snapshot versions by default and exposes configuration and explicit prune controls. Default pytest no longer requires a local Ollama service; real-model release evidence uses explicitly configured online models. The 4.1.4.2 owner boundaries remain unchanged: TaskContext owns progressive disclosure, TaskWorkspace owns task files and code-execution grants, RecordStore owns records and durability, SkillLibrary owns immutable installed revisions, and AgentExecution owns task-scoped Skill binding. The former combined Workspace, ContextBuilder, SkillsManager, Skills execution route/strategies, skill_activation, and workspace_operation remain removed without shims.",
+  "target_version": "4.1.4.7",
+  "release_train": "2026-08-4.1.4.7-dev",
+  "notes": "4.1.4.7 development line: requires Agently-Stage >=0.3.8,<0.4.0. Stage 0.3.7 supplies physically safe carrier routing across mixed sync/async boundaries and excludes every upstream carrier in a transitive synchronous wait chain; 0.3.8 preserves that contract while forwarding Python 3.14 task-factory keyword arguments. A synchronous TriggerFlow chunk may call a provider-owned sync wrapper that uses with Stage() for an async tool and may then re-enter TriggerFlow's synchronous state facade without knowing that the framework already uses Stage. FunctionShifter.syncify/asyncify retain their compatibility names and deprecation warnings but now delegate to Stage.as_sync/as_async; internal lightweight default_stage_call_bridge usage remains unchanged. Stage is the required-runtime companion and remains a private Agently mechanism dependency: TriggerFlowExecution remains the semantic lifecycle owner, and Stage types or carrier state do not enter public execution state. The 4.1.4.6 contracts remain intact: agently.__version__ and Agently.__version__ are the standard package version surfaces, provider reasoning and compatible SSE retry boundaries remain normalized, and live TriggerFlow sub-flow resources preserve identity. The 4.1.4.5 runtime line also remains intact: AgentExecution ensure_long_output() uses TriggerFlow-visible continuation and TaskWorkspace owns staged file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
+  "runtime_support": {
+    "agently_stage": {
+      "repository": "Agently-Stage",
+      "package": "agently-stage",
+      "role": "required_runtime_dependency",
+      "version_specifier": ">=0.3.8,<0.4.0",
+      "release_order": "publish_and_verify_stage_before_raising_agently_minimum",
+      "skills_guidance_required": true,
+      "public_runtime_surface": false,
+      "task_mechanism_owners": [
+        "TriggerFlowExecution"
+      ],
+      "stream_mechanism_owner": "TriggerFlow execution stream",
+      "rejected_mechanism_replacements": [
+        "EventCenter background task settlement",
+        "EventCenter and SignalNet event dispatch"
+      ],
+      "semantic_owners_unchanged": true,
+      "persistence_contract": "Stage task inventory, Tunnel cursors, handles, and carrier state are process-local and are not serialized."
+    }
+  },
   "companions": {
     "devtools": {
       "companion_package": "agently-devtools",
@@ -25,6 +46,7 @@
         "task_context_contract": "ContextPackage and ContextConsumption projections are bounded observation facts only and never drive route selection, verification, or task acceptance.",
         "model_request_telemetry_contract": "Existing model RuntimeEvents may carry payload.model_request_telemetry observation facts; telemetry remains observation-only.",
         "model_request_result_stream_status_contract": "ModelRequestResult reserves $status for completed, failed, and cancelled outcomes.",
+        "agent_execution_stream_completion_provenance": "StreamingData and AgentExecutionStreamData may add optional completion_source values observed_boundary, final_reconciliation, or synthetic_repair. The field is observation-only and additive.",
         "agent_execution_limits": [
           "max_seconds",
           "max_no_progress_seconds"
@@ -83,6 +105,12 @@
       "catalog_generation": "v2",
       "recommended_bundle": "app",
       "recommended_ref": "main",
+      "runtime_dependency_guidance": {
+        "agently_stage": {
+          "skill": "agently-stage",
+          "version_specifier": ">=0.3.8,<0.4.0"
+        }
+      },
       "archived_catalog_generations": [
         {
           "generation": "v1",
@@ -186,9 +214,10 @@
     "agent_execution_request_scope": {
       "surface": [
         "AgentExecution",
-        "AgentExecutionResult"
+        "AgentExecutionResult",
+        "AgentExecution.ensure_long_output"
       ],
-      "contract": "Each call owns an isolated AgentExecution draft. Completed executions are immutable run records; prompt/config mutation after start fails fast."
+      "contract": "Each call owns an isolated AgentExecution draft. Completed executions are immutable run records; prompt/config mutation after start fails fast. ensure_long_output(enabled=True) is a per-draft direct-delivery policy: the first request keeps its original contract, observed length termination enters TriggerFlow continuation with private TaskWorkspace staging, model-visible slot contracts preserve nested containers from the original output declaration, structured values pass an independent local slot-schema validator before append-only commit, explicitly observed empty lists and empty text are retained without synthesizing missing paths, and successful completion requires final manifest replay plus the original validation contracts. Continuation closes the base_revision/base_digest/anchor control header before business updates; a length terminal before header closure is observable bounded no progress that leaves the manifest unchanged, and three consecutive no-progress continuations terminate. Continuation finality is accepted only after declared ensure paths have manifest facts; this delivery barrier does not consume the caller's final-validation retry allowance. A valid contiguous prefix survives a rejected tail, and model-repairable final validation failures retain every accepted unit while using the bounded validation-retry allowance for missing or additional units. It currently supports plain text and JSON, does not inherit Actions/tools into continuation requests, fails closed on unknown terminals, invalid assembly, or integrity mismatches, and cannot be combined with an explicit AgentTask strategy."
     },
     "agent_execution_task_loop": {
       "surface": [

@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import os
 from pathlib import Path
 
@@ -286,7 +288,7 @@ class AgentTask(
         self.run: Any = self._run
         self.meta: Any = self._meta
         self.get_meta: Any = self.meta
-        self.add_guidance: Any = FunctionShifter.syncify(self.async_add_guidance)
+        self.add_guidance: Any = default_stage_call_bridge.as_sync(self.async_add_guidance)
         self.stream: Any = self.get_async_generator
         self.get_generator: Any = self._get_generator
 

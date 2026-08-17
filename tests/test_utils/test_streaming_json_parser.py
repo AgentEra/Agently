@@ -1,7 +1,7 @@
 import importlib
 
 import pytest
-from agently.utils.StreamingJSONParser import StreamingJSONParser, StreamingData
+from agently.utils.StreamingJSONParser import StreamingJSONParser
 
 
 @pytest.mark.asyncio
@@ -196,6 +196,53 @@ async def test_streaming_json_parser_root_list_schema():
 
 
 @pytest.mark.asyncio
+async def test_streaming_json_parser_distinguishes_observed_and_synthetic_completion():
+    parser = StreamingJSONParser({"items": [{"id": (int,)}]})
+    events = []
+
+    for chunk in ['{"items":[{"id":1},', '{"id":2']:
+        async for item in parser.parse_chunk(chunk):
+            events.append(item)
+    async for item in parser.finalize():
+        events.append(item)
+
+    first_item_done = next(
+        item
+        for item in events
+        if item.path == "items[0]" and item.event_type == "done"
+    )
+    second_item_done = next(
+        item
+        for item in events
+        if item.path == "items[1]" and item.event_type == "done"
+    )
+
+    assert first_item_done.completion_source == "observed_boundary"
+    assert second_item_done.completion_source == "synthetic_repair"
+
+
+@pytest.mark.asyncio
+async def test_streaming_json_parser_marks_trusted_flush_as_final_reconciliation():
+    parser = StreamingJSONParser({"items": [{"id": (int,)}]})
+    events = []
+
+    async for item in parser.parse_chunk('{"items":[{"id":1'):
+        events.append(item)
+    async for item in parser.flush_final_data(
+        {"items": [{"id": 1}]},
+        completion_source="final_reconciliation",
+    ):
+        events.append(item)
+
+    item_done = next(
+        item
+        for item in events
+        if item.path == "items[0]" and item.event_type == "done"
+    )
+    assert item_done.completion_source == "final_reconciliation"
+
+
+@pytest.mark.asyncio
 async def test_streaming_json_parser_skips_large_incomplete_parse(monkeypatch):
     schema = {"report": (str,)}
     parser = StreamingJSONParser(schema, max_incomplete_parse_chars=32)
@@ -254,6 +301,38 @@ async def test_streaming_json_parser_emits_large_deferred_status_once(monkeypatc
 
     assert [item.path for item in events] == ["$status"]
     assert events[0].value["status"] == "streaming_parse_deferred"
+
+
+@pytest.mark.asyncio
+async def test_streaming_json_parser_flushes_observed_prefix_after_large_defer():
+    parser = StreamingJSONParser(
+        {"items": [{"value": (str,)}]},
+        max_incomplete_parse_chars=32,
+    )
+    events = []
+    raw = (
+        '{"items":[{"value":"'
+        + ("a" * 128)
+        + '"},{"value":"open'
+    )
+
+    async for item in parser.parse_chunk(raw):
+        events.append(item)
+    async for item in parser.flush_observed_boundaries():
+        events.append(item)
+
+    first_item = next(
+        item
+        for item in events
+        if item.path == "items[0]" and item.event_type == "done"
+    )
+    assert first_item.value == {"value": "a" * 128}
+    assert first_item.completion_source == "observed_boundary"
+    assert not [
+        item
+        for item in events
+        if item.path == "items[1]" and item.is_complete
+    ]
 
 
 @pytest.mark.asyncio

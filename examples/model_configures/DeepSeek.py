@@ -5,9 +5,10 @@ Agently.set_settings(
     "OpenAICompatible",
     {
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "auth": "DEEPSEEK API Key",
         "request_options": {
+            "thinking": {"type": "disabled"},
             "temperature": 0.7,
         },
     },
@@ -46,6 +47,7 @@ asyncio.run(main())
 #
 # How it works:
 # DeepSeek exposes an OpenAI-compatible endpoint at api.deepseek.com/v1.
-# Set auth="<DeepSeek API Key>" and model="deepseek-chat" (or "deepseek-reasoner" for R1).
-# For the reasoning model, use get_generator(type="specific") and handle "reasoning_delta"
-# events to separate chain-of-thought tokens from the final answer.
+# Set auth="<DeepSeek API Key>" and model="deepseek-v4-flash".
+# The example explicitly disables thinking so temperature remains effective. To use thinking mode,
+# set request_options={"thinking": {"type": "enabled"}, "reasoning_effort": "high"} and consume
+# "reasoning_delta" events from get_generator(type="specific") separately from the final answer.

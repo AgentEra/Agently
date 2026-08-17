@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 
 from pathlib import Path
 from uuid import uuid4
@@ -25,7 +27,7 @@ import json5
 import yaml
 
 from agently.types.data import ChatMessage, ChatMessageDict
-from agently.utils import DeprecationWarnings, FunctionShifter, Settings, SettingsNamespace, DataLocator
+from agently.utils import DeprecationWarnings, Settings, SettingsNamespace, DataLocator
 
 if TYPE_CHECKING:
     from agently.core import Prompt
@@ -77,15 +79,15 @@ class Session:
         self._memory_plugin: Any = None
         self._memory_mode: str | None = None
 
-        self.reset_chat_history = FunctionShifter.syncify(self.async_reset_chat_history)
-        self.set_chat_history = FunctionShifter.syncify(self.async_set_chat_history)
-        self.clean_context_window = FunctionShifter.syncify(self.async_clean_context_window)
+        self.reset_chat_history = default_stage_call_bridge.as_sync(self.async_reset_chat_history)
+        self.set_chat_history = default_stage_call_bridge.as_sync(self.async_set_chat_history)
+        self.clean_context_window = default_stage_call_bridge.as_sync(self.async_clean_context_window)
         self.clean_window_context = self.clean_context_window
-        self.add_chat_history = FunctionShifter.syncify(self.async_add_chat_history)
-        self.analyze_context = FunctionShifter.syncify(self.async_analyze_context)
-        self.run_resize_strategy = FunctionShifter.syncify(self.async_run_resize_strategy)
-        self.execute_strategy = FunctionShifter.syncify(self.async_execute_strategy)
-        self.resize = FunctionShifter.syncify(self.async_resize)
+        self.add_chat_history = default_stage_call_bridge.as_sync(self.async_add_chat_history)
+        self.analyze_context = default_stage_call_bridge.as_sync(self.async_analyze_context)
+        self.run_resize_strategy = default_stage_call_bridge.as_sync(self.async_run_resize_strategy)
+        self.execute_strategy = default_stage_call_bridge.as_sync(self.async_execute_strategy)
+        self.resize = default_stage_call_bridge.as_sync(self.async_resize)
         self.to_json = self.get_json_session
         self.to_yaml = self.get_yaml_session
         self.load_json = self.load_json_session
@@ -254,11 +256,11 @@ class Session:
         if analysis_handler is None:
             self._analysis_handler = self._default_analysis_handler
         else:
-            self._analysis_handler = FunctionShifter.asyncify(analysis_handler)
+            self._analysis_handler = default_stage_call_bridge.as_async(analysis_handler)
         return self
 
     def register_resize_handler(self, strategy_name: str, resize_handler: "ResizeHandler"):
-        self._resize_handlers[strategy_name] = FunctionShifter.asyncify(resize_handler)
+        self._resize_handlers[strategy_name] = default_stage_call_bridge.as_async(resize_handler)
         return self
 
     def register_execution_handlers(self, strategy_name: str, execution_handler: "ExecutionHandler"):

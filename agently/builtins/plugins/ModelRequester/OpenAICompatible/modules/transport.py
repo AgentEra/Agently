@@ -18,12 +18,10 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-import time
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Literal, cast
 
-from httpx import AsyncClient, HTTPStatusError, ReadError, RequestError, Timeout
+from httpx import AsyncClient, HTTPStatusError, RequestError, Timeout
 from httpx_sse import SSEError, aconnect_sse
-from stamina import retry
 
 from agently.core.application.AgentExecution import RuntimeStageStallError
 from agently.types.data import AgentlyRequestData, SerializableValue
@@ -345,23 +343,25 @@ class OpenAICompatibleTransportMixin:
         headers: dict[str, Any],
         json: "SerializableValue",
     ):
-        last_event_id = ""
-        reconnection_delay = 0.0
+        """Open one SSE connection for the current public request attempt.
 
-        @retry(on=ReadError)
+        The legacy method name is retained for private-extension compatibility,
+        but reconnection is intentionally owned by ``AttemptRunner`` so every
+        physical request consumes and reports one public attempt.
+        """
+
         async def _aiter_sse():
-            nonlocal last_event_id, reconnection_delay
-            time.sleep(reconnection_delay)
-            headers.update({"Accept": "text/event-stream"})
-            if last_event_id:
-                headers.update({"Last-Event-ID": last_event_id})
-
-            async with aconnect_sse(client, method, url, headers=headers, json=json) as event_source:
+            request_headers = dict(headers)
+            request_headers["Accept"] = "text/event-stream"
+            async with aconnect_sse(
+                client,
+                method,
+                url,
+                headers=request_headers,
+                json=json,
+            ) as event_source:
                 try:
                     async for sse in event_source.aiter_sse():
-                        last_event_id = sse.id
-                        if sse.retry is not None:
-                            reconnection_delay = sse.retry / 1000
                         yield sse
                 except GeneratorExit:
                     pass
@@ -411,6 +411,7 @@ class OpenAICompatibleTransportMixin:
                             yield sse.event, sse.data
                             if sse.data.strip() == "[DONE]":
                                 has_done = True
+                                break
                         if not has_done:
                             yield "message", "[DONE]"
                         break

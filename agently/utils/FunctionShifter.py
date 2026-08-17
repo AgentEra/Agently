@@ -5,226 +5,87 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import queue
-import asyncio
-import threading
+from __future__ import annotations
+
 from functools import wraps
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
-import inspect
-from typing import Any, Callable, Coroutine, Awaitable, TypeVar, ParamSpec, Generator, AsyncGenerator
-from asyncio import Future
+from agently_stage import Stage, default_stage_call_bridge
 
-T = TypeVar("T")
-R = TypeVar("R")
+from .CallableUtils import filter_callable_options
+from .DeprecationWarnings import DeprecationWarnings
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Coroutine, Iterator
+
+    from agently_stage import StageHandle
+
 P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def _warn(method: str) -> None:
+    replacement = (
+        "Stage.as_sync/as_async, StageCallBridge for advanced bridging, or filter_callable_options"
+        if method in {"syncify", "asyncify"}
+        else "Agently StageCallBridge or filter_callable_options"
+    )
+    DeprecationWarnings.warn_deprecated_once(
+        f"FunctionShifter.{method}",
+        f"FunctionShifter.{method} is deprecated; use {replacement}",
+        stacklevel=3,
+    )
 
 
 class FunctionShifter:
-    _future_loop = None
-    _future_thread = None
-    _future_lock = threading.Lock()
+    """Deprecated compatibility facade over Agently-Stage adapters."""
 
     @staticmethod
-    def run_async_func_in_thread(func: Callable[..., Coroutine[Any, Any, R]], *args: Any, **kwargs: Any) -> R:
-        result: dict[str, Any] = {}
-
-        def runner() -> None:
-            try:
-                result["data"] = asyncio.run(func(*args, **kwargs))
-            except Exception as e:
-                result["exception"] = e
-
-        thread = threading.Thread(target=runner)
-        thread.start()
-        thread.join()
-
-        if "exception" in result:
-            raise result["exception"]
-        return result["data"]
+    def run_async_func_in_thread(
+        func: Callable[..., Coroutine[Any, Any, R]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> R:
+        _warn("run_async_func_in_thread")
+        return default_stage_call_bridge.as_sync(func)(*args, **kwargs)
 
     @staticmethod
     def syncify(func: Callable[P, R | Awaitable[R]]) -> Callable[P, R]:
-        if inspect.iscoroutinefunction(func):
-
-            @wraps(func)
-            def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    # No running loop, safe to use asyncio.run
-                    return asyncio.run(func(*args, **kwargs))
-                else:
-                    # Running loop exists, move coroutine to thread
-                    return FunctionShifter.run_async_func_in_thread(func, *args, **kwargs)
-
-            return wrapper
-        else:
-            assert inspect.isfunction(func)
-            return func
+        _warn("syncify")
+        return Stage.as_sync(func)
 
     @staticmethod
     def asyncify(func: Callable[P, R | Awaitable[R]]) -> Callable[P, Coroutine[Any, Any, R]]:
-        if inspect.iscoroutinefunction(func):
-            return func
+        _warn("asyncify")
+        return Stage.as_async(func)
 
-        call = getattr(func, "__call__", None)
-        if call is not None and inspect.iscoroutinefunction(call):
-            @wraps(func)
-            async def callable_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-                return await func(*args, **kwargs)  # type: ignore[misc]
-
-            return callable_wrapper
+    @staticmethod
+    def future(func: Callable[P, R | Awaitable[R]]) -> Callable[P, StageHandle[R]]:
+        _warn("future")
 
         @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            if not callable(func):
-                raise TypeError(f"Expected a callable, got {type(func)}")
-            return await asyncio.to_thread(func, *args, **kwargs)  # type: ignore
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> StageHandle[R]:
+            return default_stage_call_bridge.submit(func, *args, **kwargs)
 
         return wrapper
 
     @staticmethod
-    def future(func: Callable[P, R | Awaitable[R]]) -> Callable[P, Future[R]]:
-        async_func = FunctionShifter.asyncify(func)
-
-        @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> Future[R]:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                if FunctionShifter._future_thread is None or FunctionShifter._future_loop is None:
-                    with FunctionShifter._future_lock:
-                        if FunctionShifter._future_thread is None or FunctionShifter._future_loop is None:
-                            FunctionShifter._future_loop = asyncio.new_event_loop()
-                            FunctionShifter._future_thread = threading.Thread(
-                                target=FunctionShifter._future_loop.run_forever, daemon=True
-                            ).start()
-                loop = FunctionShifter._future_loop
-
-            future = asyncio.ensure_future(async_func(*args, **kwargs), loop=loop)
-            exception = future.add_done_callback(lambda t: t.exception())
-            if exception:
-                raise exception
-            return future
-
-        return wrapper
+    def syncify_async_generator(async_gen: AsyncIterator[R]) -> Iterator[R]:
+        _warn("syncify_async_generator")
+        return default_stage_call_bridge.iter_sync(async_gen)
 
     @staticmethod
-    def syncify_async_generator(async_gen: AsyncGenerator[R, Any]) -> Generator[R, Any, Any]:
-
-        q: "queue.Queue" = queue.Queue()
-        SENTINEL = object()
-
-        async def _consume():
-            try:
-                async for item in async_gen:
-                    q.put(("item", item))
-            except Exception as e:
-                q.put(("error", e))
-            finally:
-                q.put(("end", SENTINEL))
-
-        def _runner():
-            loop = asyncio.new_event_loop()
-            try:
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(_consume())
-            finally:
-                loop.close()
-                asyncio.set_event_loop(None)
-
-        thread = threading.Thread(target=_runner, daemon=True)
-        thread.start()
-
-        try:
-            while True:
-                kind, payload = q.get()
-                if kind == "item":
-                    yield payload
-                elif kind == "error":
-                    raise payload
-                elif kind == "end":
-                    break
-        finally:
-            thread.join()
+    def asyncify_sync_generator(sync_gen: Iterator[R]) -> AsyncGenerator[R, None]:
+        _warn("asyncify_sync_generator")
+        return default_stage_call_bridge.iter_async(sync_gen)
 
     @staticmethod
-    def asyncify_sync_generator(sync_gen: Generator[R, Any, Any]) -> AsyncGenerator[R, Any]:
-        SENTINEL = object()
-
-        async def _wrapper():
-            q: "asyncio.Queue[tuple[str, Any]]" = asyncio.Queue()
-            loop = asyncio.get_running_loop()
-            stop_event = threading.Event()
-
-            def _put(kind: str, payload: Any):
-                try:
-                    loop.call_soon_threadsafe(q.put_nowait, (kind, payload))
-                except RuntimeError:
-                    pass
-
-            def _consume():
-                try:
-                    while not stop_event.is_set():
-                        item = next(sync_gen)
-                        _put("item", item)
-                except StopIteration:
-                    pass
-                except Exception as e:
-                    _put("error", e)
-                finally:
-                    try:
-                        sync_gen.close()
-                    except Exception:
-                        pass
-                    _put("end", SENTINEL)
-
-            thread = threading.Thread(target=_consume, daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    kind, payload = await q.get()
-                    if kind == "item":
-                        yield payload
-                    elif kind == "error":
-                        raise payload
-                    elif kind == "end":
-                        break
-            finally:
-                stop_event.set()
-                await asyncio.to_thread(thread.join)
-
-        return _wrapper()
-
-    @staticmethod
-    def auto_options_func(func: Callable[..., R]) -> Callable[..., R]:
-        signature = inspect.signature(func)
-        params = signature.parameters
-        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-
-        @wraps(func)
-        def _wrapper(*args, **kwargs):
-            if not accepts_kwargs:
-                kwargs = {
-                    name: value
-                    for name, value in kwargs.items()
-                    if name in params
-                    and params[name].kind
-                    in (
-                        inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                        inspect.Parameter.KEYWORD_ONLY,
-                    )
-                }
-
-            result = func(*args, **kwargs)
-            return result
-
-        return _wrapper
+    def auto_options_func(func: Callable[P, R]) -> Callable[..., R]:
+        _warn("auto_options_func")
+        return filter_callable_options(func)

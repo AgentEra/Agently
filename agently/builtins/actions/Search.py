@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 
 from typing import Any, Literal
 from collections.abc import Mapping
 import time
 
-from agently.utils import LazyImport, FunctionShifter
+from agently.utils import LazyImport, filter_callable_options
 
 SearchBackend = Literal[
     "auto",
@@ -321,7 +323,7 @@ class Search:
     async def _execute_action_method(self, method_name: str, **kwargs) -> dict[str, Any] | list[dict[str, Any]]:
         custom_method = self.__dict__.get(method_name)
         if callable(custom_method):
-            output = await FunctionShifter.asyncify(custom_method)(**kwargs)
+            output = await default_stage_call_bridge.as_async(custom_method)(**kwargs)
             if isinstance(output, dict) and "status" in output:
                 return output
             return {
@@ -353,7 +355,7 @@ class Search:
                 max_results=kwargs.get("max_results", 10),
             )
         method = getattr(self, method_name)
-        return await FunctionShifter.asyncify(method)(**kwargs)
+        return await default_stage_call_bridge.as_async(method)(**kwargs)
 
     async def search_wikipedia(
         self,
@@ -373,7 +375,7 @@ class Search:
             List of dictionaries with search results.
         """
         ddgs = self._get_ddgs()
-        search_wikipedia = FunctionShifter.auto_options_func(ddgs.text)
+        search_wikipedia = filter_callable_options(ddgs.text)
         try:
             return search_wikipedia(
                 query=query,
@@ -398,7 +400,7 @@ class Search:
         max_results: int | None = 10,
     ) -> dict[str, Any]:
         ddgs = self._get_ddgs()
-        method = FunctionShifter.auto_options_func(getattr(ddgs, method_name))
+        method = filter_callable_options(getattr(ddgs, method_name))
         errors: list[dict[str, str]] = []
         empty_backends: list[str] = []
         candidates = self._candidate_backends(category)

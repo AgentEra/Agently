@@ -14,12 +14,13 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import os
 from typing import Any, Literal, TYPE_CHECKING, cast
 
 from agently.core.model import _UNSET, _resolve_quick_prompt_input
 from agently.core.model.AttachmentInput import ImageDetail, build_image_attachment
-from agently.utils import FunctionShifter
 from agently.utils.LanguagePolicy import apply_language_policy_to_prompt, resolve_language_policy
 
 if TYPE_CHECKING:
@@ -328,7 +329,7 @@ class AgentExecutionPromptDraft:
         )
 
     def resolve_skills_plan(self, *args: Any, **kwargs: Any):
-        return FunctionShifter.syncify(self.async_resolve_skills_plan)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_resolve_skills_plan)(*args, **kwargs)
 
     async def async_run_skills_task(
         self,
@@ -363,7 +364,7 @@ class AgentExecutionPromptDraft:
         )
 
     def run_skills_task(self, *args: Any, **kwargs: Any):
-        return FunctionShifter.syncify(self.async_run_skills_task)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_run_skills_task)(*args, **kwargs)
 
     def create_dynamic_task(self, *args: Any, **kwargs: Any):
         kwargs.setdefault("_prompt_snapshot", self.snapshot())

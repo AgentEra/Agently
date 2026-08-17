@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 import uuid
 import json
 from typing import TYPE_CHECKING, Any, cast
@@ -26,7 +28,6 @@ from agently.types.data import (
     ExecutionResourceStatus,
 )
 from agently.core.operation.PolicyApproval import access_policy_auto_allow, merge_access_control_policy
-from agently.utils import FunctionShifter
 
 if TYPE_CHECKING:
     from agently.core.runtime.EventCenter import EventCenter
@@ -91,9 +92,9 @@ class ExecutionResourceManager:
         self._providers_by_id: dict[str, "ExecutionResourceProvider"] = {}
         self._plugins_loaded = False
 
-        self.ensure = FunctionShifter.syncify(self.async_ensure)
-        self.release = FunctionShifter.syncify(self.async_release)
-        self.release_scope = FunctionShifter.syncify(self.async_release_scope)
+        self.ensure = default_stage_call_bridge.as_sync(self.async_ensure)
+        self.release = default_stage_call_bridge.as_sync(self.async_release)
+        self.release_scope = default_stage_call_bridge.as_sync(self.async_release_scope)
 
     @staticmethod
     def _provider_id(provider: "ExecutionResourceProvider") -> str:

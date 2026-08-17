@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 from typing import Any
 
-from agently.utils import FunctionShifter
 
 
 class SearchActionExecutor:
@@ -43,6 +44,6 @@ class SearchActionExecutor:
             action_input = {}
         action_method = getattr(self.search, "_execute_action_method", None)
         if callable(action_method):
-            return await FunctionShifter.asyncify(action_method)(self.method_name, **action_input)
+            return await default_stage_call_bridge.as_async(action_method)(self.method_name, **action_input)
         method = getattr(self.search, self.method_name)
-        return await FunctionShifter.asyncify(method)(**action_input)
+        return await default_stage_call_bridge.as_async(method)(**action_input)

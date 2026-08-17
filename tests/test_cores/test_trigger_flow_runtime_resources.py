@@ -1349,7 +1349,7 @@ async def test_trigger_flow_execution_async_save_uses_snapshot_store():
 
     flow = TriggerFlow(name="snapshot-store")
     execution = flow.create_execution()
-    execution.set_state("value", 1)
+    await execution.async_set_state("value", 1)
     store = Store()
 
     ref = await execution.async_save(store)

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 import json
 import os
 import uuid
@@ -27,7 +29,7 @@ from agently.core.model import ModelRequest, Prompt, _resolve_quick_prompt_input
 from agently.core.model.ModelRequestResult import DEFAULT_SPECIFIC_EVENTS
 from agently.core.runtime import resolve_parent_run_context
 from agently.core.TaskWorkspace import TaskWorkspace
-from agently.utils import DataFormatter, FunctionShifter, Settings
+from agently.utils import DataFormatter, Settings
 from agently.utils.LanguagePolicy import apply_language_policy_to_prompt, resolve_language_policy
 
 if TYPE_CHECKING:
@@ -45,10 +47,12 @@ if TYPE_CHECKING:
         ChatMessageDict,
         ResultContentType,
         RunContext,
+        SerializableValue,
         SpecificEvents,
         StreamingData,
         TaskDAG,
     )
+    from agently.types.config import AgentlyConfigModel
     from agently.core.model import ModelRequestResult
     from agently.types.options import ExecutionOptions
     from agently.types.plugins import AgentExecution
@@ -192,8 +196,30 @@ class BaseAgent:
         self.request_prompt = self.request.prompt
         self.prompt = self.request_prompt
 
-        self.set_settings = self.settings.set_settings
         self.load_settings = self.settings.load
+
+    def set_settings(
+        self,
+        key: "str | AgentlyConfigModel",
+        value: "SerializableValue | object" = _UNSET,
+        *,
+        auto_load_env: bool = False,
+        raise_empty: bool = False,
+    ) -> Self:
+        if value is _UNSET:
+            self.settings.set_settings(
+                key,
+                auto_load_env=auto_load_env,
+                raise_empty=raise_empty,
+            )
+        else:
+            self.settings.set_settings(
+                key,
+                value,
+                auto_load_env=auto_load_env,
+                raise_empty=raise_empty,
+            )
+        return self
 
     def configure_policy_approval(self, *, handler: str | None = None) -> Self:
         if handler is not None:
@@ -1196,7 +1222,7 @@ class BaseAgent:
         *,
         task_workspace: str | os.PathLike[str] | None = None,
     ) -> "AgentExecution":
-        return FunctionShifter.syncify(self.async_resume)(task_id, task_workspace=task_workspace)
+        return default_stage_call_bridge.as_sync(self.async_resume)(task_id, task_workspace=task_workspace)
 
     async def async_resume_task(
         self,

@@ -169,6 +169,8 @@ def test_v2_default_plugins_are_registered():
         "ACPExecutionResourceProvider",
         "TrustedLocalExecutionResourceProvider",
         "DockerExecutionResourceProvider",
+        "GVisorDockerExecutionResourceProvider",
+        "SeatbeltExecutionResourceProvider",
         "BrowserExecutionResourceProvider",
         "SQLiteExecutionResourceProvider",
     }.issubset(environment_providers)

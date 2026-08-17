@@ -94,6 +94,165 @@ explicitly. `yaml_literal` is explicit opt-in and is not selected by auto.
 | `json` | You need the strictest machine contract, nested data, arrays, interop with external systems, compatibility with old prompts/tests, or exact raw JSON behavior. | Large embedded documents or code blocks make escaping fragile or hard for the model to read. |
 | Plain text | The request asks for one freeform artifact: an article, email, explanation, report, Markdown page, HTML page, or other single multi-paragraph document. Do not call `output()`; use `start()` / `async_start()` directly or read `result.get_text()`. | You need separately addressable fields, path validation, `ensure_keys`, typed objects, or downstream branching. |
 
+### Output that may exceed one model window
+
+Use `.ensure_long_output()` on an unstarted `AgentExecution` when one business
+result may be larger than a provider output window:
+
+```python
+netlist = (
+    agent
+    .input({"requirements": requirements})
+    .info({"component_rules": component_rules})
+    .instruct("Generate the complete netlist.")
+    .output(
+        {
+            "components": [
+                {
+                    "refdes": (str, "unique reference designator", True),
+                    "value": (str, "component value", True),
+                }
+            ],
+            "nets": [
+                {
+                    "name": (str, "net name", True),
+                    "connections": [(str, "refdes.pin", True)],
+                }
+            ],
+        },
+        format="json",
+    )
+    .ensure_long_output()
+    .get_data()
+)
+```
+
+The option defaults to off. `.ensure_long_output(False)` disables it on the
+same unstarted draft. It belongs to the execution rather than `.output(...)` or
+a result getter, so `get_data()`, `get_text()`, `get_data_object()`,
+`get_result()`, and generator consumers all observe one frozen policy. Calling
+it after the execution starts raises the normal one-run lifecycle error.
+
+The first model request is unchanged. If its normalized terminal is `stop`, the
+ordinary one-request result and validation path are used. If the provider
+reports `length` / `incomplete`, Agently starts a TriggerFlow-visible
+continuation loop. It persists accepted units in the execution's private
+TaskWorkspace, reads every write back with its SHA-256 digest, and replays the
+final candidate before applying the original Pydantic/schema, ensure, and
+custom validation contracts. Each structured update is also checked against
+the JSON Schema for its own assembly slot before it can advance the manifest.
+
+Current lossless carriers are plain text and explicit/resolved `json`.
+`flat_markdown`, `hybrid`, `xml_field`, `yaml_literal`, and opaque custom
+carriers fail before model dispatch when this option is enabled. Structured
+continuation retains only values whose delimiters were observed in provider
+text. Values created by incomplete-JSON repair have
+`completion_source="synthetic_repair"` and are regenerated; they are never
+committed as accepted units.
+
+Continuation uses append-only revisions:
+
+- plain text preserves the exact first prefix and appends closed, ordered text
+  blocks without fuzzy overlap deletion. Each logical continuation commits
+  exactly one text block so the next join is generated from a refreshed,
+  accepted continuity suffix; if a response supplies more text updates, the
+  first valid block is retained and the tail is regenerated;
+- JSON list items and declared values are committed only at trusted completion
+  boundaries and after local slot-schema validation;
+- the model-visible slot contract is projected from the original Agently output
+  declaration, preserving nested array/object shapes and Pydantic length,
+  numeric, multiplicity, and pattern constraints. The independently built
+  Pydantic slot model remains the authoritative commit validator, so an invalid
+  nested value cannot enter the manifest and wait for final validation;
+- exact Pydantic list bounds are enforced incrementally. Once an exact list
+  reaches `maxItems`, it is no longer offered; an incomplete exact list is an
+  ordering barrier for later dependent slots. Structured continuations receive
+  the accepted value as bounded, read-only canonical JSON evidence so later
+  units can preserve established language, names, and cross-field facts;
+- an explicitly closed empty list is retained as an empty-container manifest
+  fact. Missing list paths are not synthesized as empty, and an empty-list
+  declaration is rejected after any item or prior declaration;
+- an explicitly closed empty string is retained by the same rule for text
+  slots. Before trusting continuation `is_final`, Agently requires every
+  declared ensure path to have a manifest fact; missing required paths continue
+  the delivery loop without consuming the caller's final-validation retry
+  allowance;
+- a closed structured string is one atomic schema value. Once committed it is
+  no longer offered to continuation and cannot be appended or rewritten. Model
+  a structured value longer than the 4000-character unit bound as an ordered
+  chunk list, or use plain text when the result is one freeform artifact;
+- when a segment contains a valid contiguous prefix followed by a bad update,
+  the prefix remains committed and the rejected tail is regenerated from the
+  next `unit_index`; later updates in that tail are never skipped into the
+  manifest;
+- continuation packets carry the slot value contract, distinguish the private
+  zero-based `unit_index` from any business field named `index`, and keep packet
+  size small enough to close useful units under provider limits. Each offered
+  slot exposes one exact host-issued mnemonic `path_key`, such as
+  `p1:components`; no second model-copyable schema path competes with it, and
+  the host still authorizes the complete offered key rather than parsing its
+  suffix;
+- every continuation starts with the small control header `base_revision`,
+  `base_digest`, and `anchor`, closing those fields before any business update.
+  The anchor is the short digest of the latest accepted unit. For plain text,
+  a bounded document start, the exact accepted prose suffix, and the
+  host-counted accepted character total are supplied separately as read-only
+  continuity context. This preserves global formatting and local joins without
+  making the model copy long business text into the control header or estimate
+  the accepted length. If a provider `length` terminal arrives before that header
+  closes, the attempt is recorded as no progress, the accepted manifest is left
+  unchanged, and the next bounded recovery request is told to close the header
+  before emitting at most one update;
+- stale revisions, wrong digests, unknown paths, non-contiguous unit indexes, and
+  rejected updates remain outside the manifest. Three consecutive no-progress
+  continuations fail closed with the last reason code instead of looping;
+- `LongOutputDelivery`, not an inner `ModelRequest` retry loop, owns continuation
+  repair. Each continuation is one physical request. A provider-complete
+  response that does not validate as the private envelope is persisted and
+  recorded as bounded `continuation_envelope_invalid` no progress; the caller's
+  `max_retries` remains reserved for final assembled-value validation;
+- a zero-update `is_final` assertion after a provider `length` terminal is still
+  no progress, not proof that the truncated business result was complete;
+- continuation requests do not inherit Action/tool handlers, so output-only
+  continuation cannot repeat side effects;
+- the private continuation envelope never appears in the public text stream.
+
+When instant JSON parsing had already deferred a large provisional snapshot,
+an authoritative provider-complete final parse remains the final result;
+observed-boundary events cannot replace it with the older snapshot. If the
+final JSON parse fails or the provider ends by `length`, only genuinely closed
+observed values remain eligible for partial-unit acceptance.
+
+If a model incorrectly declares completion while the replayed candidate still
+fails the original schema, ensure rules, or a declared validator, Agently keeps
+every accepted unit and uses the existing bounded validation-retry allowance to
+request only missing or additional units. Integrity failures such as manifest,
+readback, digest, or lineage mismatches are never sent to the model for repair;
+they fail immediately.
+
+This is deliberately a direct ModelRequest delivery policy. With no explicit
+task strategy, it selects the direct route. Combining it with an explicitly
+selected AgentTask strategy fails before task execution; keep planning/tool
+work in AgentTask and start a separate direct delivery execution for the long
+terminal artifact.
+
+`get_meta()["long_output"]` reports request/segment/unit counts, replayed and
+rejected unit counts, no-progress event count, final-validation repair count,
+the accepted digest, validation status, and the actual guarantee level.
+`execution.diagnostics["long_output_no_progress"]` retains bounded per-attempt
+reason/header/manifest facts for failed runs without copying raw provider
+bodies. Transport and schema completeness do not prove that a business
+inventory is exhaustive. Declare an expected count/key/reference rule through
+`ensure_keys`, a Pydantic constraint, or `.validate(...)` when coverage must be
+proven. Without such a rule, `semantic_exhaustiveness` remains `"not_claimed"`.
+
+See the runnable
+[`examples/basic/ensure_long_output.py`](../../../examples/basic/ensure_long_output.py)
+for a 75-component JSON inventory with an explicit count/order coverage
+validator and a bounded real-model request budget. The recorded 2026-07-28
+Qwen run retained all 75 component units across truncated windows and used one
+final-validation repair request to add only the missing summary.
+
 ### Instant Streaming
 
 Use `get_generator(type="instant")` or `get_async_generator(type="instant")`

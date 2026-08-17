@@ -14,13 +14,15 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import inspect
 
 from typing import Any, AsyncGenerator, Awaitable, Callable, Literal, TYPE_CHECKING, cast, overload, Generator, Mapping
 
 from agently.core.runtime import bind_runtime_context
-from agently.utils import DeprecationWarnings, FunctionShifter
+from agently.utils import DeprecationWarnings
 from .ModelRequestResultDataFlow import ModelRequestResultDataFlow
 
 if TYPE_CHECKING:
@@ -99,8 +101,8 @@ class ModelRequestResult:
         )
         self._finally_handlers_ran = False
         self._finally_handlers_lock = asyncio.Lock()
-        self._run_finally_handlers_once_sync = FunctionShifter.syncify(self._run_finally_handlers_once)
-        self._drain_response_parser_observations_sync = FunctionShifter.syncify(
+        self._run_finally_handlers_once_sync = default_stage_call_bridge.as_sync(self._run_finally_handlers_once)
+        self._drain_response_parser_observations_sync = default_stage_call_bridge.as_sync(
             self._drain_response_parser_observations
         )
         self.prompt = prompt
@@ -112,10 +114,10 @@ class ModelRequestResult:
         self._accepted_retry_result: ModelRequestResult | None = None
         self._data_flow = ModelRequestResultDataFlow(self)
         self.full_result_data = self._response_parser.full_result_data
-        self._get_meta_sync = cast(Callable[[], dict[str, Any]], FunctionShifter.syncify(self.async_get_meta))
-        self._get_text_sync = cast(Callable[[], str], FunctionShifter.syncify(self.async_get_text))
-        self._get_data_sync = FunctionShifter.syncify(self.async_get_data)
-        self._get_data_object_sync = FunctionShifter.syncify(self.async_get_data_object)
+        self._get_meta_sync = cast(Callable[[], dict[str, Any]], default_stage_call_bridge.as_sync(self.async_get_meta))
+        self._get_text_sync = cast(Callable[[], str], default_stage_call_bridge.as_sync(self.async_get_text))
+        self._get_data_sync = default_stage_call_bridge.as_sync(self.async_get_data)
+        self._get_data_object_sync = default_stage_call_bridge.as_sync(self.async_get_data_object)
 
     async def _drain_response_parser_observations(self):
         drain = getattr(self._response_parser, "drain_runtime_observations", None)

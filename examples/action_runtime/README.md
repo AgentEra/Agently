@@ -10,7 +10,7 @@ Before running them, set:
 
 - `DEEPSEEK_API_KEY`
 - `DEEPSEEK_BASE_URL` (optional, defaults to `https://api.deepseek.com/v1`)
-- `DEEPSEEK_DEFAULT_MODEL` (optional, defaults to `deepseek-chat`)
+- `DEEPSEEK_DEFAULT_MODEL` (optional, defaults to `deepseek-v4-flash`)
 
 Example groups:
 

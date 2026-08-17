@@ -23,6 +23,8 @@ from .ActionRuntime import AgentlyActionRuntime
 from .ExecutionResourceProvider import (
     ACPExecutionResourceProvider,
     BashExecutionResourceProvider,
+    GVisorDockerExecutionResourceProvider,
+    SeatbeltExecutionResourceProvider,
     MCPExecutionResourceProvider,
 )
 from .PromptGenerator.AgentlyPromptGenerator import AgentlyPromptGenerator

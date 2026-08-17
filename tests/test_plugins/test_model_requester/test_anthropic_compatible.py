@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from httpx import ReadError
 from httpx_sse import SSEError
 
 from agently import Agently
@@ -28,6 +29,51 @@ def build_plugin(config: dict, prompt_values: dict | None = None):
 
 def generate_request(config: dict, prompt_values: dict | None = None):
     return build_plugin(config, prompt_values).generate_request_data().model_dump()
+
+
+@pytest.mark.asyncio
+async def test_request_retry_uses_public_attempt_boundary(monkeypatch):
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model": "deepseek-v4-flash",
+            "request_retry": {"max_attempts": 2, "after_output": True},
+        },
+        {"input": "hello"},
+    )
+    calls = 0
+
+    async def fake_legacy(_request_data):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield "content_block_delta", '{"delta":{"text":"partial"}}'
+            yield "error", ReadError("anthropic SSE disconnected")
+            return
+        yield "message_stop", '{"type":"message_stop"}'
+
+    monkeypatch.setattr(plugin, "_request_model_legacy", fake_legacy)
+    events = [
+        item
+        async for item in plugin.request_model(plugin.generate_request_data())
+    ]
+
+    assert calls == 2
+    assert events[1] == (
+        "status",
+        {
+            "status": "failed",
+            "attempt_index": 1,
+            "retry": True,
+            "next_attempt_index": 2,
+            "reason": "anthropic SSE disconnected",
+            "error_type": "ReadError",
+        },
+    )
+    assert events[-1] == (
+        "status",
+        {"status": "completed", "attempt_index": 2, "retry": False},
+    )
 
 
 async def capture_request_headers(monkeypatch: pytest.MonkeyPatch, config: dict, prompt_values: dict | None = None):
@@ -144,6 +190,57 @@ def test_generate_request_uses_messages_path_and_default_model():
     assert request["request_options"]["max_tokens"] == 8192
     assert request["headers"]["anthropic-version"] == "2023-06-01"
     assert request["data"]["messages"] == [{"role": "user", "content": "hello"}]
+
+
+def test_generate_request_preserves_thinking_options():
+    request = generate_request(
+        {
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model": "deepseek-v4-flash",
+            "request_options": {
+                "thinking": {"type": "enabled"},
+                "output_config": {"effort": "high"},
+            },
+        },
+        {"input": "hello"},
+    )
+
+    assert request["request_url"] == "https://api.deepseek.com/anthropic/messages"
+    assert request["request_options"]["thinking"] == {"type": "enabled"}
+    assert request["request_options"]["output_config"] == {"effort": "high"}
+
+
+def test_generate_request_replays_thinking_signature_and_tool_result():
+    request = generate_request(
+        {
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model": "deepseek-v4-flash",
+        },
+        {
+            "chat_history": [
+                {"role": "user", "content": "What is the date?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "Use the date tool.", "signature": "signed-thinking"},
+                        {"type": "tool_use", "id": "toolu_1", "name": "get_date", "input": {}},
+                    ],
+                },
+            ],
+            "attachment": [
+                {"type": "tool_result", "tool_use_id": "toolu_1", "content": "2026-07-31"},
+            ],
+        },
+    )
+
+    messages = request["data"]["messages"]
+    assert messages[1]["content"] == [
+        {"type": "thinking", "thinking": "Use the date tool.", "signature": "signed-thinking"},
+        {"type": "tool_use", "id": "toolu_1", "name": "get_date", "input": {}},
+    ]
+    assert messages[2]["content"] == [
+        {"type": "tool_result", "tool_use_id": "toolu_1", "content": "2026-07-31"},
+    ]
 
 
 def test_client_options_disable_environment_proxy_by_default():
@@ -342,6 +439,56 @@ async def test_stream_idle_timeout_returns_timeout_error_event(monkeypatch: pyte
 
 
 @pytest.mark.asyncio
+async def test_streaming_stops_transport_after_message_stop(monkeypatch: pytest.MonkeyPatch):
+    late_event_reached = False
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            self.headers = {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def aclose(self):
+            return None
+
+    async def fake_aiter_sse_with_retry(self, client, method, url, *, headers, json):
+        del self, client, method, url, headers, json
+
+        async def generator():
+            nonlocal late_event_reached
+            yield SimpleNamespace(event="message_stop", data='{"type":"message_stop"}')
+            late_event_reached = True
+            yield SimpleNamespace(
+                event="content_block_delta",
+                data='{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"late"}}',
+            )
+
+        return generator()
+
+    monkeypatch.setattr(anthropic_module, "AsyncClient", FakeAsyncClient)
+    monkeypatch.setattr(AnthropicCompatible, "_aiter_sse_with_retry", fake_aiter_sse_with_retry)
+
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model": "deepseek-v4-flash",
+            "stream": True,
+        },
+        {"input": "hello"},
+    )
+
+    events = [item async for item in plugin.request_model(plugin.generate_request_data())]
+
+    assert late_event_reached is False
+    assert [event for event, _payload in events] == ["message_stop", "status"]
+    assert events[-1][1]["status"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_non_stream_response_idle_timeout_returns_stall_error(monkeypatch: pytest.MonkeyPatch):
     class FakeAsyncClient:
         def __init__(self, **kwargs):
@@ -493,6 +640,7 @@ def test_broadcast_response_maps_text_stream_and_meta():
                 ),
             ),
             ("message_stop", json.dumps({"type": "message_stop"})),
+            ("status", {"status": "completed", "attempt_index": 1, "retry": False}),
         ],
     )
 
@@ -500,10 +648,55 @@ def test_broadcast_response_maps_text_stream_and_meta():
     assert ("delta", "world") in events
     assert ("done", "Hello world") in events
     assert ("reasoning_done", "") in events
+    assert ("status", {"status": "completed", "attempt_index": 1, "retry": False}) in events
     meta = next(data for event, data in events if event == "meta")
     assert meta["id"] == "msg_1"
     assert meta["finish_reason"] == "stop"
     assert meta["usage"]["output_tokens"] == 2
+
+
+def test_broadcast_response_maps_non_stream_thinking_blocks():
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model": "deepseek-v4-flash",
+            "stream": False,
+        },
+        {"input": "hello"},
+    )
+    events = collect_events(
+        plugin,
+        [
+            (
+                "message",
+                json.dumps(
+                    {
+                        "id": "msg_ds",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "deepseek-v4-flash",
+                        "content": [
+                            {"type": "thinking", "thinking": "model reasoning", "signature": "signed-thinking"},
+                            {"type": "text", "text": "done text"},
+                        ],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 1, "output_tokens": 2},
+                    }
+                ),
+            ),
+            ("status", {"status": "completed", "attempt_index": 1, "retry": False}),
+        ],
+    )
+
+    assert ("reasoning_done", "model reasoning") in events
+    assert ("done", "done text") in events
+    original_done = next(payload for event, payload in events if event == "original_done")
+    assert original_done["content"][0] == {
+        "type": "thinking",
+        "thinking": "model reasoning",
+        "signature": "signed-thinking",
+    }
+    assert ("status", {"status": "completed", "attempt_index": 1, "retry": False}) in events
 
 
 def test_broadcast_response_preserves_core_status_record():

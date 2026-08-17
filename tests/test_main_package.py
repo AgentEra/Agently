@@ -2,11 +2,16 @@ import asyncio
 import logging
 import sys
 import warnings
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import agently
 import pytest
+import toml
 import yaml
+from typing_extensions import assert_type
+
 from agently import Agent, Agently, TaskWorkspace, TriggerFlow
 from agently.compatibility import (
     get_current_release_manifest,
@@ -37,6 +42,22 @@ _RUNTIME_LOG_KEYS = (
     "runtime.show_runtime_logs",
     "runtime.httpx_log_level",
 )
+
+
+def test_package_exposes_standard_release_version() -> None:
+    pyproject = toml.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_version = pyproject["project"]["version"]
+
+    assert_type(agently.__version__, str)
+    assert_type(Agently.__version__, str)
+    assert agently.__version__ == expected_version
+    assert Agently.__version__ == expected_version
+    assert not hasattr(agently, "version")
+    assert not hasattr(Agently, "version")
 
 
 def test_public_core_instance_creation_styles(tmp_path, monkeypatch):
@@ -89,6 +110,17 @@ def _restore_runtime_log_settings(snapshot):
 async def test_settings():
     Agently.set_settings("test", "test")
     assert Agently.settings["test"] == "test"
+
+
+def test_agent_set_settings_preserves_fluent_agent_contract():
+    agent = Agently.create_agent("settings-chain")
+
+    configured_agent = agent.set_settings("custom.enabled", True)
+
+    assert_type(configured_agent, Agent)
+    assert configured_agent is agent
+    assert configured_agent.settings.get("custom.enabled") is True
+    assert callable(configured_agent.input)
 
 
 def test_agently_set_api_key_and_alias_mapping():

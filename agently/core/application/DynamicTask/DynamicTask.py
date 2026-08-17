@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 from collections.abc import Mapping
 from typing import Any, TYPE_CHECKING, Literal, cast
 
@@ -28,7 +30,7 @@ from agently.core.orchestration.TaskDAG import (
 )
 from agently.types.data import TaskDAG
 from agently.core.model.ModelRequest import ModelRequest
-from agently.utils import FunctionShifter, Settings
+from agently.utils import Settings
 
 if TYPE_CHECKING:
     from agently.core import PluginManager
@@ -57,7 +59,7 @@ class ActionTaskAdapter:
         if hasattr(self.action, "async_execute_action"):
             return await self.action.async_execute_action(str(action_id), kwargs)
         if callable(self.action):
-            return await FunctionShifter.asyncify(self.action)(context)
+            return await default_stage_call_bridge.as_async(self.action)(context)
         raise TypeError("Action dynamic task requires an Action-like object or callable.")
 
 
@@ -73,7 +75,7 @@ class SkillTaskAdapter:
                 skills=[skill_id],
             )
         if callable(self.skill_task_runner):
-            return await FunctionShifter.asyncify(self.skill_task_runner)(context)
+            return await default_stage_call_bridge.as_async(self.skill_task_runner)(context)
         raise TypeError("Skill dynamic task requires an AgentExecution adapter or callable.")
 
 
@@ -128,9 +130,9 @@ class DynamicTask:
             validator=self.validator,
         )
 
-        self.start = FunctionShifter.syncify(self.async_start)
-        self.run = FunctionShifter.syncify(self.async_run)
-        self.plan = FunctionShifter.syncify(self.async_plan)
+        self.start = default_stage_call_bridge.as_sync(self.async_start)
+        self.run = default_stage_call_bridge.as_sync(self.async_run)
+        self.plan = default_stage_call_bridge.as_sync(self.async_plan)
 
     def _make_resolver(self) -> TaskDAGResolver:
         resolver = TaskDAGResolver()

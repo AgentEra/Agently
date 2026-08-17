@@ -171,6 +171,11 @@ class StreamingData(BaseModel):
     indexes: tuple | None = None
     event_type: Literal["delta", "done"] = "done"
     full_data: Any = None
+    completion_source: Literal[
+        "observed_boundary",
+        "final_reconciliation",
+        "synthetic_repair",
+    ] | None = None
 
     @staticmethod
     @lru_cache(maxsize=1024)

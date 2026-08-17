@@ -44,6 +44,7 @@ from .Control import (
     TRIGGER_FLOW_STATUS_FAILED,
 )
 from .ExecutionState import INTERVENTIONS_STATE_KEY, TriggerFlowInterventionMode
+from ._runtime_stream_transport import StageRuntimeStreamTransport
 from .SnapshotProjection import (
     TRIGGER_FLOW_SNAPSHOT_PROJECTION_VERSION,
     TriggerFlowSnapshotProjector,
@@ -547,8 +548,11 @@ class TriggerFlowExecutionPersistence:
             if saved_retention_policy is not None
             else None
         )
+        execution._runtime_stream_transport = StageRuntimeStreamTransport()
+        execution._runtime_io.reset_stream_start_state()
         execution._runtime_stream_stopped = lifecycle_state == TRIGGER_FLOW_LIFECYCLE_CLOSED
         if lifecycle_state == TRIGGER_FLOW_LIFECYCLE_CLOSED:
+            execution._runtime_stream_transport.close()
             close_result = execution._build_close_snapshot()
             execution._closed_event.set()
             execution._close_result = close_result

@@ -142,9 +142,17 @@ for item in gen:
 ```
 
 `item` 暴露 `.path`（如 `"tips[0]"`）、`.wildcard_path`（`"tips[*]"`）、
-`.value`、`.delta`、`.is_complete` 和 `.event_type`。用 `.delta` 更新正在增长
+`.value`、`.delta`、`.is_complete`、`.event_type` 和 `.completion_source`。
+用 `.delta` 更新正在增长
 的字段；只有下游动作必须等字段关闭时，才用 `.is_complete` /
 `event_type=="done"` 做触发条件。
+
+对 JSON stream，`completion_source` 会区分
+`"observed_boundary"`（provider 文本中真实出现定界符）、
+`"final_reconciliation"`（raw final JSON 自身已闭合）和
+`"synthetic_repair"`（parser 补全了开放尾部）。在最终校验前它们都仍是
+provisional；尤其是不可逆动作与超长输出保留不能把 `synthetic_repair`
+当作已接受数据。
 
 ### AgentExecution 投影
 
@@ -368,6 +376,12 @@ async for item in result.get_async_generator(type="instant"):
 最终的 `get_data()` 不含 `$status`。需要原始状态事件时，用 `type="all"` 或
 `type="specific", specific="status"`。`reason` 给出有界的 transport/provider 实际说明；
 `cancelled` 与失败请求不同。
+
+对于 OpenAI-compatible SSE，显式 `[DONE]` 是响应的逻辑终止。Agently 会立即停止消费
+该 SSE iterator，因此即使网关随后遗漏或损坏 HTTP chunked terminator，也不会用物理
+收尾错误覆盖已经完成的响应；最终 `original_done`、`meta`、usage 和 `finish_reason`
+仍会保留。若断流发生在 `[DONE]` 之前，它仍是 transport failure，并遵循已配置的
+failover/retry 策略；仅有 partial 输出绝不会被合成为成功。
 
 纯文本 `delta` 消费者会在替代 attempt 的正文前收到独立的
 `"<$retry>{reason}</$retry>"` 标记。它是重放边界，不是模型正文：

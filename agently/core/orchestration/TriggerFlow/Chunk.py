@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 import uuid
 
 from typing import TYPE_CHECKING
@@ -20,7 +22,6 @@ if TYPE_CHECKING:
     from agently.types.trigger_flow import TriggerFlowHandler, TriggerFlowRuntimeData
     from .BluePrint import TriggerFlowBlueprint
 
-from agently.utils import FunctionShifter
 from .Control import TriggerFlowPauseSignal
 
 
@@ -45,14 +46,14 @@ class TriggerFlowChunk:
         self._emit_signals = list(dict.fromkeys(str(signal) for signal in (emit_signals or [])))
 
     async def async_call(self, data: "TriggerFlowRuntimeData"):
-        result = await FunctionShifter.asyncify(self._handler)(data)
+        result = await default_stage_call_bridge.as_async(self._handler, managed=True)(data)
         if isinstance(result, TriggerFlowPauseSignal) or data.execution.is_waiting():
             return result
         await data.async_emit(self.trigger, result, _layer_marks=data._layer_marks.copy(), _source="chunk")
         return result
 
     def call(self, data: "TriggerFlowRuntimeData"):
-        result = FunctionShifter.syncify(self._handler)(data)
+        result = default_stage_call_bridge.as_sync(self._handler, managed=True)(data)
         if isinstance(result, TriggerFlowPauseSignal) or data.execution.is_waiting():
             return result
         data.emit(self.trigger, result, _layer_marks=data._layer_marks.copy(), _source="chunk")

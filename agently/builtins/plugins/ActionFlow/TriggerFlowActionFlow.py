@@ -72,7 +72,7 @@ class TriggerFlowActionFlow:
         return failed_action_ids
 
     @classmethod
-    def _update_failed_action_counts(
+    async def _update_failed_action_counts(
         cls,
         data: Any,
         records: list[dict[str, Any]],
@@ -81,7 +81,7 @@ class TriggerFlowActionFlow:
     ) -> bool:
         failed_action_ids = cls._failed_action_ids_without_progress(records)
         if not failed_action_ids:
-            data.set_state("consecutive_failed_action_counts", {})
+            await data.async_set_state("consecutive_failed_action_counts", {})
             return False
         raw_counts = data.get_state("consecutive_failed_action_counts", {})
         previous_counts = raw_counts if isinstance(raw_counts, dict) else {}
@@ -92,7 +92,7 @@ class TriggerFlowActionFlow:
             except Exception:
                 previous = 0
             next_counts[action_id] = previous + 1
-        data.set_state("consecutive_failed_action_counts", next_counts)
+        await data.async_set_state("consecutive_failed_action_counts", next_counts)
         return any(count >= max_consecutive_failed_rounds_per_action for count in next_counts.values())
 
     @staticmethod
@@ -132,7 +132,7 @@ class TriggerFlowActionFlow:
         return None
 
     @classmethod
-    def _update_unchanged_evidence_page_state(
+    async def _update_unchanged_evidence_page_state(
         cls,
         data: Any,
         records: list[dict[str, Any]],
@@ -145,7 +145,7 @@ class TriggerFlowActionFlow:
             # Repeating one page is not stagnation when the same round also
             # produced any other successful information. Reset the counter so
             # this guard cannot turn mixed evidence progress into a false stop.
-            data.set_state("unchanged_evidence_page_state", {})
+            await data.async_set_state("unchanged_evidence_page_state", {})
             return False, 0, []
         identities = {
             (
@@ -159,7 +159,7 @@ class TriggerFlowActionFlow:
         }
         ordered = [identities[key] for key in sorted(identities)]
         if not ordered:
-            data.set_state("unchanged_evidence_page_state", {})
+            await data.async_set_state("unchanged_evidence_page_state", {})
             return False, 0, []
         previous = data.get_state("unchanged_evidence_page_state", {})
         previous = previous if isinstance(previous, dict) else {}
@@ -168,7 +168,7 @@ class TriggerFlowActionFlow:
             if previous.get("evidence_identities") == ordered
             else 1
         )
-        data.set_state(
+        await data.async_set_state(
             "unchanged_evidence_page_state",
             {
                 "occurrence_count": occurrence_count,
@@ -333,11 +333,11 @@ class TriggerFlowActionFlow:
         flow = TriggerFlow(name=f"action-loop-{ agent_name }")
 
         async def initialize_loop(data):
-            data.set_state("done_plans", [])
-            data.set_state("last_round_records", [])
-            data.set_state("consecutive_failed_action_counts", {})
-            data.set_state("unchanged_evidence_page_state", {})
-            data.set_state("round_index", 0)
+            await data.async_set_state("done_plans", [])
+            await data.async_set_state("last_round_records", [])
+            await data.async_set_state("consecutive_failed_action_counts", {})
+            await data.async_set_state("unchanged_evidence_page_state", {})
+            await data.async_set_state("round_index", 0)
             await data.async_emit("PLAN", None)
             return None
 
@@ -533,8 +533,8 @@ class TriggerFlowActionFlow:
                 resume_decision = policy_approval.normalize_decision(resume_value, handler="triggerflow_resume")
                 if resume_decision.get("status") == "approved":
                     approval_decisions[pending_approval_key] = resume_decision
-                    data.set_state("policy_approval_decisions", approval_decisions)
-                    data.set_state("pending_policy_approval_key", "")
+                    await data.async_set_state("policy_approval_decisions", approval_decisions)
+                    await data.async_set_state("pending_policy_approval_key", "")
                 else:
                     pending_action = data.get_state("pending_policy_approval_action", {})
                     if not isinstance(pending_action, dict):
@@ -560,11 +560,11 @@ class TriggerFlowActionFlow:
                     )
                     state_records = action._to_action_flow_return_records(records)
                     done_plans.extend(state_records)
-                    data.set_state("done_plans", done_plans)
-                    data.set_state("last_round_records", state_records)
-                    data.set_state("round_index", round_index + 1)
-                    data.set_state("pending_policy_approval_key", "")
-                    data.set_state("pending_policy_approval_action", {})
+                    await data.async_set_state("done_plans", done_plans)
+                    await data.async_set_state("last_round_records", state_records)
+                    await data.async_set_state("round_index", round_index + 1)
+                    await data.async_set_state("pending_policy_approval_key", "")
+                    await data.async_set_state("pending_policy_approval_action", {})
                     await data.async_emit("PLAN", None)
                     return state_records
 
@@ -599,8 +599,8 @@ class TriggerFlowActionFlow:
                     approved_override["policy_approval_decision"] = approval_decisions[approval_key]
                     command["policy_override"] = approved_override
                     continue
-                data.set_state("pending_policy_approval_key", approval_key)
-                data.set_state("pending_policy_approval_action", dict(command))
+                await data.async_set_state("pending_policy_approval_key", approval_key)
+                await data.async_set_state("pending_policy_approval_action", dict(command))
                 if data.execution._get_runtime_resource("record_store", None) is None:
                     data.execution.set_runtime_resource("record_store", recovery_record_store)
                 gate_result = await policy_approval.async_gate(
@@ -631,13 +631,13 @@ class TriggerFlowActionFlow:
                     return gate_result
                 if gate_result.get("status") == "approved":
                     approval_decisions[approval_key] = gate_result
-                    data.set_state("policy_approval_decisions", approval_decisions)
+                    await data.async_set_state("policy_approval_decisions", approval_decisions)
                     approved_override = dict(sanitized_policy_override)
                     approved_override["policy_approval_granted"] = True
                     approved_override["policy_approval_decision"] = gate_result
                     command["policy_override"] = approved_override
-                    data.set_state("pending_policy_approval_key", "")
-                    data.set_state("pending_policy_approval_action", {})
+                    await data.async_set_state("pending_policy_approval_key", "")
+                    await data.async_set_state("pending_policy_approval_action", {})
                     continue
                 blocked_record = {
                     "ok": False,
@@ -659,11 +659,11 @@ class TriggerFlowActionFlow:
                 )
                 state_records = action._to_action_flow_return_records(records)
                 done_plans.extend(state_records)
-                data.set_state("done_plans", done_plans)
-                data.set_state("last_round_records", state_records)
-                data.set_state("round_index", round_index + 1)
-                data.set_state("pending_policy_approval_key", "")
-                data.set_state("pending_policy_approval_action", {})
+                await data.async_set_state("done_plans", done_plans)
+                await data.async_set_state("last_round_records", state_records)
+                await data.async_set_state("round_index", round_index + 1)
+                await data.async_set_state("pending_policy_approval_key", "")
+                await data.async_set_state("pending_policy_approval_action", {})
                 await data.async_emit("PLAN", None)
                 return state_records
 
@@ -750,7 +750,7 @@ class TriggerFlowActionFlow:
                     ],
                     source="ActionFlow",
                 )
-            should_stop_after_failed_actions = self._update_failed_action_counts(
+            should_stop_after_failed_actions = await self._update_failed_action_counts(
                 data,
                 bounded_records,
                 max_consecutive_failed_rounds_per_action=max_consecutive_failed_rounds_per_action,
@@ -759,7 +759,7 @@ class TriggerFlowActionFlow:
                 should_stop_after_unchanged_evidence,
                 unchanged_evidence_occurrence_count,
                 unchanged_evidence_identities,
-            ) = self._update_unchanged_evidence_page_state(
+            ) = await self._update_unchanged_evidence_page_state(
                 data,
                 bounded_records,
                 max_consecutive_unchanged_evidence_rounds=(
@@ -817,9 +817,9 @@ class TriggerFlowActionFlow:
 
             state_records = bounded_records
             done_plans.extend(state_records)
-            data.set_state("done_plans", done_plans)
-            data.set_state("last_round_records", state_records)
-            data.set_state("round_index", round_index + 1)
+            await data.async_set_state("done_plans", done_plans)
+            await data.async_set_state("last_round_records", state_records)
+            await data.async_set_state("round_index", round_index + 1)
             if should_stop_after_failed_actions:
                 await publish_runtime_observation(
                     "loop_failed_action_converged",
@@ -856,8 +856,8 @@ class TriggerFlowActionFlow:
 
         async def finalize_loop(data):
             result = data.value if isinstance(data.value, list) else []
-            data.set_state("action_loop_result", result)
-            data.set_state("done_plans", result)
+            await data.async_set_state("action_loop_result", result)
+            await data.async_set_state("done_plans", result)
             return result
 
         flow.to(initialize_loop)

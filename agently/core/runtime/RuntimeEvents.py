@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import time
@@ -471,11 +472,17 @@ async def async_emit_action_flow_observation(observation: dict[str, Any]) -> Non
 def emit_session_observation(observation: dict[str, Any]) -> None:
     """Map session observations to official RuntimeEvent records."""
 
-    from agently.base import emit_runtime
+    from agently.base import event_center
 
     event = _build_session_event(observation)
-    if event is not None:
-        emit_runtime(event)
+    if event is None:
+        return
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        event_center.emit(event)
+    else:
+        event_center.emit_nowait(event)
 
 
 async def async_emit_session_observation(observation: dict[str, Any]) -> None:

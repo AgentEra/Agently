@@ -23,7 +23,6 @@ from typing import Any, Literal, TYPE_CHECKING, Sequence, cast
 
 from agently.core.runtime.RuntimeContext import resolve_parent_run_context
 from agently.types.data import EMPTY, SerializableMapping
-from agently.types.trigger_flow import RUNTIME_STREAM_STOP
 from .Control import (
     TRIGGER_FLOW_STATUS_CANCELLED,
     TRIGGER_FLOW_STATUS_FAILED,
@@ -289,6 +288,15 @@ class TriggerFlowBlueprintSubFlow:
             value = source.read_path(binding.source_scope, binding.source_path)
             target.write_path(binding.target_scope, binding.target_path, value)
 
+    @staticmethod
+    def is_resource_identity_binding(binding: _CompiledSubFlowBinding) -> bool:
+        return (
+            binding.target_scope == "resources"
+            and binding.source_scope == "resources"
+            and bool(binding.target_path)
+            and bool(binding.source_path)
+        )
+
     def instantiate_isolated_sub_flow(self, trigger_flow: "TriggerFlow"):
         from .TriggerFlow import TriggerFlow
 
@@ -307,7 +315,7 @@ class TriggerFlowBlueprintSubFlow:
             copy.deepcopy(trigger_flow._flow_data.get(None, {}, inherit=False))
         )
         isolated_sub_flow._runtime_resources.update(
-            copy.deepcopy(trigger_flow._runtime_resources.get(None, {}, inherit=False))
+            dict(trigger_flow._runtime_resources.get(None, {}, inherit=False))
         )
         return isolated_sub_flow
 
@@ -316,11 +324,15 @@ class TriggerFlowBlueprintSubFlow:
         child_execution: TriggerFlowExecution,
         parent_execution: TriggerFlowExecution,
     ):
-        while True:
-            stream_item = await child_execution._runtime_stream_queue.get()
-            if stream_item is RUNTIME_STREAM_STOP:
-                return
-            await parent_execution.async_put_into_stream(stream_item)
+        subscription = child_execution._runtime_stream_transport.subscribe(
+            start="earliest",
+            timeout=None,
+        )
+        try:
+            async for stream_item in subscription:
+                await parent_execution.async_put_into_stream(stream_item)
+        finally:
+            await subscription.async_close()
 
     def build_resource_bindings(
         self,
@@ -328,12 +340,11 @@ class TriggerFlowBlueprintSubFlow:
     ):
         bindings: dict[str, str] = {}
         for binding in capture_bindings:
-            if binding.target_scope != "resources" or binding.source_scope != "resources":
+            if not self.is_resource_identity_binding(binding):
                 continue
             target_key = ".".join(binding.target_path)
             source_key = ".".join(binding.source_path)
-            if target_key and source_key:
-                bindings[target_key] = source_key
+            bindings[target_key] = source_key
         return bindings
 
     def apply_resource_bindings(
@@ -697,6 +708,11 @@ class TriggerFlowBlueprintSubFlow:
         concurrency = operator["options"].get("concurrency")
         sub_flow_template = trigger_flow if trigger_flow is not None else self.build_from_operator(operator)
         resource_bindings = self.build_resource_bindings(capture_bindings)
+        value_capture_bindings = tuple(
+            binding
+            for binding in capture_bindings
+            if not self.is_resource_identity_binding(binding)
+        )
 
         async def call_sub_flow(data):
             isolated_sub_flow = self.instantiate_isolated_sub_flow(sub_flow_template)
@@ -704,7 +720,7 @@ class TriggerFlowBlueprintSubFlow:
             capture_source = _ParentSubFlowCaptureSource(data)
             capture_target = _SubFlowCaptureTarget()
             self.apply_bindings(
-                capture_bindings,
+                value_capture_bindings,
                 source=capture_source,
                 target=capture_target,
             )

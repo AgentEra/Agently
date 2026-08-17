@@ -1,6 +1,6 @@
 <img width="640" alt="Agently" src="https://github.com/user-attachments/assets/c645d031-c8b0-4dba-a515-9d7a4b0a6881" />
 
-# Agently 4.1.4.4 - AI 应用运行时框架
+# Agently 4.1.4.5 - AI 应用运行时框架
 
 > 构建具备结构化输出、可观测 Actions、运行时 Skills、MCP 能力、过程流和可恢复工作流的 AI 服务后端。
 
@@ -32,9 +32,11 @@ Agently 面向的是正在从“模型偶尔能做对”走向“应用必须稳
 
 核心设计问题是：怎样保留模型能力，同时让应用代码拥有稳定契约、可观测执行和可重启的工作流边界？
 
-Agently 4.1.4.4 加强了 Pydantic 字段约束提示与修正重试，增加具备恢复语义的
-TriggerFlow 快照投影和有界本地快照保留，并让默认发布校验不再依赖本地
-Ollama。4.1.4.2 的运行时所有权边界和 companion protocol 保持不变。阅读
+Agently 4.1.4.5 增加 direct 长输出 execution 的可选无损续写，并让
+Agently-Stage 直接承接 TriggerFlow 的进程内 managed task 生命周期。
+EventCenter、SignalNet、TriggerFlow、RuntimeEvent 和 AgentExecution 的语义
+所有权保持不变。阅读
+[4.1.4.5 Release Notes](docs/cn/development/release-notes-4.1.4.5.md)、
 [4.1.4.4 Release Notes](docs/cn/development/release-notes-4.1.4.4.md)、
 [4.1.4.3 Release Notes](docs/cn/development/release-notes-4.1.4.3.md) 和
 [4.1.4 Release Notes](docs/cn/development/release-notes-4.1.4.md)
@@ -46,7 +48,7 @@ Ollama。4.1.4.2 的运行时所有权边界和 companion protocol 保持不变�
 
 当你关心这些问题时，Agently 会比较合适：
 
-- **AI 服务应该是运行时执行，不是 prompt glue** - `AgentExecution` 统一管理单次运行的 Prompt、strategy、Actions、Skill bindings、process stream、TaskContext evidence 和 result views，覆盖 direct、flat、TaskBoard strategy。阅读 [4.1.4.4 Release Notes](docs/cn/development/release-notes-4.1.4.4.md)、[4.1.4 Release Notes](docs/cn/development/release-notes-4.1.4.md) 和 [Agent Auto Orchestration 示例](examples/agent_auto_orchestration/)。
+- **AI 服务应该是运行时执行，不是 prompt glue** - `AgentExecution` 统一管理单次运行的 Prompt、strategy、Actions、Skill bindings、process stream、TaskContext evidence 和 result views，覆盖 direct、flat、TaskBoard strategy。阅读 [4.1.4.5 Release Notes](docs/cn/development/release-notes-4.1.4.5.md)、[4.1.4 Release Notes](docs/cn/development/release-notes-4.1.4.md) 和 [Agent Auto Orchestration 示例](examples/agent_auto_orchestration/)。
 - **换模型不应重写业务逻辑** - Agently 把 provider setup、Prompt 槽位、响应解析、Action 执行和响应读取归一到同一套 request/runtime contract。阅读 [模型设置](docs/cn/start/model-setup.md)、[模型概览](docs/cn/models/overview.md) 和 [Requests 概览](docs/cn/requests/overview.md)。
 - **结构化输出应是框架保障，不只是 provider 能力** - `.output(...)` schema、必填字段提取、parser feedback、重试、`ensure_keys`、`ensure_all_keys` 和 validation handlers 在 Agently 内部协同工作。阅读 [Schema as Prompt](docs/cn/requests/schema-as-prompt.md)、[输出控制](docs/cn/requests/output-control.md) 和 [`examples/basic/`](examples/basic/)。
 - **流式输出应在最后一个 token 前暴露结构** - `instant` mode 允许消费者在模型仍在流式输出时响应结构化字段，适合 UI 更新、SSE routes 和 workflow signals。阅读 [模型响应](docs/cn/requests/model-response.md)、[FastAPI 服务封装](docs/cn/services/fastapi.md) 和 [`examples/fastapi/`](examples/fastapi/)。
@@ -58,7 +60,7 @@ Ollama。4.1.4.2 的运行时所有权边界和 companion protocol 保持不变�
 - **常见模型应用模式应该可组合** - router、To-Do/dependency execution、planning、reflection、evaluator/reviser 和多 Agent 协作，都可以由同一套 request/action/signal primitives 组合出来。阅读 [Playbooks](docs/cn/playbooks/overview.md)、[TriggerFlow 模型集成](docs/cn/triggerflow/model-integration.md) 和 [`examples/step_by_step/`](examples/step_by_step/)。
 - **服务应保持清晰项目边界** - async API、FastAPI helpers、settings 文件、prompt 文件、DevTools 观测和 companion coding-agent skills 适合非一次性项目。阅读 [项目结构](docs/cn/start/project-framework.md)、[FastAPI 服务封装](docs/cn/services/fastapi.md) 和 [观测概览](docs/cn/observability/overview.md)。
 
-当前框架版本：`4.1.4.4`。
+当前框架版本：`4.1.4.5`。
 
 Python：`>=3.10`。
 
@@ -100,10 +102,13 @@ Agently.set_settings(
     "OpenAICompatible",
     {
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "api_key": "${ENV.DEEPSEEK_API_KEY}",
         "model_type": "chat",
-        "request_options": {"temperature": 0.2},
+        "request_options": {
+            "thinking": {"type": "disabled"},
+            "temperature": 0.2,
+        },
     },
 )
 
@@ -148,22 +153,26 @@ Agently.set_settings(
 
 ```python
 Agently.set_settings("model_pool", {
-    "support-chat": "deepseek-chat-prod",
+    "support-chat": "deepseek-v4-flash-prod",
     "reasoning": "deepseek-reason-prod",
 })
 Agently.set_settings("model_profiles", {
-    "deepseek-chat-prod": {
+    "deepseek-v4-flash-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
+        "request_options": {"thinking": {"type": "disabled"}},
     },
     "deepseek-reason-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
-        "request_options": {"temperature": 0},
+        "request_options": {
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "high",
+        },
     },
 })
 Agently.set_settings("api_key_pools", {
@@ -205,7 +214,7 @@ Prompt 由命名槽位组成。这样应用意图、约束、上下文和输出�
 result = (
     agent
     .role("你是简洁的 release note 作者。")
-    .info({"version": "4.1.4.4", "audience": "framework users"})
+    .info({"version": "4.1.4.5", "audience": "framework users"})
     .instruct("只基于输入事实作答。")
     .input("为工程 changelog 总结这个发布线。")
     .output({
@@ -340,7 +349,7 @@ raw = agent.action.read_action_artifact(
 
 ### 5. Runtime Skills
 
-Skills 是可复用的任务指导包。在 4.1.4.4 中，`SkillLibrary` 负责不可变的已安装
+Skills 是可复用的任务指导包。在 4.1.4.5 中，`SkillLibrary` 负责不可变的已安装
 revision，AgentExecution 负责选择和精确 revision binding，TaskContext 负责渐进
 disclosure。`agent.use_skills(...)` 是普通候选绑定入口；已知精确 revision 时使用
 `agent.require_skills(...)`。`Agently.skills_executor` 只保留安装、检查、context
@@ -502,7 +511,7 @@ pip install agently-devtools
 agently-devtools init my_project
 ```
 
-Agently 4.1.4.4 推荐 `agently-devtools >=0.1.10,<0.2.0`。
+Agently 4.1.4.5 推荐 `agently-devtools >=0.1.10,<0.2.0`。
 
 ## 架构
 
@@ -677,7 +686,7 @@ Agently-Skills 为 coding agent 提供当前 Agently 实现指导。
 - Repository: https://github.com/AgentEra/Agently-Skills
 - 当前 catalog generation: `v2`
 - 推荐 bundle: `app`
-- Agently 4.1.4.4 compatibility: Skills authoring protocol `agently-skills.authoring.v2`
+- Agently 4.1.4.5 compatibility: Skills authoring protocol `agently-skills.authoring.v2`
 
 当你让 Codex、Claude Code、Cursor 或其他 coding agent 实现 Agently 模式时，应使用它。
 
@@ -752,8 +761,8 @@ CrewAI 和 AutoGen 在以 agent 协作为核心的设计里很强。Agently 是�
 
 ## 兼容说明
 
-- 当前 package version 是 `4.1.4.4`。
-- 当前 release manifest 是 `compatibility/releases/4.1.4.4.json`。
+- 当前 package version 是 `4.1.4.5`。
+- 当前 release manifest 是 `compatibility/releases/4.1.4.5.json`。
 - 开发线计划写入 `compatibility/in-development.json`；不要把未来计划版本当作已发布版本。
 - `AgentExecutionResult.get_data()` 返回业务数据；需要 status、TaskBoard、diagnostics 或其他 route/task 内部信息时使用 `get_full_data()`。
 - 显式捕获的 `AgentExecution` 代表一次运行；启动后，下一次请求应创建新的 execution。

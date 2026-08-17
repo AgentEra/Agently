@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import hashlib
 import json
 
@@ -922,7 +924,7 @@ class AgentTaskGuidanceMixin(AgentTaskMixinBase):
             return DataFormatter.sanitize(guidance_ref)
 
     def add_guidance(self, *args: Any, **kwargs: Any) -> Any:
-        return FunctionShifter.syncify(self.async_add_guidance)(*args, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_add_guidance)(*args, **kwargs)
 
     async def _apply_guidance_boundary(
         self,

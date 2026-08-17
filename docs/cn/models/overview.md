@@ -86,7 +86,7 @@ Agently.set_settings("AnthropicCompatible", {
 ```python
 agent.set_settings("model_pool", {
     "ollama-qwen2.5": "qwen2.5:7b",
-    "deepseek-v4": "deepseek-chat",
+    "deepseek-v4": "deepseek-v4-flash",
 })
 agent.set_settings("key_pool", {
     "local": "ollama",
@@ -95,7 +95,7 @@ agent.set_settings("key_pool", {
 })
 agent.set_settings("key_pool_strategy", {
     "qwen2.5:7b": {"mode": "fixed", "pool": ["local"]},
-    "deepseek-chat": {"mode": "round_robin", "pool": ["deepseek-main", "deepseek-backup"]},
+    "deepseek-v4-flash": {"mode": "round_robin", "pool": ["deepseek-main", "deepseek-backup"]},
 })
 
 result = (
@@ -124,6 +124,11 @@ HTTP 状态码重试另一个 key；自定义 handler 可以检查 provider erro
 HTTP 错误消息会保留 provider status 与 response detail，但不会附加序列化的模型请求。
 core `model.requester.error` RuntimeEvent 仍在 `payload.request_data` 中保留结构化请求，供受控
 冷诊断使用；request stream 则只通过正常终态路径传播一次 provider error。
+
+三个 compatible requester 也共用同一套公开 transport retry 生命周期。
+`request_retry=False` 或 `max_attempts=1` 表示只建立一次物理 SSE 连接；启用重放时，
+每次连接都有公开递增的 attempt index 与 retry boundary。任何 requester 都不会执行
+隐藏的内部 SSE 重连。
 
 ## 插件源码位置
 

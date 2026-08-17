@@ -59,6 +59,10 @@ class OpenAIResponsesCompatible(
         "default_model": "gpt-5.5",
         "timeout_mode": "first_token",
         "stream_idle_timeout": None,
+        "request_retry": {
+            "max_attempts": 2,
+            "after_output": True,
+        },
         "client_options": {},
         "headers": {},
         "proxy": None,

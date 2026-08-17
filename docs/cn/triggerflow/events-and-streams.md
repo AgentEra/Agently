@@ -158,6 +158,14 @@ async def main():
 
 stream timeout 设 `None` 意味着消费者等到 stream 真正关（即 `close()` 完成）才停。收集所有 item 时通常这么用。
 
+Agently 4.1.4.5 在这套 execution-stream API 下使用无界、进程内的
+Agently-Stage Tunnel。这只是实现细节：item 校验、execution 懒启动、timeout
+warning、subflow bridge 与 stream close 仍由 TriggerFlow 拥有。每个 reader
+都有独立重放 cursor，因此晚加入或并行 reader 会按相同顺序收到已接受 item。
+兼容路径刻意保持无界；它不是 backpressure、durable replay、acknowledgement
+或 exactly-once delivery。save/load 会创建新的本地 transport，不序列化
+Tunnel 状态。
+
 ## 隐式 stream 语法糖
 
 `flow.get_async_runtime_stream(...)` 与 `flow.get_runtime_stream(...)` 在内部建一个隐式

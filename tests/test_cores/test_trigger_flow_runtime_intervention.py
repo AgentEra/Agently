@@ -228,10 +228,19 @@ def test_trigger_flow_intervention_save_load_preserves_ledger_and_consumers():
 async def test_trigger_flow_intervention_runtime_stream_event_shape_is_fail_open():
     flow = TriggerFlow()
     execution = flow.create_execution(auto_close=False, intervention_mode="planned")
+    subscription = execution._runtime_stream_transport.subscribe(
+        start="earliest",
+        timeout=None,
+    )
 
-    await execution.async_intervene({"text": "Stream me."})
-    stream_event = await execution._runtime_stream_queue.get()
-    validated = TypeAdapter(TriggerFlowInterventionEvent).validate_python(stream_event)
+    try:
+        await execution.async_intervene({"text": "Stream me."})
+        stream_event = await anext(subscription)
+        validated = TypeAdapter(TriggerFlowInterventionEvent).validate_python(
+            stream_event
+        )
+    finally:
+        await subscription.async_close()
 
     assert validated["type"] == "intervention"
     assert validated["action"] == "append"

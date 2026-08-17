@@ -59,6 +59,7 @@ class AgentExecutionDiagnostics(TypedDict):
     required_capabilities: list[dict[str, Any]]
     task_workspace_retention: NotRequired[dict[str, Any]]
     action_artifact_release: NotRequired["ActionArtifactReleaseDiagnostics"]
+    long_output: NotRequired[dict[str, Any]]
 
 
 class ActionArtifactReleaseDiagnostic(TypedDict):
@@ -113,6 +114,7 @@ class AgentExecutionMeta(TypedDict):
     logs: dict[str, Any]
     diagnostics: AgentExecutionDiagnostics
     record_refs: AgentExecutionRecordRefs
+    long_output: NotRequired[dict[str, Any]]
 
 
 CapabilityKind: TypeAlias = Literal["action"]

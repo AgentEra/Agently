@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 
 import asyncio
 import warnings
 from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 from agently.types.data import EMPTY
-from agently.utils import FunctionShifter, StateData
+from agently.utils import StateData
 
 from .ExecutionState import COMPAT_FINAL_RESULT_KEY, INTERVENTIONS_STATE_KEY
 
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
 class TriggerFlowExecutionResult(Generic[ResultT]):
     def __init__(self, execution: "TriggerFlowExecution[Any, Any, ResultT]"):
         self._execution = execution
-        self.get_final_result = FunctionShifter.syncify(self.async_get_final_result)
+        self.get_final_result = default_stage_call_bridge.as_sync(self.async_get_final_result)
 
     def _state_view(self):
         if self._execution._closed_event.is_set() and self._execution._close_result is not None:

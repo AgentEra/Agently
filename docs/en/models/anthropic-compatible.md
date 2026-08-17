@@ -33,6 +33,7 @@ Agently.set_settings("AnthropicCompatible", {
 | `anthropic_version` | API version header (defaults to a recent stable version) |
 | `anthropic_beta` | optional beta-feature header (string or list of strings) |
 | `stream_idle_timeout` | optional liveness deadline for streaming gaps and non-streaming response materialization |
+| `request_retry` | transient transport retry policy; defaults to `{"max_attempts": 2, "after_output": true}` |
 | `request_options` | extra dict forwarded to the underlying HTTP client |
 
 The public coordinator lives at [agently/builtins/plugins/ModelRequester/AnthropicCompatible/plugin.py](../../../agently/builtins/plugins/ModelRequester/AnthropicCompatible/plugin.py), with private implementation modules under `modules/`.
@@ -65,6 +66,11 @@ agent.set_settings("AnthropicCompatible", {"model": "${ENV.ANTHROPIC_MODEL_FAST}
 ## Streaming
 
 `result.get_generator(type="delta")` / `get_async_generator(type="delta")` yields incremental text. `type="instant"` for structured streaming works the same way as on `OpenAICompatible` — the difference is purely upstream parsing.
+
+Physical SSE connections use the same public request-attempt lifecycle as the
+other compatible adapters. Set `request_retry=False` or `max_attempts=1` to
+disable replay. Set `after_output=False` to prevent replay after partial output;
+the transport never performs an unreported inner reconnect.
 
 ## Beta features
 

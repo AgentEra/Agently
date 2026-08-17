@@ -126,6 +126,7 @@ async def test_session_extension_emits_runtime_events():
 
         await agent._session_finally(DummyResult(agent.request_prompt), agent.settings)  # type: ignore[arg-type]
         agent.deactivate_session()
+        await Agently.event_center.async_flush()
 
         event_types = [event.event_type for event in captured]
         assert "session.activated" in event_types
@@ -146,7 +147,7 @@ async def test_session_extension_request_prefix_syncs_context_window():
     agent.activate_session(session_id="session-extension-test-prefix")
     assert agent.activated_session is not None
 
-    agent.add_chat_history({"role": "user", "content": "from-session"})
+    await agent.async_add_chat_history({"role": "user", "content": "from-session"})
     prompt = agent.request_prompt
     prompt.set("chat_history", [{"role": "assistant", "content": "stale"}])
 
@@ -318,7 +319,7 @@ async def test_session_extension_register_analysis_and_resize_handler():
     agent.register_session_analysis_handler(analysis_handler)
     agent.register_session_resize_handler("drop_window", resize_handler)
 
-    agent.add_chat_history({"role": "user", "content": "hello"})
+    await agent.async_add_chat_history({"role": "user", "content": "hello"})
 
     assert called["analysis"] >= 1
     assert called["resize"] >= 1

@@ -16,9 +16,12 @@ if os.getenv("DEEPSEEK_API_KEY"):
         {
             "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
             "auth": os.environ["DEEPSEEK_API_KEY"],
-            "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"),
+            "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash"),
             "model_type": "chat",
-            "request_options": {"temperature": 0},
+            "request_options": {
+                "thinking": {"type": "disabled"},
+                "temperature": 0,
+            },
         },
     )
 else:

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import inspect
 import shutil
@@ -24,7 +26,7 @@ from typing import Any, Literal, Protocol, cast, runtime_checkable
 
 from agently.core.runtime.RuntimeContext import get_current_agent_execution_context
 from agently.types.data import ExecutionResourceRequirement
-from agently.utils import FunctionShifter, LazyImport
+from agently.utils import LazyImport
 
 
 async def _await_value(value: Awaitable[Any]) -> Any:
@@ -33,7 +35,7 @@ async def _await_value(value: Awaitable[Any]) -> Any:
 
 def _resolve_sync(value: Any) -> Any:
     if inspect.isawaitable(value):
-        return FunctionShifter.syncify(_await_value)(cast(Awaitable[Any], value))
+        return default_stage_call_bridge.as_sync(_await_value)(cast(Awaitable[Any], value))
     return value
 
 
@@ -229,7 +231,7 @@ class LocalACPProvider:
         cwd: str,
         timeout_seconds: float | None,
     ) -> dict[str, Any]:
-        return FunctionShifter.syncify(self._async_command_health)(
+        return default_stage_call_bridge.as_sync(self._async_command_health)(
             agent_id=agent_id,
             command=command,
             cwd=cwd,

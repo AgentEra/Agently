@@ -103,6 +103,12 @@ Event Center 在存在后台投递或摘要 buffer 时，也会启动按需 idle
 新事件会刷新 idle 计时，安静一段时间后触发有界 flush。这个机制是长生命周期
 event loop 的兜底，不替代 CLI/script 退出前的显式 flush。
 
+面向框架集成者的实现说明：Agently 4.1.4.5 的 Event Center 保留原生后台任务
+跟踪机制。Stage-backed 候选虽然保持了行为，但在后台事件基准中增加了可测量的
+elapsed、p95 与 traced-memory 开销，因此没有接入。RuntimeEvent 规范化、过滤、
+摘要、hook 身份、fail-open 行为与 flush policy 仍由 Event Center 拥有；
+Event Center API 不会暴露 Stage 类型、状态或事件。
+
 ## 发送 runtime event
 
 `model.*`、`request.*`、`action.*`、`tool.*`、`session.*`、
@@ -139,6 +145,20 @@ await Agently.event_center.async_emit({
     "message": "direct event",
 })
 ```
+
+同步代码不能等待 hook 投递时，使用受跟踪的 nowait 入口：
+
+```python
+dispatch = Agently.event_center.emit_nowait({
+    "event_type": "runtime.info",
+    "source": "Docs",
+    "message": "tracked nowait event",
+})
+```
+
+存在 running loop 时，`dispatch` 是 `asyncio.Task`；不存在时则是 loop-neutral
+Stage handle。`emit_nowait()` 不代表投递已经完成，owner 应在关闭或观察 barrier
+调用 `await Agently.event_center.async_flush()`。
 
 顶层便捷 API：
 

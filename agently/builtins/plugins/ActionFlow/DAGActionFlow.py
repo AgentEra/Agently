@@ -179,9 +179,9 @@ class DAGActionFlow:
         flow = TriggerFlow(name=f"dag-action-loop-{agent_name}")
 
         async def initialize_loop(data):
-            data.set_state("done_plans", [])
-            data.set_state("last_round_records", [])
-            data.set_state("round_index", 0)
+            await data.async_set_state("done_plans", [])
+            await data.async_set_state("last_round_records", [])
+            await data.async_set_state("round_index", 0)
             await data.async_emit("PLAN", None)
             return None
 
@@ -423,16 +423,16 @@ class DAGActionFlow:
 
             state_records = bounded_records
             done_plans.extend(state_records)
-            data.set_state("done_plans", done_plans)
-            data.set_state("last_round_records", state_records)
-            data.set_state("round_index", round_index + 1)
+            await data.async_set_state("done_plans", done_plans)
+            await data.async_set_state("last_round_records", state_records)
+            await data.async_set_state("round_index", round_index + 1)
             await data.async_emit("PLAN", None)
             return state_records
 
         async def finalize_loop(data):
             result = data.value if isinstance(data.value, list) else []
-            data.set_state("action_loop_result", result)
-            data.set_state("done_plans", result)
+            await data.async_set_state("action_loop_result", result)
+            await data.async_set_state("done_plans", result)
             return result
 
         flow.to(initialize_loop)

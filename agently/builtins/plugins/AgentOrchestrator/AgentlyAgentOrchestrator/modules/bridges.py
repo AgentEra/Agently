@@ -223,6 +223,7 @@ async def bridge_model_stream_item(
         "field_path": raw_path,
         "wildcard_path": getattr(item, "wildcard_path", None),
         "indexes": getattr(item, "indexes", None),
+        "completion_source": getattr(item, "completion_source", None),
     }
     if meta:
         progress_meta.update(meta)

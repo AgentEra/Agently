@@ -38,7 +38,16 @@ API:
 - `data.async_append_state(key, value)` / `data.append_state(key, value)` — for list-valued state
 - `data.async_del_state(key)` / `data.del_state(key)`
 
-Reading state is a local sync operation. Writes, appends, and deletes have async variants so async chunks can stay async-first.
+Reading state is a local sync operation. Async chunks must await the async
+write, append, delete, emit, and stream methods so execution stays on its owner
+loop. Sync facades remain compatible from other contexts, but they block the
+calling thread and are intended for sync chunks and sync callers.
+
+A sync chunk may call a provider-owned synchronous wrapper that internally
+uses `with Stage()` to await an async SDK, then continue with
+`data.set_state(...)`. Agently-Stage 0.3.8 detects the surrounding physical
+runtime automatically; providers do not need to discover TriggerFlow's private
+Stage usage or redesign their public method as async.
 
 `set_state(...)` is replacement, including for lists, mappings, sets, and empty
 collections. Use `append_state(...)` only when list accumulation is intended.

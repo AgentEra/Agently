@@ -69,8 +69,8 @@ class ObserveBlock(FlowBlock):
             try:
                 history = execution.get_state("observation_history") or []
                 history.append(folded)
-                execution.set_state("observation_history", history)
-                execution.set_state("last_observation", folded)
+                await execution.async_set_state("observation_history", history)
+                await execution.async_set_state("last_observation", folded)
             except (AttributeError, TypeError):
                 pass
 

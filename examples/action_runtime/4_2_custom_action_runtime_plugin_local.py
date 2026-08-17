@@ -1,8 +1,9 @@
 from _shared import configure_deepseek, print_action_results, print_response
 from agently import Agently
+from agently_stage import default_stage_call_bridge
 from agently.builtins.plugins.ActionRuntime import AgentlyActionRuntime
 from agently.core import PluginManager
-from agently.utils import FunctionShifter, Settings
+from agently.utils import Settings
 
 
 def normalize_title(text: str) -> str:
@@ -45,7 +46,7 @@ class TitlePlanningActionRuntime:
         if handler is None:
             self._planning_handler = self._default_planning_handler
         else:
-            self._planning_handler = FunctionShifter.asyncify(handler)
+            self._planning_handler = default_stage_call_bridge.as_async(handler)
         return self
 
     def register_action_execution_handler(self, handler):
@@ -54,7 +55,7 @@ class TitlePlanningActionRuntime:
 
     def resolve_planning_handler(self, handler=None):
         selected = handler if handler is not None else self._planning_handler
-        return FunctionShifter.asyncify(selected)
+        return default_stage_call_bridge.as_async(selected)
 
     def resolve_execution_handler(self, handler=None):
         return self._builtin.resolve_execution_handler(handler)

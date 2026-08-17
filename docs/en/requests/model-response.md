@@ -149,9 +149,17 @@ for item in gen:
 ```
 
 `item` exposes `.path` (e.g. `"tips[0]"`), `.wildcard_path` (`"tips[*]"`),
-`.value`, `.delta`, `.is_complete`, and `.event_type`. Use `.delta` to update
+`.value`, `.delta`, `.is_complete`, `.event_type`, and `.completion_source`.
+Use `.delta` to update
 the visible field while it is growing. Use `.is_complete` / `event_type=="done"`
 when downstream work should wait until the field is closed.
+
+For JSON streams, `completion_source` distinguishes
+`"observed_boundary"` (a delimiter appeared in provider text),
+`"final_reconciliation"` (the raw final JSON itself closed), and
+`"synthetic_repair"` (the parser completed an open suffix). All remain
+provisional until final validation. In particular, irreversible work and
+long-output retention must not treat `synthetic_repair` as accepted data.
 
 ### AgentExecution projection
 
@@ -393,6 +401,14 @@ The final `get_data()` result contains no `$status`. Use `type="all"` or
 `type="specific", specific="status"` when a consumer needs raw status events.
 `reason` contains a bounded transport/provider explanation, and `cancelled` is
 distinct from a failed request.
+
+For OpenAI-compatible SSE, an explicit `[DONE]` is the logical response
+terminal. Agently stops consuming that SSE iterator immediately, so a gateway
+that omits or damages the later HTTP chunked terminator cannot replace the
+already completed response with a transport error. The final
+`original_done`, `meta`, usage, and `finish_reason` are preserved. A disconnect
+before `[DONE]` remains a transport failure and follows the configured
+failover/retry policy; partial output alone is never synthesized into success.
 
 Plain `delta` consumers receive the standalone
 `"<$retry>{reason}</$retry>"` marker before replacement text. It is a replay

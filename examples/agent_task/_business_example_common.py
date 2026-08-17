@@ -39,10 +39,13 @@ def configure_agent_model_pool(agent: Any, *, temperature: float = 0.0) -> Provi
         model_profiles["agent-task-deepseek-main"] = {
             "provider": "OpenAICompatible",
             "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"),
-            "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"),
+            "model": os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash"),
             "model_type": "chat",
             "api_key_pool": "agent-task-deepseek",
-            "request_options": {"temperature": temperature},
+            "request_options": {
+                "thinking": {"type": "disabled"},
+                "temperature": temperature,
+            },
         }
         api_key_pools["agent-task-deepseek"] = {
             "selection": {"strategy": "fixed"},

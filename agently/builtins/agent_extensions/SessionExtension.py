@@ -164,6 +164,12 @@ class SessionExtension(BaseAgent):
         self.activated_session.reset_chat_history()
         return self._refill_agent_chat_history_with_session()
 
+    async def async_reset_chat_history(self) -> Self:
+        if self.activated_session is None:
+            return super().reset_chat_history()
+        await self.activated_session.async_reset_chat_history()
+        return self._refill_agent_chat_history_with_session()
+
     def set_chat_history(
         self,
         chat_history: "Sequence[ChatMessage | ChatMessageDict]",
@@ -171,6 +177,15 @@ class SessionExtension(BaseAgent):
         if self.activated_session is None:
             return super().set_chat_history(chat_history)
         self.activated_session.set_chat_history(chat_history)
+        return self._refill_agent_chat_history_with_session()
+
+    async def async_set_chat_history(
+        self,
+        chat_history: "Sequence[ChatMessage | ChatMessageDict]",
+    ) -> Self:
+        if self.activated_session is None:
+            return super().set_chat_history(chat_history)
+        await self.activated_session.async_set_chat_history(chat_history)
         return self._refill_agent_chat_history_with_session()
 
     def add_chat_history(
@@ -182,10 +197,25 @@ class SessionExtension(BaseAgent):
         self.activated_session.add_chat_history(chat_history)
         return self._refill_agent_chat_history_with_session()
 
+    async def async_add_chat_history(
+        self,
+        chat_history: "Sequence[ChatMessage | ChatMessageDict] | ChatMessage | ChatMessageDict",
+    ) -> Self:
+        if self.activated_session is None:
+            return super().add_chat_history(chat_history)
+        await self.activated_session.async_add_chat_history(chat_history)
+        return self._refill_agent_chat_history_with_session()
+
     def clean_context_window(self) -> Self:
         if self.activated_session is None:
             return super().reset_chat_history()
         self.activated_session.clean_context_window()
+        return self._refill_agent_chat_history_with_session()
+
+    async def async_clean_context_window(self) -> Self:
+        if self.activated_session is None:
+            return super().reset_chat_history()
+        await self.activated_session.async_clean_context_window()
         return self._refill_agent_chat_history_with_session()
 
     async def _session_request_prefix(self, prompt: "Prompt", _settings: "Settings"):
@@ -221,17 +251,26 @@ class SessionExtension(BaseAgent):
             self.agent_prompt,
         )
 
+        history_changed = False
         if user_content is not None and user_content != "":
-            self.add_chat_history({"role": "user", "content": user_content})
+            await self.activated_session.async_add_chat_history(
+                {"role": "user", "content": user_content}
+            )
+            history_changed = True
         if assistant_content is not None and assistant_content != "":
-            self.add_chat_history({"role": "assistant", "content": assistant_content})
+            await self.activated_session.async_add_chat_history(
+                {"role": "assistant", "content": assistant_content}
+            )
+            history_changed = True
+        if history_changed:
+            self._refill_agent_chat_history_with_session()
         await self.activated_session.async_after_memory_turn(
             user_content=user_content,
             assistant_content=assistant_content,
             result=result,
             settings=settings,
         )
-        if (user_content is not None and user_content != "") or (assistant_content is not None and assistant_content != ""):
+        if history_changed:
             await self._async_emit_session_runtime_observation(
                 "context_appended",
                 message=f"Session '{ self.activated_session.id }' appended new context.",

@@ -62,6 +62,7 @@ def test_agent_execution_and_model_response_streaming_type_contracts():
         assert_type(execution, AgentExecution)
         assert_type(agent.input("next turn").output({"reply": (str,)}), AgentExecution)
         assert_type(execution.input("reuse draft").output({"reply": (str,)}), AgentExecution)
+        assert_type(execution.ensure_long_output(), AgentExecution)
         assert_type(execution.get_generator(), Generator[str, None, None])
         assert_type(execution.get_generator(type="delta"), Generator[str, None, None])
         assert_type(execution.get_generator(type="instant"), Generator[AgentExecutionStreamData, None, None])
@@ -103,6 +104,8 @@ def test_public_handler_type_aliases():
 
         model_handler: ModelStreamingHandler = model_stream_handler
         skills_handler: SkillRuntimeStreamHandler = skills_stream_handler
+        assert callable(model_handler)
+        assert callable(skills_handler)
 
 
 def test_changed_runtime_protocols_are_publicly_typed():

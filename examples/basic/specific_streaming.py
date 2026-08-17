@@ -66,7 +66,7 @@ def streaming_with_reasoning_from_deepseek():
         "OpenAICompatible",
         {
             "base_url": os.environ.get("DEEPSEEK_BASE_URL"),
-            "model": "deepseek-reasoner",
+            "model": "deepseek-v4-flash",
             "api_key": os.environ.get("DEEPSEEK_API_KEY"),
             "request_options": {"thinking": {"type": "enabled"}},
         },

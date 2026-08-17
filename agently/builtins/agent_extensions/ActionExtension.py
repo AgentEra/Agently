@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -23,7 +25,7 @@ from agently.core.runtime.RuntimeContext import (
     get_current_action_policy,
     get_current_agent_execution_context,
 )
-from agently.utils import DeprecationWarnings, FunctionShifter
+from agently.utils import DeprecationWarnings
 from agently.builtins.actions.Cmd import DEFAULT_SAFE_CMD_PREFIXES
 
 if TYPE_CHECKING:
@@ -53,7 +55,7 @@ class ActionExtension(BaseAgent):
 
         self.use_action = self.use_actions
         self.use_tool = self.use_tools
-        self.use_mcp = FunctionShifter.syncify(self.async_use_mcp)
+        self.use_mcp = default_stage_call_bridge.as_sync(self.async_use_mcp)
         self.use_sandbox = self.use_action_sandbox
         self.use_python = self.enable_python
         self.use_shell = self.enable_shell
@@ -1447,7 +1449,7 @@ class ActionExtension(BaseAgent):
         max_rounds: int | None = None,
         planning_protocol: str | None = None,
     ) -> list["ActionCall"]:
-        return FunctionShifter.syncify(self.async_generate_action_call)(
+        return default_stage_call_bridge.as_sync(self.async_generate_action_call)(
             prompt=prompt,
             done_plans=done_plans,
             last_round_records=last_round_records,
@@ -1502,7 +1504,7 @@ class ActionExtension(BaseAgent):
         planning_protocol: str | None = None,
         store_for_reply: bool = True,
     ) -> list["ActionResult"]:
-        return FunctionShifter.syncify(self.async_get_action_result)(
+        return default_stage_call_bridge.as_sync(self.async_get_action_result)(
             prompt=prompt,
             max_rounds=max_rounds,
             concurrency=concurrency,
@@ -1543,7 +1545,7 @@ class ActionExtension(BaseAgent):
         round_index: int = 0,
         max_rounds: int | None = None,
     ) -> list["ToolCommand"]:
-        return FunctionShifter.syncify(self.async_generate_tool_command)(
+        return default_stage_call_bridge.as_sync(self.async_generate_tool_command)(
             prompt=prompt,
             done_plans=done_plans,
             last_round_records=last_round_records,

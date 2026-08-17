@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import inspect
 import json
@@ -40,7 +42,7 @@ from agently.types.data import (
     TaskWorkspaceAccessGrant,
     TaskWorkspaceAccessRequirement,
 )
-from agently.utils import FunctionShifter, Settings, SettingsNamespace
+from agently.utils import Settings, SettingsNamespace
 
 from .ActionRegistry import ActionRegistry
 
@@ -1139,7 +1141,7 @@ class ActionDispatcher:
         return result
 
     def execute(self, action_id: str, action_input: dict[str, Any], **kwargs):
-        return FunctionShifter.syncify(self.async_execute)(action_id, action_input, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_execute)(action_id, action_input, **kwargs)
 
     async def async_dry_run(
         self,
@@ -1159,4 +1161,4 @@ class ActionDispatcher:
         )
 
     def dry_run(self, action_id: str, action_input: dict[str, Any], **kwargs):
-        return FunctionShifter.syncify(self.async_dry_run)(action_id, action_input, **kwargs)
+        return default_stage_call_bridge.as_sync(self.async_dry_run)(action_id, action_input, **kwargs)

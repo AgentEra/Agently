@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
 
-from agently.utils import LazyImport
+
+from agently.utils import LazyImport, filter_callable_options
 
 LazyImport.import_package("fastapi", version_constraint=">=0.104")
 
@@ -24,7 +26,6 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, create_model
 
-from agently.utils import FunctionShifter
 from agently.types.data import SerializableMapping, SerializableValue
 
 from typing import Any, Sequence, Callable, AsyncGenerator, Generator, Protocol, TYPE_CHECKING, ParamSpec, cast
@@ -291,7 +292,7 @@ class FastAPIHelper(FastAPI):
 
                 self.response_provider = cast(ConfigurePromptAgent, self.response_provider)
                 self.response_provider.load_json_prompt(json.dumps(request_data, ensure_ascii=False))
-                return FunctionShifter.auto_options_func(self.response_provider.get_async_generator)(**options)
+                return filter_callable_options(self.response_provider.get_async_generator)(**options)
             else:
                 input_data = {}
                 for key, value in request_data.items():
@@ -300,7 +301,7 @@ class FastAPIHelper(FastAPI):
                     else:
                         input_data[key] = value
                 self.response_provider.input(input_data)
-                return FunctionShifter.auto_options_func(self.response_provider.get_async_generator)(**options)
+                return filter_callable_options(self.response_provider.get_async_generator)(**options)
         elif isinstance(self.response_provider, ModelRequest):
             input_data = {}
             for key, value in request_data.items():
@@ -309,13 +310,13 @@ class FastAPIHelper(FastAPI):
                 else:
                     input_data[key] = value
             self.response_provider.input(input_data)
-            return FunctionShifter.auto_options_func(self.response_provider.get_async_generator)(**options)
+            return filter_callable_options(self.response_provider.get_async_generator)(**options)
         elif isinstance(self.response_provider, (TriggerFlow, TriggerFlowExecution)):
             return self._get_triggerflow_async_generator(request_data, options=options)
         elif isinstance(self.response_provider, Callable):
-            generator = FunctionShifter.auto_options_func(self.response_provider)(request_data, **options)
+            generator = filter_callable_options(self.response_provider)(request_data, **options)
             if isinstance(generator, Generator):
-                return FunctionShifter.asyncify_sync_generator(generator)
+                return default_stage_call_bridge.iter_async(generator)
             elif isinstance(generator, AsyncGenerator):
                 return generator
             else:
@@ -346,7 +347,7 @@ class FastAPIHelper(FastAPI):
 
                 self.response_provider = cast(ConfigurePromptAgent, self.response_provider)
                 self.response_provider.load_json_prompt(json.dumps(request_data, ensure_ascii=False))
-                return await FunctionShifter.auto_options_func(self.response_provider.async_start)(**options)
+                return await filter_callable_options(self.response_provider.async_start)(**options)
             else:
                 input_data = {}
                 for key, value in request_data.items():
@@ -355,7 +356,7 @@ class FastAPIHelper(FastAPI):
                     else:
                         input_data[key] = value
                 self.response_provider.input(input_data)
-                return await FunctionShifter.auto_options_func(self.response_provider.async_start)(**options)
+                return await filter_callable_options(self.response_provider.async_start)(**options)
         elif isinstance(self.response_provider, ModelRequest):
             input_data = {}
             for key, value in request_data.items():
@@ -364,11 +365,11 @@ class FastAPIHelper(FastAPI):
                 else:
                     input_data[key] = value
             self.response_provider.input(input_data)
-            return await FunctionShifter.auto_options_func(self.response_provider.async_start)(**options)
+            return await filter_callable_options(self.response_provider.async_start)(**options)
         elif isinstance(self.response_provider, (TriggerFlow, TriggerFlowExecution)):
             return await self._async_get_triggerflow_result(request_data, options=options)
         elif isinstance(self.response_provider, Callable):
-            generator = FunctionShifter.auto_options_func(self.response_provider)(request_data, **options)
+            generator = filter_callable_options(self.response_provider)(request_data, **options)
             if isinstance(generator, Generator):
                 return [item for item in generator]
             elif isinstance(generator, AsyncGenerator):

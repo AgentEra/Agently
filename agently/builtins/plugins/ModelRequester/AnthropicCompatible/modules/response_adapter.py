@@ -128,7 +128,7 @@ class AnthropicCompatibleResponseAdapterMixin:
                 if isinstance(loaded_message, dict):
                     message_record.update(loaded_message)
                 completed = True
-                break
+                continue
 
             if payload_type == "message_start":
                 message_payload = loaded_message.get("message", loaded_message)
@@ -225,7 +225,7 @@ class AnthropicCompatibleResponseAdapterMixin:
 
             if payload_type == "message_stop":
                 completed = True
-                break
+                continue
 
         if not saw_any_event:
             return

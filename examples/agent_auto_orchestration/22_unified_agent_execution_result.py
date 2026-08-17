@@ -146,7 +146,7 @@ async def main() -> None:
     provider = configure_model(temperature=0.0)
     Agently.set_settings("OpenAICompatible.stream", False)
     if provider == "deepseek":
-        Agently.set_settings("OpenAICompatible.model", os.getenv("AGENT_EXECUTION_EXAMPLE_MODEL", "deepseek-chat"))
+        Agently.set_settings("OpenAICompatible.model", os.getenv("AGENT_EXECUTION_EXAMPLE_MODEL", "deepseek-v4-flash"))
     if RUNTIME_ROOT.exists():
         shutil.rmtree(RUNTIME_ROOT)
 

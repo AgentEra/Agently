@@ -130,11 +130,51 @@ Agently.set_settings(
     OpenAICompatibleSettings(
         base_url="https://api.deepseek.com/v1",
         api_key="${ENV.DEEPSEEK_API_KEY}",
-        model="deepseek-chat",
-        request_options={"temperature": 0},
+        model="deepseek-v4-flash",
+        request_options={
+            "thinking": {"type": "disabled"},
+            "temperature": 0,
+        },
     )
 )
 ```
+
+DeepSeek V4 Flash enables thinking by default. Disable it when the application
+relies on sampling options such as `temperature`; DeepSeek ignores those
+options while thinking is enabled. To request reasoning explicitly, use:
+
+```python
+Agently.set_settings("OpenAICompatible.request_options", {
+    "thinking": {"type": "enabled"},
+    "reasoning_effort": "high",
+})
+```
+
+The generic OpenAI-compatible adapter emits reasoning through
+`reasoning_delta` / `reasoning_done` specific events and preserves
+`reasoning_content` in `original_done`.
+
+DeepSeek V4 also exposes an Anthropic Messages endpoint. Activate the separate
+Anthropic-compatible plugin when that protocol is required:
+
+```python
+Agently.set_settings("plugins.ModelRequester.activate", "AnthropicCompatible")
+Agently.set_settings("AnthropicCompatible", {
+    "base_url": "https://api.deepseek.com/anthropic",
+    "model": "deepseek-v4-flash",
+    "auth": {"api_key": "${ENV.DEEPSEEK_API_KEY}"},
+    "request_options": {
+        "thinking": {"type": "enabled"},
+        "output_config": {"effort": "high"},
+    },
+})
+```
+
+This path emits Anthropic `thinking` blocks as the same Agently
+`reasoning_delta` / `reasoning_done` events and preserves the original block
+and signature for tool-call continuation. With DeepSeek thinking enabled, use
+automatic tool selection; the current endpoint rejects a forced named
+`tool_choice`.
 
 Built-in provider helpers live in `agently.types.settings`. Third-party plugins
 can expose their own settings classes from their plugin package and register
@@ -152,23 +192,27 @@ shape:
 
 ```python
 Agently.set_settings("model_pool", {
-    "support-chat": "deepseek-chat-prod",
+    "support-chat": "deepseek-v4-flash-prod",
     "reasoning": "deepseek-reason-prod",
 })
 
 Agently.set_settings("model_profiles", {
-    "deepseek-chat-prod": {
+    "deepseek-v4-flash-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
+        "request_options": {"thinking": {"type": "disabled"}},
     },
     "deepseek-reason-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-reasoner",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
-        "request_options": {"temperature": 0},
+        "request_options": {
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "high",
+        },
     },
 })
 

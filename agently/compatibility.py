@@ -5,8 +5,8 @@ from typing import Any
 
 
 CURRENT_COMPATIBILITY_SCHEMA_VERSION = 1
-CURRENT_FRAMEWORK_VERSION = "4.1.4.4"
-CURRENT_RELEASE_TRAIN = "2026-07-4.1.4.4"
+CURRENT_FRAMEWORK_VERSION = "4.1.4.6"
+CURRENT_RELEASE_TRAIN = "2026-07-4.1.4.6"
 
 DEVTOOLS_RUNTIME_PROTOCOL = "agently-devtools.observation-runtime.v1"
 SKILLS_AUTHORING_PROTOCOL = "agently-skills.authoring.v2"
@@ -15,13 +15,24 @@ DOCS_PUBLIC_SURFACE_PROTOCOL = "agently-docs.public-surface.v1"
 
 _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
  'framework': 'agently',
- 'framework_version': '4.1.4.4',
- 'release_train': '2026-07-4.1.4.4',
- 'released_at': '2026-07-25',
- 'notes': 'Version-scoped companion compatibility manifest for Agently 4.1.4.4. This patch strengthens Pydantic output '
-          'constraints and correction retries, adds recovery-aware TriggerFlow snapshot projection and bounded local '
-          'snapshot retention, and moves default release validation away from local Ollama dependencies while '
-          'preserving existing owner boundaries and companion protocols.',
+ 'framework_version': '4.1.4.6',
+ 'release_train': '2026-07-4.1.4.6',
+ 'released_at': '2026-07-31',
+ 'notes': 'Version-scoped companion compatibility manifest for Agently 4.1.4.6. This patch exposes the standard '
+          'agently.__version__ and Agently.__version__ surfaces, normalizes reasoning lifecycle events across '
+          'OpenAI-compatible Chat Completions, Anthropic-compatible Messages, and Responses adapters, makes the public '
+          'request retry lifecycle the sole owner of physical SSE connections across all three compatible adapters, '
+          'and preserves live runtime-resource identity across TriggerFlow sub-flow boundaries.',
+ 'runtime_support': {'agently_stage': {'version_specifier': '>=0.3.5,<0.4.0',
+                                       'public_runtime_surface': False,
+                                       'task_mechanism_owners': ['TriggerFlowExecution'],
+                                       'stream_mechanism_owner': 'TriggerFlow execution stream',
+                                       'rejected_mechanism_replacements': ['EventCenter background task settlement',
+                                                                           'EventCenter and SignalNet event dispatch'],
+                                       'semantic_owners_unchanged': True,
+                                       'persistence_contract': 'Stage task inventory, Tunnel cursors, handles, and '
+                                                               'carrier state are process-local and are not '
+                                                               'serialized.'}},
  'companions': {'devtools': {'companion_package': 'agently-devtools',
                              'runtime_protocol': 'agently-devtools.observation-runtime.v1',
                              'event_naming': {'preferred_event_type': 'RuntimeEvent',
@@ -54,6 +65,17 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                                                 'completed, failed, '
                                                                                                 'and cancelled '
                                                                                                 'outcomes.',
+                                                 'agent_execution_stream_completion_provenance': 'StreamingData and '
+                                                                                                 'AgentExecutionStreamData '
+                                                                                                 'may add optional '
+                                                                                                 'completion_source '
+                                                                                                 'values '
+                                                                                                 'observed_boundary, '
+                                                                                                 'final_reconciliation, '
+                                                                                                 'or synthetic_repair. '
+                                                                                                 'The field is '
+                                                                                                 'observation-only and '
+                                                                                                 'additive.',
                                                  'agent_execution_limits': ['max_seconds', 'max_no_progress_seconds'],
                                                  'provider_stream_idle_timeout': ['OpenAICompatible.stream_idle_timeout',
                                                                                   'OpenAIResponsesCompatible.stream_idle_timeout',
@@ -204,10 +226,10 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                'put_checkpoint(...) writes are not automatically '
                                                                'pruned. Providers declaring supports_retention for '
                                                                'distributed recovery must expose prune_snapshots. This '
-                                                               'is an intentional 4.1.4.4 default behavior change and '
-                                                               'is separate from snapshot projection, RuntimeEvent '
-                                                               'compaction, business-state persistence, and full '
-                                                               'delete_snapshot(run_id) cleanup.',
+                                                               'is an intentional in-development default behavior '
+                                                               'change and is separate from snapshot projection, '
+                                                               'RuntimeEvent compaction, business-state persistence, '
+                                                               'and full delete_snapshot(run_id) cleanup.',
                                 'active_sub_flow_control': 'Running to_sub_flow children register serializable frames '
                                                            'before start. Explicit parent executions may signal or '
                                                            'cancel one live child by frame id; cancelled children skip '
@@ -294,10 +316,43 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                      'output requirements. Final Pydantic validation failures feed '
                                                      'bounded correction feedback into retries, and accepted typed '
                                                      'results remain reusable through object, data, and text readers.'},
-                   'agent_execution_request_scope': {'surface': ['AgentExecution', 'AgentExecutionResult'],
+                   'agent_execution_request_scope': {'surface': ['AgentExecution',
+                                                                 'AgentExecutionResult',
+                                                                 'AgentExecution.ensure_long_output'],
                                                      'contract': 'Each call owns an isolated AgentExecution draft. '
                                                                  'Completed executions are immutable run records; '
-                                                                 'prompt/config mutation after start fails fast.'},
+                                                                 'prompt/config mutation after start fails fast. '
+                                                                 'ensure_long_output(enabled=True) is a per-draft '
+                                                                 'direct-delivery policy: the first request keeps its '
+                                                                 'original contract, observed length termination '
+                                                                 'enters TriggerFlow continuation with private '
+                                                                 'TaskWorkspace staging, model-visible slot contracts '
+                                                                 'preserve nested containers from the original output '
+                                                                 'declaration, structured values pass an independent '
+                                                                 'local slot-schema validator before append-only '
+                                                                 'commit, explicitly observed empty lists and empty '
+                                                                 'text are retained without synthesizing missing '
+                                                                 'paths, and successful completion requires final '
+                                                                 'manifest replay plus the original validation '
+                                                                 'contracts. Continuation closes the '
+                                                                 'base_revision/base_digest/anchor control header '
+                                                                 'before business updates; a length terminal before '
+                                                                 'header closure is observable bounded no progress '
+                                                                 'that leaves the manifest unchanged, and three '
+                                                                 'consecutive no-progress continuations terminate. '
+                                                                 'Continuation finality is accepted only after '
+                                                                 'declared ensure paths have manifest facts; this '
+                                                                 "delivery barrier does not consume the caller's "
+                                                                 'final-validation retry allowance. A valid contiguous '
+                                                                 'prefix survives a rejected tail, and '
+                                                                 'model-repairable final validation failures retain '
+                                                                 'every accepted unit while using the bounded '
+                                                                 'validation-retry allowance for missing or additional '
+                                                                 'units. It currently supports plain text and JSON, '
+                                                                 'does not inherit Actions/tools into continuation '
+                                                                 'requests, fails closed on unknown terminals, invalid '
+                                                                 'assembly, or integrity mismatches, and cannot be '
+                                                                 'combined with an explicit AgentTask strategy.'},
                    'agent_execution_task_loop': {'surface': ['Agent.goal',
                                                              'Agent.goals',
                                                              'Agent.create_task',

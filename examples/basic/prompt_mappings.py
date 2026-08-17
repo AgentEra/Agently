@@ -12,9 +12,10 @@ Agently.set_settings(
     (
         {
             "base_url": os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-            "model": os.environ.get("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"),
+            "model": os.environ.get("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash"),
             "model_type": "chat",
             "auth": os.environ["DEEPSEEK_API_KEY"],
+            "request_options": {"thinking": {"type": "disabled"}},
         }
         if os.getenv("DEEPSEEK_API_KEY")
         else {

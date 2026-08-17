@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 from agently.types.data import ContextConsumption, ContextPackage
 
 from .TaskShared import *
@@ -354,7 +356,7 @@ class AgentTaskObservationMixin(AgentTaskMixinBase):
                 self._stream_queues.remove(queue)
 
     def _get_generator(self, *args: Any, **kwargs: Any) -> Generator[Any, None, None]:
-        return FunctionShifter.syncify_async_generator(self.get_async_generator(*args, **kwargs))
+        return default_stage_call_bridge.iter_sync(self.get_async_generator(*args, **kwargs))
 
     @staticmethod
     def _project_stream_item(

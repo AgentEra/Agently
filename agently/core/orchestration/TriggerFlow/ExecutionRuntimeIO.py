@@ -14,16 +14,15 @@
 
 
 import asyncio
+import threading
 import warnings
-from typing import Any, AsyncGenerator, Generator, TYPE_CHECKING, cast
+from typing import Any, AsyncGenerator, Generator, TYPE_CHECKING
 
 from agently.types.data import EMPTY
 from agently.types.trigger_flow import (
-    RUNTIME_STREAM_STOP,
     TriggerFlowInterventionEvent,
     TriggerFlowInterruptEvent,
 )
-from agently.utils import GeneratorConsumer
 from .Control import TRIGGER_FLOW_LIFECYCLE_CLOSED
 from .ExecutionState import COMPAT_FINAL_RESULT_KEY
 
@@ -34,6 +33,13 @@ if TYPE_CHECKING:
 class TriggerFlowExecutionRuntimeIO:
     def __init__(self, execution: "TriggerFlowExecution[Any, Any, Any]"):
         self._execution = execution
+        self.reset_stream_start_state()
+
+    def reset_stream_start_state(self) -> None:
+        self._stream_start_lock = threading.Lock()
+        self._stream_start_claimed = False
+        self._async_stream_start_task: asyncio.Task[Any] | None = None
+        self._sync_stream_driver: threading.Thread | None = None
 
     def compat_result_exists(self):
         execution = self._execution
@@ -147,7 +153,7 @@ class TriggerFlowExecutionRuntimeIO:
             return None
         if not _skip_contract_validation:
             stream_item = execution._trigger_flow._contract.validate_stream_item(stream_item)
-        await execution._runtime_stream_queue.put(stream_item)
+        await execution._runtime_stream_transport.publish(stream_item)
         execution._mark_activity()
         await execution._emit_runtime_event(
             "triggerflow.stream_item_emitted",
@@ -164,7 +170,7 @@ class TriggerFlowExecutionRuntimeIO:
         if execution._runtime_stream_stopped:
             return
         execution._runtime_stream_stopped = True
-        await execution._runtime_stream_queue.put(RUNTIME_STREAM_STOP)
+        execution._runtime_stream_transport.close()
         await execution._emit_runtime_event(
             "triggerflow.stream_closed",
             message=f"TriggerFlow execution '{ execution.id }' runtime stream closed.",
@@ -178,48 +184,95 @@ class TriggerFlowExecutionRuntimeIO:
         timeout: float | None,
     ) -> AsyncGenerator[Any | TriggerFlowInterruptEvent | TriggerFlowInterventionEvent, None]:
         execution = self._execution
-        temp_execution_task = None
+        subscription = execution._runtime_stream_transport.subscribe(
+            start="earliest",
+            timeout=None,
+        )
+        start_task = self._ensure_async_stream_started(initial_value)
         try:
-            if not execution._started:
-                temp_execution_task = asyncio.create_task(execution._async_run_start(initial_value=initial_value))
             while True:
-                if temp_execution_task is not None and temp_execution_task.done():
-                    await temp_execution_task
-                stream_task = asyncio.create_task(execution._runtime_stream_queue.get())
-                waiters: set[asyncio.Task[Any]] = {stream_task}
-                if temp_execution_task is not None:
-                    waiters.add(temp_execution_task)
-                done, pending = await asyncio.wait(
-                    waiters,
-                    timeout=timeout,
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if not done:
-                    stream_task.cancel()
-                    await asyncio.gather(stream_task, return_exceptions=True)
-                    warnings.warn(
-                        f"Execution { execution.id } runtime stream stopped because of timeout.\n"
-                        f"Timeout seconds: { timeout }\n"
-                        "You can use execution.get_async_runtime_stream(timeout=<int | None>) or execution.get_runtime_stream(timeout=<int | None>) to reset new timeout seconds or use None to wait forever."
-                    )
+                try:
+                    if timeout is None:
+                        item = await anext(subscription)
+                    else:
+                        item = await asyncio.wait_for(
+                            anext(subscription),
+                            timeout=timeout,
+                        )
+                except StopAsyncIteration:
                     break
-                if temp_execution_task is not None and temp_execution_task in done:
-                    if stream_task not in done:
-                        stream_task.cancel()
-                        await asyncio.gather(stream_task, return_exceptions=True)
-                    await temp_execution_task
-                    if stream_task not in done:
-                        continue
-                if stream_task not in done:
-                    continue
-                next_result = stream_task.result()
-                if next_result is not RUNTIME_STREAM_STOP:
-                    yield next_result
-                else:
+                except asyncio.TimeoutError:
+                    self._warn_runtime_stream_timeout(timeout)
                     break
+                yield item
         finally:
-            if temp_execution_task:
-                await temp_execution_task
+            await subscription.async_close()
+            if not execution._resume_handle_exposed:
+                await execution.async_close(reason="hidden_runtime_stream_complete")
+            elif start_task is not None and start_task.done():
+                await start_task
+
+    def _publish_stream_start_failure(self, task: asyncio.Task[Any]) -> None:
+        if task.cancelled():
+            self._execution._runtime_stream_transport.fail(asyncio.CancelledError())
+            return
+        error = task.exception()
+        if error is not None:
+            self._execution._runtime_stream_transport.fail(error)
+
+    def _ensure_async_stream_started(
+        self,
+        initial_value: Any,
+    ) -> asyncio.Task[Any] | None:
+        execution = self._execution
+        with self._stream_start_lock:
+            if execution._started or self._stream_start_claimed:
+                return self._async_stream_start_task
+            self._stream_start_claimed = True
+            task = execution._create_managed_task(
+                execution._async_run_start(initial_value=initial_value),
+                origin="runtime_stream.start",
+            )
+            task.add_done_callback(self._publish_stream_start_failure)
+            self._async_stream_start_task = task
+            return task
+
+    def _ensure_sync_stream_started(self, initial_value: Any) -> None:
+        execution = self._execution
+        with self._stream_start_lock:
+            if execution._started or self._stream_start_claimed:
+                return
+            self._stream_start_claimed = True
+
+            def drive() -> None:
+                async def run() -> None:
+                    try:
+                        await execution._async_run_start(initial_value=initial_value)
+                    except BaseException as error:
+                        execution._runtime_stream_transport.fail(error)
+                    finally:
+                        if not execution._resume_handle_exposed:
+                            await execution.async_close(reason="hidden_runtime_stream_complete")
+
+                asyncio.run(run())
+
+            driver = threading.Thread(
+                target=drive,
+                name=f"TriggerFlowStream[{execution.id}]",
+                daemon=True,
+            )
+            self._sync_stream_driver = driver
+            driver.start()
+
+    def _warn_runtime_stream_timeout(self, timeout: float | None) -> None:
+        execution = self._execution
+        warnings.warn(
+            f"Execution { execution.id } runtime stream stopped because of timeout.\n"
+            f"Timeout seconds: { timeout }\n"
+            "You can use execution.get_async_runtime_stream(timeout=<int | None>) or "
+            "execution.get_runtime_stream(timeout=<int | None>) to reset new timeout "
+            "seconds or use None to wait forever."
+        )
 
     def get_async_runtime_stream(
         self,
@@ -227,15 +280,10 @@ class TriggerFlowExecutionRuntimeIO:
         *,
         timeout: float | None = 10,
     ) -> AsyncGenerator[Any | TriggerFlowInterruptEvent | TriggerFlowInterventionEvent, None]:
-        execution = self._execution
-        if execution._runtime_stream_consumer is None:
-            execution._runtime_stream_consumer = GeneratorConsumer(
-                self.consume_runtime_stream(
-                    initial_value=initial_value,
-                    timeout=timeout,
-                )
-            )
-        return execution._runtime_stream_consumer.get_async_generator()
+        return self.consume_runtime_stream(
+            initial_value=initial_value,
+            timeout=timeout,
+        )
 
     def get_runtime_stream(
         self,
@@ -244,14 +292,29 @@ class TriggerFlowExecutionRuntimeIO:
         timeout: float | None = 10,
     ) -> Generator[Any | TriggerFlowInterruptEvent | TriggerFlowInterventionEvent, None, None]:
         execution = self._execution
-        if execution._runtime_stream_consumer is None:
-            execution._runtime_stream_consumer = GeneratorConsumer(
-                self.consume_runtime_stream(
-                    initial_value=initial_value,
-                    timeout=timeout,
-                )
-            )
-        return execution._runtime_stream_consumer.get_generator()
+        subscription = execution._runtime_stream_transport.subscribe(
+            start="earliest",
+            timeout=timeout,
+        )
+        self._ensure_sync_stream_started(initial_value)
+
+        def generate() -> Generator[
+            Any | TriggerFlowInterruptEvent | TriggerFlowInterventionEvent,
+            None,
+            None,
+        ]:
+            try:
+                while True:
+                    try:
+                        yield next(subscription)
+                    except StopIteration:
+                        if not execution._runtime_stream_transport.is_terminal:
+                            self._warn_runtime_stream_timeout(timeout)
+                        return
+            finally:
+                subscription.close()
+
+        return generate()
 
     def set_result(self, result: Any, *, _origin_chunk: dict[str, Any] | None = None):
         execution = self._execution

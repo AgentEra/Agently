@@ -35,9 +35,12 @@ Agently.set_settings(
     "OpenAICompatible",
     {
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "auth": "YOUR_API_KEY",
-        "request_options": {"temperature": 0.7},
+        "request_options": {
+            "thinking": {"type": "disabled"},
+            "temperature": 0.7,
+        },
     },
 )
 agent = Agently.create_agent()

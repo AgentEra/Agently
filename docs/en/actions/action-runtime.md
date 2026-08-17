@@ -490,13 +490,14 @@ Action planning is a model-owned step. When an Agent uses `model_pool`, set
 rounds:
 
 ```python
-agent.set_settings("model_pool", {"task-main": "deepseek-chat-prod"})
+agent.set_settings("model_pool", {"task-main": "deepseek-v4-flash-prod"})
 agent.set_settings("model_profiles", {
-    "deepseek-chat-prod": {
+    "deepseek-v4-flash-prod": {
         "provider": "OpenAICompatible",
         "base_url": "https://api.deepseek.com/v1",
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-flash",
         "api_key_pool": "deepseek-prod",
+        "request_options": {"thinking": {"type": "disabled"}},
     }
 })
 agent.set_settings("action.planning_model_key", "task-main")

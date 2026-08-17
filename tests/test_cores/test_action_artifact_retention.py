@@ -1680,7 +1680,8 @@ async def test_triggerflow_unchanged_typed_evidence_page_converges_without_round
     ]
 
 
-def test_unchanged_evidence_counter_resets_when_same_round_has_other_information_progress() -> None:
+@pytest.mark.asyncio
+async def test_unchanged_evidence_counter_resets_when_same_round_has_other_information_progress() -> None:
     from agently.builtins.plugins.ActionFlow.TriggerFlowActionFlow import (
         TriggerFlowActionFlow,
     )
@@ -1692,7 +1693,7 @@ def test_unchanged_evidence_counter_resets_when_same_round_has_other_information
         def get_state(self, key, default=None):
             return self.values.get(key, default)
 
-        def set_state(self, key, value):
+        async def async_set_state(self, key, value):
             self.values[key] = value
 
     state = State()
@@ -1711,17 +1712,29 @@ def test_unchanged_evidence_counter_resets_when_same_round_has_other_information
         "result": {"matches": ["new/source.py:12"]},
     }
 
-    assert TriggerFlowActionFlow._update_unchanged_evidence_page_state(
-        state, [page], max_consecutive_unchanged_evidence_rounds=3
+    assert (
+        await TriggerFlowActionFlow._update_unchanged_evidence_page_state(
+            state,
+            [page],
+            max_consecutive_unchanged_evidence_rounds=3,
+        )
     )[:2] == (False, 1)
-    assert TriggerFlowActionFlow._update_unchanged_evidence_page_state(
-        state, [page], max_consecutive_unchanged_evidence_rounds=3
+    assert (
+        await TriggerFlowActionFlow._update_unchanged_evidence_page_state(
+            state,
+            [page],
+            max_consecutive_unchanged_evidence_rounds=3,
+        )
     )[:2] == (False, 2)
-    assert TriggerFlowActionFlow._update_unchanged_evidence_page_state(
+    assert await TriggerFlowActionFlow._update_unchanged_evidence_page_state(
         state, [page, fresh], max_consecutive_unchanged_evidence_rounds=3
     ) == (False, 0, [])
-    assert TriggerFlowActionFlow._update_unchanged_evidence_page_state(
-        state, [page], max_consecutive_unchanged_evidence_rounds=3
+    assert (
+        await TriggerFlowActionFlow._update_unchanged_evidence_page_state(
+            state,
+            [page],
+            max_consecutive_unchanged_evidence_rounds=3,
+        )
     )[:2] == (False, 1)
 
 

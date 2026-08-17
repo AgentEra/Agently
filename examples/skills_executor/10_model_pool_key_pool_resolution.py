@@ -24,7 +24,7 @@ Environment:
     DEEPSEEK_API_KEY must be available in the shell or a .env file.
     Optional:
       DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-      DEEPSEEK_DEFAULT_MODEL=deepseek-chat
+      DEEPSEEK_DEFAULT_MODEL=deepseek-v4-flash
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ def _check_env():
 async def main():
     api_key = _check_env()
     base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    default_model = os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-chat")
+    default_model = os.getenv("DEEPSEEK_DEFAULT_MODEL", "deepseek-v4-flash")
 
     # ═══════════════════════════════════════════════════════════
     #  Set up global model (fallback / backward compat)
@@ -70,6 +70,7 @@ async def main():
             "model": default_model,
             "model_type": "chat",
             "auth": api_key,
+            "request_options": {"thinking": {"type": "disabled"}},
         },
     )
     Agently.set_settings("debug", False)

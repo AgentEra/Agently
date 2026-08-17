@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from agently_stage import default_stage_call_bridge
+
 from typing import Any
 
-from agently.utils import FunctionShifter
 
 
 class BrowseActionExecutor:
@@ -50,15 +51,15 @@ class BrowseActionExecutor:
         if isinstance(environment_resources, dict):
             browser_resource = environment_resources.get(action_id) or environment_resources.get("browse")
             if browser_resource is not None and hasattr(browser_resource, "browse"):
-                return await FunctionShifter.asyncify(browser_resource.browse)(
+                return await default_stage_call_bridge.as_async(browser_resource.browse)(
                     browse_tool=self.browse,
                     url=url,
                 )
         action_method = getattr(self.browse, "_execute_action_method", None)
         if callable(action_method):
-            return await FunctionShifter.asyncify(action_method)(
+            return await default_stage_call_bridge.as_async(action_method)(
                 "browse",
                 task_workspace=task_workspace,
                 **action_input,
             )
-        return await FunctionShifter.asyncify(self.browse.browse)(**action_input)
+        return await default_stage_call_bridge.as_async(self.browse.browse)(**action_input)

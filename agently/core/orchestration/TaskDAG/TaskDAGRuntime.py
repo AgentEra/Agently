@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from agently_stage import default_stage_call_bridge
+
 import asyncio
 import json
 import re
@@ -23,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from agently.types.data import TaskDAG, TaskDAGNode
 from agently.types.trigger_flow import TriggerFlowRuntimeData
-from agently.utils import DataLocator, FunctionShifter
+from agently.utils import DataLocator
 from agently.core.operation.PolicyApproval import merge_access_control_policy
 
 from .TaskDAGHelpers import (
@@ -496,7 +498,7 @@ async def _execute_handler(handler: Any, context: TaskDAGContext):
         )
         return await execution.async_start(dict(context.task_input))
     if callable(handler):
-        return await FunctionShifter.asyncify(handler)(context)
+        return await default_stage_call_bridge.as_async(handler)(context)
     raise ValueError(
         f"Dynamic task '{ context.task.id }' kind '{ context.task.kind }' has no executable handler."
     )

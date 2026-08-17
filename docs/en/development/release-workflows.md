@@ -51,6 +51,33 @@ the feature spec should describe the larger target, while
 `compatibility/in-development.json` should describe the current work version
 that will publish the accepted slice.
 
+## Managed Companion Repositories
+
+Agently coordinates repositories by role rather than treating every companion
+as the same dependency type:
+
+| Repository | Role | Release gate |
+|---|---|---|
+| Agently-Stage | Required runtime dependency | Publish and verify Stage before raising Agently's minimum version |
+| Agently-Skills | Coding-agent guidance | Update the affected Skill, catalog, bundle, compatibility support, and Codex-local copy with user-visible behavior |
+| Agently-Devtools | Optional observation companion | Review when RuntimeEvent, ObservationEvent, or run-lineage contracts change |
+
+Agently-Stage and Agently versions are independent. Agently records a compatible
+Stage range in `pyproject.toml` and `runtime_support.agently_stage`; the lock
+records the exact artifact used by release validation.
+
+When a Stage change is required, use this order:
+
+1. validate Stage across its supported Python matrix and build the candidate wheel;
+2. run the affected Agently integration and full suites against that wheel;
+3. publish the immutable Stage tag, verify PyPI, and install it in a clean environment;
+4. update Agently's minimum Stage version, lock, compatibility manifest, tests, and docs;
+5. rerun Agently validation with Stage resolved from PyPI rather than a local path.
+
+A tag or local wheel is candidate evidence, not publication evidence. Do not
+merge an Agently minimum-version increase while the required Stage version is
+unavailable from PyPI.
+
 ## Documentation
 
 GitHub Pages uses the `docs/` directory from the `main` branch.
@@ -284,7 +311,11 @@ Do not keep or re-enable desktop installer workflows only to support the retired
 
 ## PyPI publishing
 
-The main PyPI automation is `Publish on version change`. It runs on pushes to `main` that touch `pyproject.toml`, detects whether the package version changed, and publishes with Poetry only when the version changed.
+The main PyPI automation is `Publish on version change`. It runs on pushes to
+`main` that touch `pyproject.toml`. Its validation matrix installs the locked
+dependencies, including Agently-Stage from PyPI, and runs typing and tests
+before the publish job. The publish job then detects whether the Agently package
+version changed and publishes with Poetry only when it changed.
 
 The PyPI project list page shows the package metadata `Summary`, which comes from `[project].description` in `pyproject.toml`. The full project page renders the README from `[project].readme`.
 
