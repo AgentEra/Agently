@@ -1,7 +1,7 @@
 ---
 title: Provider 配置
 description: 按模型 provider 分组的配置 recipe —— base URL、环境变量、模型名占位。
-keywords: Agently, providers, OpenAI, DeepSeek, Qwen, Claude, Ollama, recipes
+keywords: Agently, providers, OpenAI, DeepSeek, Qwen, Claude, Ollama, OrcaRouter, recipes
 ---
 
 # Provider 配置
@@ -178,6 +178,18 @@ Agently.set_settings("OpenAICompatible", {
     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "api_key": "${ENV.GEMINI_API_KEY}",
     "model": "${ENV.GEMINI_MODEL}",
+})
+```
+
+## OrcaRouter
+
+[OrcaRouter](https://www.orcarouter.ai) 是一个 OpenAI 兼容的 meta-router，把每次请求路由到你从众多 provider 中挑选的模型。自动路由模型 `orcarouter/auto` 开箱即用，也可以固定命名空间 id，如 `openai/gpt-5.5`：
+
+```python
+Agently.set_settings("OpenAICompatible", {
+    "base_url": "https://api.orcarouter.ai/v1",
+    "api_key": "${ENV.ORCAROUTER_API_KEY}",
+    "model": "orcarouter/auto",   # 自动路由，或固定如 "openai/gpt-5.5"
 })
 ```
 
