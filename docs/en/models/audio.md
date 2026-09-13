@@ -1,4 +1,4 @@
-# Audio requests (4.1.4.8 development)
+# Audio requests
 
 TTS and STT use an independent `AudioModelRequest`, not the text `ModelRequest`
 Prompt chain. Audio models and credentials are explicit; Agent text settings,
@@ -169,3 +169,123 @@ do not infer cost accounting, cancellation rollback or durable audio resume.
 
 See [four continuous output modes](../../../examples/audio/continuous_audio.py) and
 the [base/native round-trip example](../../../examples/audio/tts_stt_roundtrip.py).
+
+## Optional input speech detection (4.1.4.9 development)
+
+`TranscriptionOptions.input_options=None` preserves the existing STT path.
+When explicitly enabled, a detector estimates speech probability; the framework
+submits detected speech plus original surrounding samples. **Speech detection
+and minimum speech duration are separate controls.** The default minimum is zero
+so short detected replies remain eligible. Do not raise the minimum merely to
+hide microphone noise false positives. VAD is acoustic, not a semantic relevance
+filter; it cannot guarantee rejection of every cough, music or noise, or recall
+of every quiet reply.
+
+```python
+from agently import AudioInputEvent, AudioInputOptions, TranscriptionOptions, PCMFormat
+from agently.integrations.silero import SileroVAD
+
+# Explicit optional installation:
+# pip install 'numpy>=1.24,<3' 'onnxruntime>=1.16,<2'
+# Obtain the trusted upstream v5/v6 silero_vad.onnx file yourself.
+# Loading is synchronous; construct before entering a latency-sensitive loop.
+detector = SileroVAD(os.environ["SILERO_VAD_MODEL_PATH"])
+
+async def on_audio(event: AudioInputEvent) -> None:
+    if event.kind == "pause":
+        print("Acoustic pause; finalized through raw block", event.last_block)
+    elif event.kind == "silence":
+        print("Silence", event.start_seconds, event.end_seconds)
+
+options = TranscriptionOptions(input_options=AudioInputOptions(
+    detector=detector, threshold=0.5, min_speech_seconds=0,
+    end_silence_seconds=0.5, pre_speech_seconds=0.15,
+    post_speech_seconds=0.15, max_segment_seconds=15, on_event=on_audio,
+))
+# In an async function; a bound agent exposes the same call.
+async with audio.stream_stt(pcm_chunks, audio_format=PCMFormat(), options=options) as stream:
+    async for block in stream:
+        print(block.index, block.speech_index, block.start_seconds, block.end_seconds,
+              block.reason, block.text)
+
+result = await audio.async_stt("recording.wav", options=options)
+# Use audio.stt(..., options=options) in synchronous scripts.
+```
+
+Ordinary `import agently` loads no VAD dependencies. Importing the optional Silero
+adapter requires NumPy and ONNX Runtime; missing dependencies produce an explicit
+install error, with no automatic installation. The framework never downloads a
+model and does not require Torch. Silero supports mono s16le at 8/16 kHz. A shared
+`SileroVAD` has fresh recurrent state per call. Replace it through
+`SpeechDetector.open(audio_format)`, an async context returning a
+`SpeechDetectionSession` with `frame_samples` and async `score(pcm) -> float`.
+Scores must be finite in `[0,1]`. Inputs contain complete sample frames, with a
+possibly shorter final analysis window. Pad only an analysis copy if needed.
+
+| Option | Default | Meaning |
+|---|---|---|
+| threshold | 0.5 | Probability at least this value is speech; no extra volume gate |
+| min_speech_seconds | 0 | Accumulated speech-probability frame duration; increasing it can remove meaningful short replies |
+| end_silence_seconds | 0.5 | Consecutive non-speech sample duration, not a wall-clock or missing-packet timeout |
+| pre_speech_seconds / post_speech_seconds | 0.15 / 0.15 | Original surrounding samples; post-roll cannot exceed end silence; never repeat already submitted samples |
+| max_segment_seconds | 15 | Per-request duration including protection; continuous speech is hard-cut without a false pause |
+| max_buffer_bytes | 1048576 | Maximum segment plus two detector frames must fit; not a total process/provider memory bound |
+| max_file_bytes | 33554432 | Complete-file byte limit when preprocessing is enabled |
+| on_event | None | Awaited async callback; failures terminate, with no background event queue |
+
+Durations round up to sample frames. Detector resolution affects observations
+(Silero: 32 ms). Maximum segment duration must exceed pre-roll plus minimum
+speech plus end silence and accommodate a detector frame. Candidates still
+below an explicit minimum are rejected at pause/EOF/full-buffer boundaries,
+never buffered indefinitely. Protection at a maximum-size boundary can produce
+an additional short request. Smaller segments can increase request count,
+latency or split words; compare submitted seconds and request counts separately.
+
+When enabled, `max_segment_seconds` owns segmentation and
+`TranscriptionStreamOptions.window_seconds` is unused. `max_input_bytes` still
+bounds each source packet, `max_transcript_chars` bounds each response, and
+`max_pending_chars` only bounds text auto-break. No recording is saved implicitly.
+
+`TranscriptBlock` times always use original input samples, retaining gaps after
+silence filtering and including protection. New `speech_index` associates blocks
+from the same speech candidate; `reason` is `pause`, `limit` or `input_end`.
+Historical unfiltered blocks retain `speech_index=None, reason="window"`.
+These are not word timestamps.
+
+Events are ordered: `speech_start` (candidate observed), one or more `transcript`
+callbacks carrying raw finalized blocks, then `pause` after end silence and all
+associated transcriptions have completed. `last_block` identifies the completion
+barrier. Callbacks run during pull consumption: `transcript` precedes the raw
+block yield; `pause` advances with the next pull. Applications needing text at
+pauses can consume `event.transcript` and then handle `pause`. No background work
+advances an undrained stream. `silence` coalesces silent sample ranges;
+`input_end` follows only normal EOF and valid tail processing. EOF is not a pause.
+Cancellation/errors do not flush or emit successful completion, and failed
+streams cannot resume. Callbacks must return promptly and not re-enter the stream.
+
+`stream_stt_with_auto_break` still uses recognized text punctuation. A pause
+ensures raw blocks are ready; punctuation-free `TranscriptSegment` text may
+remain pending. Acoustic segmentation and business text-cleanup frequency are
+independent. The framework does not remove filler words, summarize, detect
+completed thoughts or schedule business processing.
+
+Complete-file preprocessing accepts only PCM s16le WAV; decode compressed
+MP3/AAC/Opus explicitly into a PCM stream. Single-file results join raw block
+texts with newlines and return `duration=None`; all-silent input returns empty
+text with zero STT requests. Use events/streaming for individual raw blocks and
+times. Disabled preprocessing preserves the driver's original file-format support.
+Raw byte streams must obey their fixed declared format; arbitrary bytes cannot
+reliably reveal a false sample-rate declaration or an undeclared format switch.
+Incomplete EOF sample frames fail without padding; missing packets are not
+silence. Capture adapters must report overflow because backpressure cannot pause
+real speech. Cancelling CPU scoring waits for the started local frame to settle;
+this is not an acknowledgement of server-side ASR cancellation.
+
+See [Silero VAD](https://github.com/snakers4/silero-vad),
+[faster-whisper VAD](https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/vad.py),
+and `examples/audio/stt_input.py` for a runnable example.
+
+Input preprocessing belongs to `AudioModelRequest`. Native driver methods reject
+nonempty `input_options`; a third-party `AudioCapability` must implement this
+contract itself when accepting the option. Agent forwarding alone does not add
+preprocessing to a custom capability.

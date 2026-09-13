@@ -26,8 +26,37 @@ class TextSegmenter(Protocol):
     def cut(self, text: str, *, final: bool) -> int | None: ...
 
 
+class SpeechDetectionSession(Protocol):
+    """One stream's detector state. score receives 1..frame_samples real frames.
+
+    A backend needing full frames may pad its analysis copy at EOF, never
+    the audio submitted to STT. score must be cancellation-safe and return
+    a finite probability in [0, 1]. Implementations must not block the loop.
+    """
+
+    @property
+    def frame_samples(self) -> int: ...
+
+    async def score(self, pcm: bytes) -> float: ...
+
+
+class SpeechDetector(Protocol):
+    """Replaceable acoustic scoring; open validates format before input is read.
+
+    Each context owns fresh state and settles its work on exit. Sharing a
+    detector across streams must not share recurrent state or close peers.
+    """
+
+    def open(self, audio_format: PCMFormat) -> AbstractAsyncContextManager[SpeechDetectionSession]: ...
+
+
 class AudioModelRequester(AgentlyPlugin, Protocol):
-    """Driver owns each transport through completion, cancellation or context exit."""
+    """Driver owns each transport through completion, cancellation or context exit.
+
+    Framework input_options are consumed by AudioModelRequest before dispatch.
+    Native callers must not expect a driver to apply them; reject non-None
+    input_options explicitly rather than silently claiming preprocessing.
+    """
 
     name: str
 

@@ -29,7 +29,7 @@ def encode_wav(data: bytes, fmt: PCMFormat) -> AudioInput:
     return AudioInput(out.getvalue())
 
 
-def decode_pcm(result: SpeechResult, expected: PCMFormat | None, *, raw: bool) -> tuple[bytes, PCMFormat]:
+def decode_pcm(result: SpeechResult, expected: PCMFormat | None, *, raw: bool, allow_empty: bool = False) -> tuple[bytes, PCMFormat]:
     data = result.data
     if raw:
         if expected is None:
@@ -69,7 +69,7 @@ def decode_pcm(result: SpeechResult, expected: PCMFormat | None, *, raw: bool) -
                 raise AudioProtocolError("Multiple WAV data chunks are unsupported.")
             samples = data[start:end]
         offset = end + length % 2
-    if fmt is None or not samples or len(samples) % (fmt.channels * 2):
+    if fmt is None or samples is None or (not samples and not allow_empty) or len(samples) % (fmt.channels * 2):
         raise AudioProtocolError("WAV has no valid complete PCM frames.")
     if expected is not None and expected != fmt:
         raise AudioProtocolError("TTS sample format changed; explicit conversion is required.")

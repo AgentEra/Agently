@@ -14,12 +14,14 @@ from pathlib import Path
 from agently_stage import default_stage_call_bridge
 
 from agently.types.data.audio import (
-    AudioCapabilityError, AudioInput, AudioOperation, PCMFormat, SpeechOptions,
+    AudioCapabilityError, AudioInput, AudioInputEvent, AudioProtocolError, AudioOperation, PCMFormat, SpeechOptions,
     SpeechRequest, SpeechResult, TranscriptResult,
     TranscriptionOptions, TranscriptionRequest, PCMStream, TextSource, TextSegmentOptions,
     TranscriptBlock, TranscriptSegment, TranscriptionStreamOptions,
 )
 from agently.types.plugins.AudioModelRequester import AudioModelRequester, TextSegmenter
+from .audio_stream.detection import DetectionItem, detected_audio, validate_input
+from .audio_stream.pcm import decode_pcm
 from .audio_stream.flow import pull_flow
 from .audio_stream.streams import (
     _PCMOutput, SentenceOutput, TranscriptionOutput, audio_windows, pcm_stream, sentence_stream,
@@ -116,7 +118,41 @@ class AudioModelRequest:
         options: TranscriptionOptions | None = None,
     ) -> TranscriptResult:
         self.__require("stt")
-        return await self.__driver.stt(self.__transcription(audio, model, options))
+        if options is None or options.input_options is None:
+            return await self.__driver.stt(self.__transcription(audio, model, options))
+        config = options.input_options
+        self.__model(model, self.__stt_model)
+        # Validate file limits before reading; ordinary driver-owned input is
+        # untouched when preprocessing is disabled.
+        validate_input(None, config)
+        if isinstance(audio, AudioInput):
+            if len(audio.data) > config.max_file_bytes:
+                raise ValueError("Audio file exceeds max_file_bytes.")
+        else:
+            path = Path(audio)
+            with path.open("rb") as reader:
+                data = reader.read(config.max_file_bytes + 1)
+            if len(data) > config.max_file_bytes:
+                raise ValueError("Audio file exceeds max_file_bytes.")
+            audio = AudioInput(data, path.name, mimetypes.guess_type(path.name)[0] or "application/octet-stream")
+        template = self.__transcription(audio, model, options)
+        try:
+            pcm, fmt = decode_pcm(SpeechResult(template.audio.data, template.audio.content_type, template.model),
+                                  None, raw=False, allow_empty=True)
+        except AudioProtocolError as exc:
+            raise AudioProtocolError("STT preprocessing requires complete PCM s16le WAV; decode compressed audio explicitly.") from exc
+
+        async def source() -> AsyncIterator[bytes]:
+            for offset in range(0, len(pcm), 65536):
+                yield pcm[offset:offset + 65536]
+
+        texts: list[str] = []
+        language: str | None = None
+        async with self.stream_stt(source(), audio_format=fmt, model=template.model, options=options) as stream:
+            async for block in stream:
+                texts.append(block.text)
+                language = block.language
+        return TranscriptResult("\n".join(texts), template.model, language, duration=None)
 
     def stt(
         self, audio: AudioInput | str | PathLike[str], *, model: str | None = None,
@@ -173,12 +209,35 @@ class AudioModelRequest:
         self.__require("stt")
         selected_model = self.__model(model, self.__stt_model)
         config = stream_options or TranscriptionStreamOptions()
-        validate_transcription_stream(audio_format, config)
+        validate_transcription_stream(audio_format, config, windowed=options is None or options.input_options is None)
         if not hasattr(audio, "__aiter__"):
             raise TypeError("stream_stt requires an async PCM byte source; use stt for complete files.")
         selected = options or TranscriptionOptions()
         selected = replace(selected, extra=deepcopy(dict(selected.extra)))
         self.__stream_extra(dict(selected.extra), speech=False)
+        input_config = selected.input_options
+        if input_config is not None:
+            validate_input(audio_format, input_config)
+            selected = replace(selected, input_options=None)
+
+            async def detect_request(item: DetectionItem) -> TranscriptBlock | None:
+                if isinstance(item, AudioInputEvent):
+                    if input_config.on_event is not None:
+                        await input_config.on_event(item)
+                    return None
+                result = await self.__driver.stt(TranscriptionRequest(item.audio, selected_model, selected))
+                if len(result.text) > config.max_transcript_chars:
+                    raise AudioProtocolError("Transcription exceeds max_transcript_chars.")
+                block = TranscriptBlock(result.text, item.index, item.start / audio_format.sample_rate,
+                                        item.end / audio_format.sample_rate, result.model, result.language,
+                                        item.speech_index, item.reason)
+                if input_config.on_event is not None:
+                    await input_config.on_event(AudioInputEvent("transcript", block.start_seconds, block.end_seconds,
+                                                               block.speech_index, block.index, block))
+                return block
+
+            return pull_flow(detected_audio(audio, audio_format, input_config, config.max_input_bytes),
+                             detect_request, lambda block: iter(()) if block is None else iter((block,)))
         output = TranscriptionOutput(audio_format, config)
 
         async def request(part: AudioInput) -> TranscriptBlock:

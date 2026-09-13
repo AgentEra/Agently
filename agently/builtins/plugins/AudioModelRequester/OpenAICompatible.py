@@ -70,6 +70,8 @@ class OpenAICompatible:
 
     @staticmethod
     def _transcription(request: TranscriptionRequest, *, stream: bool = False) -> dict[str, str]:
+        if request.options.input_options is not None:
+            raise AudioCapabilityError("Input preprocessing requires AudioModelRequest; native drivers do not apply input_options.")
         payload: dict[str, object] = {"model": request.model, "response_format": "json"}
         for key, value in (("language", request.options.language), ("prompt", request.options.prompt)):
             if value is not None:

@@ -16,12 +16,12 @@ from .base import print_, async_print, AgentlyMain, Agent
 from ._version import __version__
 from .core.model.AudioModelRequest import AudioModelRequest
 from .types.data.audio import (
-    AudioCapabilityError, AudioConnection, AudioFormat, AudioInput, AudioOperation, AudioProtocolError,
+    AudioCapabilityError, AudioConnection, AudioFormat, AudioInput, AudioInputOptions, AudioInputEvent, AudioInputHandler, AudioOperation, AudioProtocolError,
     PCMFormat, SpeechOptions, SpeechRequest, SpeechResult, TranscriptEvent, TranscriptResult,
     PCMStream, TextSource, TextSegmentOptions, TranscriptionStreamOptions, TranscriptBlock, TranscriptSegment,
     TranscriptionOptions, TranscriptionRequest,
 )
-from .types.plugins.AudioModelRequester import AudioCapability, AudioModelRequester, TextSegmenter
+from .types.plugins.AudioModelRequester import AudioCapability, AudioModelRequester, TextSegmenter, SpeechDetector, SpeechDetectionSession
 from .core import (
     AgentTask,
     TaskContext,
@@ -106,6 +106,11 @@ __all__ = [
     "AudioConnection",
     "AudioFormat",
     "AudioInput",
+    "AudioInputOptions",
+    "AudioInputEvent",
+    "AudioInputHandler",
+    "SpeechDetector",
+    "SpeechDetectionSession",
     "AudioOperation",
     "AudioProtocolError",
     "PCMFormat",

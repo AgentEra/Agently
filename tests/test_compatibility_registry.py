@@ -81,11 +81,11 @@ def test_companion_views_still_derive_from_released_manifest() -> None:
     assert skills["authoring_protocol"] == current["companions"]["skills"]["authoring_protocol"]
 
 
-def test_in_development_manifest_declares_4_1_4_8_owner_boundaries() -> None:
+def test_in_development_manifest_retains_released_owner_boundaries() -> None:
     manifest = _development_manifest()
 
-    assert manifest["target_version"] == "4.1.4.8"
-    assert manifest["release_train"] == "2026-09-4.1.4.8-dev"
+    assert manifest["target_version"] == "4.1.4.9"
+    assert manifest["release_train"] == "2026-09-4.1.4.9-dev"
     assert "carries forward the 4.1.4.7 contract" in manifest["notes"]
     assert "Agently-Stage >=0.3.8,<0.4.0" in manifest["notes"]
     assert "Python 3.14 task-factory keyword arguments" in manifest["notes"]
@@ -322,3 +322,12 @@ def test_agent_execution_plugins_and_terminal_policies_share_one_owner() -> None
     assert "TriggerFlow remains the only pause/resume owner" in contract[
         "interaction_contract"
     ]
+
+
+def test_stt_preprocessing_development_does_not_rewrite_released_audio_contract() -> None:
+    development = _development_manifest()["audio_capability"]
+    assert development["owner"] == "AudioModelRequest"
+    assert development["input_preprocessing"]["since"] == "4.1.4.9"
+    assert development["observation_protocol_changed"] is False
+    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.8"
+    assert "input_preprocessing" not in get_current_release_manifest().get("audio_capability", {})
