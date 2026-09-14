@@ -147,6 +147,8 @@ demo_*
 # Generated artifacts (comparison experiments, etc.)
 _artifacts/
 remote-audit:/
+# Default TaskWorkspace root written by examples/agent_task/* runs
+agent-task-workspaces/
 
 # DB
 *.db
