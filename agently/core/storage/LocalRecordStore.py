@@ -119,6 +119,7 @@ class LocalRecordStore:
         self.db_store_provider: Any = self
         self.db_store_provider_name = "sqlite"
         self.embedding_provider: Any | None = None
+        self.rerank_provider: Any | None = None
         self.vector_store_provider: Any | None = None
         self.vector_store_provider_name: str | None = None
         self.vector_store_fallback_reason: str | None = None
@@ -132,9 +133,11 @@ class LocalRecordStore:
         )
         self._db_store_provider_loader: Callable[[], tuple[Any | None, str]] | None = None
         self._embedding_provider_loader: Callable[[], Any | None] | None = None
+        self._rerank_provider_loader: Callable[[], Any | None] | None = None
         self._vector_store_provider_loader: Callable[[], tuple[Any | None, str | None, str | None]] | None = None
         self._db_store_provider_loaded = False
         self._embedding_provider_loaded = False
+        self._rerank_provider_loaded = False
         self._vector_store_provider_loaded = False
         self._materialized_components: set[str] = set()
 
@@ -154,12 +157,14 @@ class LocalRecordStore:
         *,
         db_store_provider_loader: Callable[[], tuple[Any | None, str]] | None = None,
         embedding_provider_loader: Callable[[], Any | None] | None = None,
+        rerank_provider_loader: Callable[[], Any | None] | None = None,
         vector_store_provider_loader: Callable[[], tuple[Any | None, str | None, str | None]] | None = None,
         db_store_provider_name: str = "sqlite",
         vector_store_provider_name: str | None = None,
     ) -> None:
         self._db_store_provider_loader = db_store_provider_loader
         self._embedding_provider_loader = embedding_provider_loader
+        self._rerank_provider_loader = rerank_provider_loader
         self._vector_store_provider_loader = vector_store_provider_loader
         self.db_store_provider_name = db_store_provider_name
         self.vector_store_provider_name = vector_store_provider_name
@@ -172,6 +177,16 @@ class LocalRecordStore:
                 self.db_store_provider = provider or self
                 self.db_store_provider_name = name
         return self.db_store_provider
+
+    def ensure_rerank_provider(self) -> Any | None:
+        """Materialize the optional reranker. Absence is ordinary, not an error."""
+        if not self._rerank_provider_loaded:
+            self._rerank_provider_loaded = True
+            if self._rerank_provider_loader is not None:
+                self.rerank_provider = self._rerank_provider_loader()
+                if self.rerank_provider is not None:
+                    self._materialized_components.add("rerank")
+        return self.rerank_provider
 
     def ensure_vector_index(self) -> tuple[Any, Any]:
         if not self._embedding_provider_loaded:

@@ -31,6 +31,44 @@ class OpenAICompatibleRequestBuilderMixin:
     if TYPE_CHECKING:
         def _get_http_timeout(self, *, disable_read: bool = False) -> Any: ...
 
+    def _rerank_request_data(self) -> dict[str, Any]:
+        """Build the Cohere/Jina-shaped /rerank body and fail before any network call."""
+        sanitized_input = DataFormatter.sanitize(self.prompt["input"])
+        if not isinstance(sanitized_input, dict):
+            raise ValueError(
+                f"Plugin Name: { self.name }\n"
+                "Error: model_type='rerank' requires input as "
+                "{'query': <str>, 'documents': [<str> | {'text': <str>}]}."
+            )
+        query = sanitized_input.get("query")
+        if not isinstance(query, str) or not query.strip():
+            raise ValueError(
+                f"Plugin Name: { self.name }\n" "Error: rerank input 'query' must be a non-empty string."
+            )
+        raw_documents = sanitized_input.get("documents")
+        if not isinstance(raw_documents, list) or len(raw_documents) == 0:
+            raise ValueError(
+                f"Plugin Name: { self.name }\n" "Error: rerank input 'documents' must be a non-empty list."
+            )
+        texts: list[str] = []
+        has_dict_document = False
+        for index, item in enumerate(raw_documents):
+            if isinstance(item, str):
+                texts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                has_dict_document = True
+                texts.append(item["text"])
+            else:
+                raise ValueError(
+                    f"Plugin Name: { self.name }\n"
+                    f"Error: rerank document at index { index } must be a string "
+                    "or a dictionary carrying a 'text' string."
+                )
+        # Rerank services accept a homogeneous document list, so a mixed caller list is
+        # normalized to one shape instead of being forwarded and rejected by the service.
+        documents: list[Any] = [{"text": text} for text in texts] if has_dict_document else list(texts)
+        return {"query": query, "documents": documents}
+
     def generate_request_data(self) -> "AgentlyRequestData":
         agently_request_dict: AgentlyRequestDataDict = {
             "client_options": {},
@@ -81,6 +119,8 @@ class OpenAICompatibleRequestBuilderMixin:
                             else yaml.safe_dump(sanitized_input)
                         )
                     }
+            case "rerank":
+                request_data = self._rerank_request_data()
             case _:
                 raise TypeError(
                     f"Plugin Name: { self.name }\n" f"Error: Cannot support model type: '{ self.model_type }'"
@@ -135,25 +175,32 @@ class OpenAICompatibleRequestBuilderMixin:
                 default_value={},
             )
         ## !: ensure model
-        request_options.update(
-            {
-                "model": self.plugin_settings.get(
-                    "model",
-                    DataFormatter.to_str_key_dict(
-                        self.plugin_settings.get("default_model"),
-                        value_format="serializable",
-                        default_key=self.model_type,
-                    )[self.model_type],
-                )
-            }
+        default_models = DataFormatter.to_str_key_dict(
+            self.plugin_settings.get("default_model"),
+            value_format="serializable",
+            default_key=self.model_type,
         )
+        # There is no honest universal default rerank model, so `default_model.rerank`
+        # stays empty and the missing configuration is reported before dispatch.
+        default_model = (
+            default_models.get("rerank") if self.model_type == "rerank" else default_models[self.model_type]
+        )
+        model = self.plugin_settings.get("model", default_model)
+        if self.model_type == "rerank" and not (isinstance(model, str) and model.strip()):
+            raise ValueError(
+                f"Plugin Name: { self.name }\n"
+                "Error: model_type='rerank' requires an explicit rerank model.\n"
+                "Tips: set `plugins.ModelRequester.OpenAICompatible.model` or "
+                "`default_model.rerank` to the model id your rerank service reports."
+            )
+        request_options.update({"model": model})
         ## !: ensure stream
         is_stream = self.plugin_settings.get("stream")
         if is_stream is None:
-            if self.model_type == "embeddings":
-                is_stream = False
-            else:
-                is_stream = True
+            is_stream = self.model_type not in ("embeddings", "rerank")
+        if self.model_type == "rerank":
+            # Cohere/Jina-shaped /rerank has no streaming form; never send `stream: true`.
+            is_stream = False
         request_options.update({"stream": is_stream})
         ## set
         agently_request_dict["request_options"] = request_options

@@ -130,6 +130,9 @@ class OpenAICompatibleResponseAdapterMixin:
                 if self.model_type == "embeddings" and done_mapping is None:
                     done_mapping = "data"
                     content_mapping_style = "dot"
+                if self.model_type == "rerank" and done_mapping is None:
+                    done_mapping = "results"
+                    content_mapping_style = "dot"
                 if done_mapping:
                     done_content = DataLocator.locate_path_in_dict(
                         message_record,
@@ -170,7 +173,7 @@ class OpenAICompatibleResponseAdapterMixin:
                 else:
                     yield "reasoning_done", reasoning_buffer
                 match self.model_type:
-                    case "embeddings":
+                    case "embeddings" | "rerank":
                         yield "original_done", message_record
                     case _:
                         done_message = message_record

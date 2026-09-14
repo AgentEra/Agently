@@ -87,6 +87,14 @@ Agently.set_settings("AnthropicCompatible", {
 
 header 原样转发。有效值查 Anthropic 当前 beta 文档。
 
+## 这个插件不覆盖什么
+
+Anthropic Messages API 是文本/视觉的 messages 协议，没有定义音频（TTS/STT）、
+embeddings 或 rerank 端点，因此 `AnthropicCompatible` 也没有对应的 `model_type`。
+这些能力通过各自的表面接入：[音频请求](audio.md)用 `AudioModelRequester` 对接音频端点，
+embeddings 与 rerank 用 [`OpenAICompatible` 的 model type](openai-compatible.md#重排模型)。
+它们与 Anthropic 文本模型并存是受支持的，也不会改动文本设置。
+
 ## 另见
 
 - [模型概览](overview.md) —— 协议选择与 OpenAI vs Anthropic 拆分

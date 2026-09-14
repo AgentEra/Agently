@@ -111,6 +111,55 @@ AgentTask 过程状态默认只保留在内存和运行日志中。只有需要�
 `record_store_recovery`。恢复引用属于 RecordStore；最终交付文件仍属于
 TaskWorkspace。
 
+### 检索重排
+
+`record_store.retrieve(...)` 拥有重排策略：结构 gate、候选窗口、丢弃、回填与打包。
+排序可由三种引擎提供，优先级如下：
+
+| 引擎 | 何时选中 | 行为 |
+|---|---|---|
+| `handler` | 传了 `rerank_handler=` | 由你的回调决定 |
+| `provider` | 绑定了 rerank provider | 重排模型给出相关性分数 |
+| `model` | 两者都没有 | 默认的 ModelRequest 有用性判断 |
+
+绑定重排模型的方式与绑定 embedding 模型一致 —— 通过组件 provider：
+
+```python
+from agently import Agently
+from agently.base import record_store_registry
+
+rerank_agent = Agently.create_agent()
+rerank_agent.set_settings("OpenAICompatible", {
+    "base_url": "${ENV.RERANK_BASE_URL}",
+    "api_key": "${ENV.RERANK_API_KEY}",
+    "model_type": "rerank",
+    "model": "${ENV.RERANK_MODEL}",
+})
+
+record_store = record_store_registry.create(
+    "./project-state",
+    mode="read_write",
+    rerank_provider="agent",
+    rerank_options={"agent": rerank_agent},
+)
+
+package = await record_store.retrieve("怎么给框架接本地模型服务", rerank=True)
+print(package["diagnostics"]["rerank"])  # engine、provider、scored、unscored、dropped
+```
+
+`rerank_provider` 接受 `"agent"`、`"callable"`（配合
+`rerank_options={"rerank_function": fn}`）、普通可调用对象，或任何实现了
+`RerankProvider.rank(query, documents, *, top_n)` 的对象。绑定是惰性的：
+配置 provider 本身不会发起模型调用，真正执行重排时才会。
+
+`RerankProvider` **只拥有打分**。因为重排模型给的是相关性而不是有用性，
+provider 引擎默认**只重排序、不丢弃**；下游打包仍会按 `top_n` 和长度预算裁剪。
+确实需要按分数截断时传 `budget={"rerank_score_floor": 0.5}`，被截掉的部分
+会以 `rerank_drop` 出现在 `omitted` 中。provider 没有打分的候选保持原有相对顺序
+排在已打分候选之后，不会因为「没有证据」就被丢掉。provider 失败时检索降级为
+确定性顺序并记录 diagnostics，**不会**静默切换到模型引擎 —— 引擎选择是你的配置，
+不是失败后的隐式升级。
+
 ## 信息交付：TaskContext 与 ContextReader
 
 ```python

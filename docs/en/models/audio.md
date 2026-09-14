@@ -139,6 +139,37 @@ done replaces accumulated deltas; EOF without done fails.
 built-ins do not implement it. Windowed continuous consumption does not imply
 a native realtime-ASR session has been implemented.
 
+## Audio is independent of the text protocol
+
+An audio driver talks to an audio endpoint; it is not derived from whichever
+`ModelRequester` the Agent uses for text. In particular, **the Anthropic
+Messages API defines no audio endpoints**, so there is no `AnthropicCompatible`
+audio driver and none is planned — there is no Anthropic audio protocol to
+adapt. An Agent whose text model is `AnthropicCompatible` still reaches TTS/STT
+through an OpenAI-shaped audio endpoint or your own `AudioModelRequester`:
+
+```python
+Agently.set_settings("AnthropicCompatible", {
+    "base_url": os.environ["ANTHROPIC_BASE_URL"],
+    "api_key": os.environ["ANTHROPIC_API_KEY"],
+    "model": os.environ["ANTHROPIC_MODEL"],
+})
+Agently.set_settings("plugins.ModelRequester.activate", "AnthropicCompatible")
+
+agent = Agently.create_agent()
+agent.use_audio(Agently.create_audio_request(
+    driver="OMLX",
+    base_url=os.environ["AUDIO_BASE_URL"],  # OpenAI-shaped /audio/* endpoint
+    api_key=os.getenv("AUDIO_API_KEY", ""),
+    tts_model=os.environ["AUDIO_TTS_MODEL"],
+    stt_model=os.environ["AUDIO_STT_MODEL"],
+))
+```
+
+Also note the audio base URL is the audio service's own API base. A text
+`base_url` such as an Anthropic root is not an audio base and produces 404s
+against `audio/speech`.
+
 ## Replacement and Execution dependencies
 
 Register an `AudioModelRequester` class through

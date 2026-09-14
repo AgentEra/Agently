@@ -112,6 +112,35 @@ OMLX额外支持原生WAV输出和完整文件上传后的transcript.text.delta/
 原生持续输入 `driver.stream_stt_input(...)` 仍是自定义驱动接缝，内置尚未适配。
 它与框架按窗口持续调用stt是两种交互机制，不因本轮组合支持而宣称已实现原生实时ASR。
 
+## 音频与文本协议无关
+
+音频驱动对接的是音频端点，不由 Agent 文本所用的 `ModelRequester` 决定。特别地，
+**Anthropic Messages API 没有定义任何音频端点**，因此没有 `AnthropicCompatible`
+音频驱动，也不会有 —— 不存在可供适配的 Anthropic 音频协议。文本模型配置为
+`AnthropicCompatible` 的 Agent，仍然通过 OpenAI 形状的音频端点或你自己的
+`AudioModelRequester` 使用 TTS/STT：
+
+```python
+Agently.set_settings("AnthropicCompatible", {
+    "base_url": os.environ["ANTHROPIC_BASE_URL"],
+    "api_key": os.environ["ANTHROPIC_API_KEY"],
+    "model": os.environ["ANTHROPIC_MODEL"],
+})
+Agently.set_settings("plugins.ModelRequester.activate", "AnthropicCompatible")
+
+agent = Agently.create_agent()
+agent.use_audio(Agently.create_audio_request(
+    driver="OMLX",
+    base_url=os.environ["AUDIO_BASE_URL"],  # OpenAI 形状的 /audio/* 端点
+    api_key=os.getenv("AUDIO_API_KEY", ""),
+    tts_model=os.environ["AUDIO_TTS_MODEL"],
+    stt_model=os.environ["AUDIO_STT_MODEL"],
+))
+```
+
+另外，音频 base URL 是音频服务自己的 API 根。文本的 `base_url`（例如 Anthropic 根地址）
+不是音频 base，对 `audio/speech` 会得到 404。
+
 ## 插件替换与 Execution 依赖
 
 驱动实现 `AudioModelRequester`，构造参数为 `AudioConnection`；通过

@@ -88,6 +88,8 @@ class RecordStore:
         db_store_options: dict[str, Any] | None = None,
         embedding_provider: Any | None = None,
         embedding_options: dict[str, Any] | None = None,
+        rerank_provider: Any | None = None,
+        rerank_options: dict[str, Any] | None = None,
         vector_store_provider: Any | None = None,
         vector_store_options: dict[str, Any] | None = None,
         default_scope: dict[str, Any] | None = None,
@@ -108,6 +110,8 @@ class RecordStore:
         self._db_store_options = dict(db_store_options or {})
         self._embedding_provider = embedding_provider
         self._embedding_options = dict(embedding_options or {})
+        self._rerank_provider = rerank_provider
+        self._rerank_options = dict(rerank_options or {})
         self._vector_store_provider = vector_store_provider
         self._vector_store_options = dict(vector_store_options or {})
         self._snapshot_retention = (
@@ -177,6 +181,8 @@ class RecordStore:
                 db_store_options=self._db_store_options,
                 embedding_provider=self._embedding_provider,
                 embedding_options=self._embedding_options,
+                rerank_provider=self._rerank_provider,
+                rerank_options=self._rerank_options,
                 vector_store_provider=self._vector_store_provider,
                 vector_store_options=self._vector_store_options,
                 default_scope=self.default_scope,

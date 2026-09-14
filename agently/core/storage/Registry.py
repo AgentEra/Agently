@@ -24,6 +24,7 @@ from agently.types.plugins import (
     DBStoreProvider,
     EmbeddingProvider,
     IngestionProfile,
+    RerankProvider,
     VectorStoreProvider,
     RecordStoreBackend,
     RecordStoreBackendProvider,
@@ -34,7 +35,15 @@ from .Errors import RecordStoreConfigurationError
 from .RecordStore import RecordStore
 from .LocalRecordStore import LocalRecordStore
 from .Profiles import CheckpointIngestionProfile, FastIngestionProfile
-from .Stores import AgentEmbeddingProvider, CallableEmbeddingProvider, ChromaVectorStoreProvider, EmbeddingFunction, SQLiteVectorStoreProvider
+from .Stores import (
+    AgentEmbeddingProvider,
+    AgentRerankProvider,
+    CallableEmbeddingProvider,
+    CallableRerankProvider,
+    ChromaVectorStoreProvider,
+    EmbeddingFunction,
+    SQLiteVectorStoreProvider,
+)
 
 
 class RecordStoreRegistry:
@@ -76,10 +85,13 @@ class RecordStoreRegistry:
         self._backend_providers: dict[str, RecordStoreBackendProvider] = {}
         self._db_store_providers: dict[str, RecordStoreProviderFactory] = {}
         self._embedding_providers: dict[str, RecordStoreProviderFactory] = {}
+        self._rerank_providers: dict[str, RecordStoreProviderFactory] = {}
         self._vector_store_providers: dict[str, RecordStoreProviderFactory] = {}
         self.register_db_store_provider("sqlite", lambda **options: None)
         self.register_embedding_provider("callable", self._create_callable_embedding_provider)
         self.register_embedding_provider("agent", self._create_agent_embedding_provider)
+        self.register_rerank_provider("callable", self._create_callable_rerank_provider)
+        self.register_rerank_provider("agent", self._create_agent_rerank_provider)
         self.register_vector_store_provider(
             "sqlite",
             lambda **options: SQLiteVectorStoreProvider(
@@ -101,6 +113,24 @@ class RecordStoreRegistry:
         )
         self.register_profile("fast", FastIngestionProfile())
         self.register_profile("checkpoint", CheckpointIngestionProfile())
+
+    @staticmethod
+    def _create_callable_rerank_provider(**options: Any) -> CallableRerankProvider:
+        rerank_function = options.get("rerank_function") or options.get("reranker") or options.get("callable")
+        if not callable(rerank_function):
+            raise RecordStoreConfigurationError(
+                "RecordStore callable rerank provider requires rerank_options={'rerank_function': callable}."
+            )
+        return CallableRerankProvider(cast(Callable[..., Any], rerank_function))
+
+    @staticmethod
+    def _create_agent_rerank_provider(**options: Any) -> AgentRerankProvider:
+        agent = options.get("agent") or options.get("rerank_agent")
+        if agent is None:
+            raise RecordStoreConfigurationError(
+                "RecordStore agent rerank provider requires rerank_options={'agent': rerank_agent}."
+            )
+        return AgentRerankProvider(agent)
 
     @staticmethod
     def _create_callable_embedding_provider(**options: Any) -> CallableEmbeddingProvider:
@@ -132,6 +162,8 @@ class RecordStoreRegistry:
         db_store_options: dict[str, Any] | None = None,
         embedding_provider: Any | None = None,
         embedding_options: dict[str, Any] | None = None,
+        rerank_provider: Any | None = None,
+        rerank_options: dict[str, Any] | None = None,
         vector_store_provider: Any | None = None,
         vector_store_options: dict[str, Any] | None = None,
         default_scope: dict[str, Any] | None = None,
@@ -149,6 +181,8 @@ class RecordStoreRegistry:
             db_store_options=db_store_options,
             embedding_provider=embedding_provider,
             embedding_options=embedding_options,
+            rerank_provider=rerank_provider,
+            rerank_options=rerank_options,
             vector_store_provider=vector_store_provider,
             vector_store_options=vector_store_options,
             default_scope=default_scope,
@@ -168,6 +202,8 @@ class RecordStoreRegistry:
         db_store_options: dict[str, Any] | None = None,
         embedding_provider: Any | None = None,
         embedding_options: dict[str, Any] | None = None,
+        rerank_provider: Any | None = None,
+        rerank_options: dict[str, Any] | None = None,
         vector_store_provider: Any | None = None,
         vector_store_options: dict[str, Any] | None = None,
         default_scope: dict[str, Any] | None = None,
@@ -180,6 +216,8 @@ class RecordStoreRegistry:
                 db_store_options,
                 embedding_provider,
                 embedding_options,
+                rerank_provider,
+                rerank_options,
                 vector_store_provider,
                 vector_store_options,
             )
@@ -188,7 +226,7 @@ class RecordStoreRegistry:
             if component_options_used:
                 raise RecordStoreConfigurationError(
                     "RecordStore provider=... replaces the full backend and cannot be combined with "
-                    "db_store_provider, embedding_provider, or vector_store_provider options."
+                    "db_store_provider, embedding_provider, rerank_provider, or vector_store_provider options."
                 )
             backend = self._create_backend_from_provider(
                 provider,
@@ -222,6 +260,8 @@ class RecordStoreRegistry:
                 db_store_options=db_store_options,
                 embedding_provider=embedding_provider,
                 embedding_options=embedding_options,
+                rerank_provider=rerank_provider,
+                rerank_options=rerank_options,
                 vector_store_provider=vector_store_provider,
                 vector_store_options=vector_store_options,
             )
@@ -244,6 +284,8 @@ class RecordStoreRegistry:
         db_store_options: dict[str, Any] | None,
         embedding_provider: Any | None,
         embedding_options: dict[str, Any] | None,
+        rerank_provider: Any | None,
+        rerank_options: dict[str, Any] | None,
         vector_store_provider: Any | None,
         vector_store_options: dict[str, Any] | None,
     ) -> None:
@@ -271,6 +313,10 @@ class RecordStoreRegistry:
             raise RecordStoreConfigurationError(
                 f"RecordStore embedding provider is not registered: { embedding_provider }"
             )
+        if isinstance(rerank_provider, str) and rerank_provider not in self._rerank_providers:
+            raise RecordStoreConfigurationError(
+                f"RecordStore rerank provider is not registered: { rerank_provider }"
+            )
         backend.configure_component_loaders(
             db_store_provider_loader=lambda: self._resolve_db_store_provider(
                 db_store_provider,
@@ -282,6 +328,10 @@ class RecordStoreRegistry:
             embedding_provider_loader=lambda: self._resolve_embedding_provider(
                 embedding_provider,
                 embedding_options,
+            ),
+            rerank_provider_loader=lambda: self._resolve_rerank_provider(
+                rerank_provider,
+                rerank_options,
             ),
             vector_store_provider_loader=lambda: self._resolve_vector_store_provider(
                 vector_store_provider,
@@ -344,6 +394,25 @@ class RecordStoreRegistry:
         if not callable(getattr(resolved, "embed_texts", None)):
             raise TypeError(f"RecordStore embedding provider '{ normalized }' must implement embed_texts(...).")
         return cast(EmbeddingProvider, resolved)
+
+    def _resolve_rerank_provider(
+        self,
+        provider: Any | None,
+        options: dict[str, Any] | None,
+    ) -> RerankProvider | None:
+        if provider is None:
+            return None
+        if callable(getattr(provider, "rank", None)):
+            return cast(RerankProvider, provider)
+        if callable(provider) and not isinstance(provider, str):
+            return CallableRerankProvider(cast(Callable[..., Any], provider))
+        normalized = str(provider).strip()
+        if normalized not in self._rerank_providers:
+            raise RecordStoreConfigurationError(f"RecordStore rerank provider is not registered: { normalized }")
+        resolved = self._rerank_providers[normalized](**dict(options or {}))
+        if not callable(getattr(resolved, "rank", None)):
+            raise TypeError(f"RecordStore rerank provider '{ normalized }' must implement rank(...).")
+        return cast(RerankProvider, resolved)
 
     def _resolve_vector_store_provider(
         self,
@@ -516,6 +585,25 @@ class RecordStoreRegistry:
 
     def list_embedding_providers(self) -> list[str]:
         return sorted(self._embedding_providers.keys())
+
+    def register_rerank_provider(self, name: str, provider: RecordStoreProviderFactory):
+        normalized = str(name).strip()
+        if not normalized:
+            raise ValueError("RecordStore rerank provider name must be non-empty.")
+        if not callable(provider):
+            raise TypeError("RecordStore rerank provider must be callable.")
+        self._rerank_providers[normalized] = provider
+        return self
+
+    def unregister_rerank_provider(self, name: str):
+        normalized = str(name).strip()
+        if not normalized:
+            raise ValueError("RecordStore rerank provider name must be non-empty.")
+        self._rerank_providers.pop(normalized, None)
+        return self
+
+    def list_rerank_providers(self) -> list[str]:
+        return sorted(self._rerank_providers.keys())
 
     def register_vector_store_provider(self, name: str, provider: RecordStoreProviderFactory):
         normalized = str(name).strip()

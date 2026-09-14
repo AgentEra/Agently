@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from agently.types.data.record_store import RecordRef
+from agently.types.data.record_store import RecordRef, RerankScore
 
 from .Errors import RecordStoreConfigurationError, RecordStorePolicyError
 from ._utils import json_dumps, json_loads
@@ -117,6 +117,99 @@ class AgentEmbeddingProvider:
             resolved = await result if inspect.isawaitable(result) else result
         embedding_result = cast(Sequence[float] | Sequence[Sequence[float]], resolved)
         return _coerce_embedding_vectors(embedding_result, len(texts))
+
+
+def _coerce_rerank_scores(value: Any, document_count: int) -> list[RerankScore]:
+    """Normalize a provider reply into index/score pairs owned by the caller's order.
+
+    Accepts scored objects (``index`` plus ``score`` or ``relevance_score``) and
+    plain aligned number lists. Out-of-range and duplicate indexes are dropped
+    instead of being remapped, so a candidate is never silently mismatched.
+    """
+    if value is None:
+        return []
+    if isinstance(value, Mapping):
+        value = value.get("results", value.get("data", value.get("scores")))
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+    scores: list[RerankScore] = []
+    seen: set[int] = set()
+    for position, item in enumerate(value):
+        if isinstance(item, Mapping):
+            raw_index = item.get("index", position)
+            raw_score = item.get("score", item.get("relevance_score"))
+        elif isinstance(item, (int, float)) and not isinstance(item, bool):
+            raw_index = position
+            raw_score = item
+        else:
+            continue
+        try:
+            index = int(raw_index)
+            score = float(raw_score)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index >= document_count or index in seen:
+            continue
+        if not math.isfinite(score):
+            continue
+        seen.add(index)
+        scores.append({"index": index, "score": score})
+    return scores
+
+
+class CallableRerankProvider:
+    """Wraps a caller-owned scoring function; sync and async callables both work."""
+
+    name = "callable"
+
+    def __init__(self, rerank_function: Callable[..., Any]):
+        self.rerank_function = rerank_function
+
+    async def rank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int | None = None,
+    ) -> list[RerankScore]:
+        try:
+            result = self.rerank_function(query, documents, top_n=top_n)
+        except TypeError:
+            result = self.rerank_function(query, documents)
+        if inspect.isawaitable(result):
+            result = await result
+        return _coerce_rerank_scores(result, len(documents))
+
+
+class AgentRerankProvider:
+    """Wraps an Agently Agent configured with ``model_type="rerank"``.
+
+    ``top_n`` is deliberately not forwarded: the framework scores the whole
+    bounded candidate window and orders it locally, so a truncated provider
+    reply cannot starve candidates the retrieval layer still has to place.
+    """
+
+    name = "agent"
+
+    def __init__(self, agent: Any):
+        self.agent = agent
+
+    async def rank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int | None = None,
+    ) -> list[RerankScore]:
+        _ = top_n
+        execution = self.agent.input({"query": query, "documents": list(documents)})
+        async_start = getattr(execution, "async_start", None)
+        if callable(async_start):
+            result = async_start()
+        else:
+            result = execution.start()
+        resolved = await result if inspect.isawaitable(result) else result
+        return _coerce_rerank_scores(resolved, len(documents))
 
 
 class NoopVectorIndex:

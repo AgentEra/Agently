@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, Protocol, runtime_checkable
 from agently.types.data.event import RuntimeEvent, RuntimeEventDict
 from agently.types.data.record_store import (
     RecordStoreCapabilities,
+    RerankScore,
     RecordContentSegment,
     ExecutionLease,
     RecordLink,
@@ -365,6 +366,26 @@ class EmbeddingProvider(Protocol):
 
 
 @runtime_checkable
+class RerankProvider(Protocol):
+    """Optional relevance-scoring seam for retrieval rerank.
+
+    Owns scoring only. Candidate construction, drop policy, refill, packaging
+    and semantic acceptance stay with the retrieval layer. Returned scores use
+    the backing model's own scale and are compared within one response only.
+    """
+
+    name: str
+
+    async def rank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        top_n: int | None = None,
+    ) -> list[RerankScore]: ...
+
+
+@runtime_checkable
 class VectorStoreProvider(Protocol):
     name: str
 
@@ -470,6 +491,7 @@ __all__ = [
     "ExecutionSnapshotRetentionStore",
     "IngestionProfile",
     "RefResolver",
+    "RerankProvider",
     "RuntimeEventStore",
     "TextIndex",
     "VectorIndex",

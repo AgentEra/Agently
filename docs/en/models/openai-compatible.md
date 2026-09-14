@@ -27,11 +27,49 @@ Agently.set_settings("OpenAICompatible", {
 | `base_url` | the API root, e.g. `https://api.openai.com/v1` |
 | `api_key` | bearer token; omit for local servers that don't require auth |
 | `model` | provider-specific model name |
-| `model_type` | `"chat"` (default) or `"completion"` for legacy completion endpoints |
+| `model_type` | `"chat"` (default), `"completions"` for legacy completion endpoints, `"embeddings"`, or `"rerank"` |
 | `request_retry` | transient transport retry policy; defaults to `{"max_attempts": 2, "after_output": true}` |
 | `request_options` | extra dict forwarded to the underlying HTTP client (timeouts, headers) |
 
 The full set lives in the [agently/builtins/plugins/ModelRequester/OpenAICompatible/](../../../agently/builtins/plugins/ModelRequester/OpenAICompatible/) package. The public plugin class is exported from `plugin.py`, while request building, credentials, transport, handler binding, and response mapping live under its private `modules/` package.
+
+## Rerank models
+
+`model_type="rerank"` targets the `/rerank` endpoint used by dedicated reranker
+models (cross-encoders such as `bge-reranker-v2-m3`). This is the Cohere/Jina
+request shape, not an official OpenAI endpoint — Jina, Cohere, vLLM, TEI,
+Xinference and local servers such as oMLX all expose it under the same body.
+`AnthropicCompatible` has no rerank form because the Anthropic Messages API
+defines no rerank endpoint.
+
+```python
+Agently.set_settings("OpenAICompatible", {
+    "base_url": "${ENV.RERANK_BASE_URL}",
+    "api_key": "${ENV.RERANK_API_KEY}",
+    "model_type": "rerank",
+    "model": "${ENV.RERANK_MODEL}",  # required; there is no default rerank model
+})
+
+result = Agently.create_request().input({
+    "query": "how do I configure a local model service",
+    "documents": ["...", "...", "..."],
+}).get_result()
+
+for scored in result.get_data():
+    print(scored["index"], scored["relevance_score"])
+```
+
+`input` takes `query` plus a non-empty `documents` list of strings or
+`{"text": ...}` dicts; a mixed list is normalized to one shape before dispatch.
+Invalid input and a missing model fail before any network call. `top_n`,
+`return_documents` and other body fields go through `request_options`. The
+request is never streamed, and `get_data()` returns the provider's `results`
+array with its own score scale — relevance scores are comparable inside one
+response, not across models.
+
+Reranker models score relevance; they do not judge usefulness. To use one for
+RecordStore retrieval, bind it as a rerank provider — see
+[Retrieval rerank](../requests/workspace.md#retrieval-rerank).
 
 ## Responses API variant
 

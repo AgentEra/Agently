@@ -50,6 +50,7 @@ class _ModelPathMapping(AgentlyConfigModel):
     chat: str | None = None
     completions: str | None = None
     embeddings: str | None = None
+    rerank: str | None = None
 
 
 class OpenAICompatibleSettings(AgentlyConfigModel):
@@ -57,7 +58,7 @@ class OpenAICompatibleSettings(AgentlyConfigModel):
     __secret_fields__ = {"api_key", "auth"}
 
     model: str | None = None
-    model_type: Literal["chat", "completions", "embeddings"] | None = None
+    model_type: Literal["chat", "completions", "embeddings", "rerank"] | None = None
     timeout_mode: Literal["http", "first_token"] | None = None
     stream_idle_timeout: float | None = None
     request_retry: _RequestRetrySettings | dict[str, int | bool | None] | bool | None = None

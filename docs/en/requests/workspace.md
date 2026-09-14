@@ -121,6 +121,59 @@ AgentTask process state stays in memory and runtime logs by default. Enable
 `record_store_recovery` only when restart recovery is required. Recovery refs
 are RecordStore refs; final deliverable files remain TaskWorkspace refs.
 
+### Retrieval rerank
+
+`record_store.retrieve(...)` owns rerank policy: the structural gate, the
+candidate window, drops, refill and packaging. Three engines can supply the
+ordering, in this precedence:
+
+| Engine | Selected when | Behavior |
+|---|---|---|
+| `handler` | `rerank_handler=` is passed | Your callable owns the decisions |
+| `provider` | a rerank provider is bound | A reranker model scores relevance |
+| `model` | neither is present | The default ModelRequest usefulness judgment |
+
+Bind a reranker model the same way an embedding model is bound — through a
+component provider:
+
+```python
+from agently import Agently
+from agently.base import record_store_registry
+
+rerank_agent = Agently.create_agent()
+rerank_agent.set_settings("OpenAICompatible", {
+    "base_url": "${ENV.RERANK_BASE_URL}",
+    "api_key": "${ENV.RERANK_API_KEY}",
+    "model_type": "rerank",
+    "model": "${ENV.RERANK_MODEL}",
+})
+
+record_store = record_store_registry.create(
+    "./project-state",
+    mode="read_write",
+    rerank_provider="agent",
+    rerank_options={"agent": rerank_agent},
+)
+
+package = await record_store.retrieve("how do I configure a local model service", rerank=True)
+print(package["diagnostics"]["rerank"])  # engine, provider, scored, unscored, dropped
+```
+
+`rerank_provider` accepts `"agent"`, `"callable"` (with
+`rerank_options={"rerank_function": fn}`), a plain callable, or any object
+implementing `RerankProvider.rank(query, documents, *, top_n)`. Binding is lazy:
+configuring a provider makes no model call until a rerank actually runs.
+
+A `RerankProvider` owns scoring only. Because a reranker model reports
+relevance and not usefulness, the provider engine **reorders without dropping**
+by default; downstream packaging still applies `top_n` and the length budget.
+Pass `budget={"rerank_score_floor": 0.5}` when you explicitly want a score cut —
+those drops appear as `rerank_drop` in `omitted`. Candidates the provider did
+not score keep their relative order behind the scored ones rather than being
+discarded on absent evidence. If the provider fails, retrieval degrades to
+deterministic order with diagnostics; it never silently switches to the model
+engine, because engine choice is your configuration, not a failure path.
+
 ## Information delivery: TaskContext and ContextReader
 
 ```python
