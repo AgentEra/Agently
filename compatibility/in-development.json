@@ -129,7 +129,7 @@
           "summary_marker": "meta.coalesced"
         }
       },
-      "recommended_version_specifier": ">=0.1.11,<0.2.0"
+      "recommended_version_specifier": ">=0.2.0,<0.3.0"
     },
     "skills": {
       "repository": "Agently-Skills",
