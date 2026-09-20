@@ -9507,6 +9507,31 @@ async def test_agent_quick_prompt_returns_execution_and_result_facade():
     assert agent.request.prompt.get(inherit=False) == {}
 
 
+@pytest.mark.asyncio
+async def test_agent_execution_result_resume_requires_resumable_task_refs():
+    class AgentStub:
+        async def async_resume(self, task_id: str, *args: Any, **kwargs: Any) -> str:
+            return f"resumed:{task_id}"
+
+        def resume(self, task_id: str, *args: Any, **kwargs: Any) -> str:
+            return f"resumed:{task_id}"
+
+    execution = SimpleNamespace(
+        id="ordinary-result",
+        status="completed",
+        task_refs={"task_id": "ordinary-task", "resume": False},
+        agent=AgentStub(),
+    )
+    result = AgentExecutionResult(execution)
+
+    unsupported = await result.async_resume()
+    assert unsupported["supported"] is False
+
+    execution.task_refs["resumable"] = True
+    assert await result.async_resume() == "resumed:ordinary-task"
+    assert result.resume() == "resumed:ordinary-task"
+
+
 def test_agent_define_parameter_and_builder_forms_write_definition_state():
     agent = _create_agent("agent-define-contract")
 
