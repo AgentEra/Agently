@@ -190,7 +190,7 @@ def test_in_development_blocks_and_devtools_keep_owner_boundaries() -> None:
     assert blocks["removed_block_kinds"] == ["skill_activation", "workspace_operation"]
     assert "caller-bound ContextReader" in blocks["context_read_contract"]
     assert devtools["runtime_protocol"] == "agently-devtools.observation-runtime.v1"
-    assert devtools["recommended_version_specifier"] == ">=0.1.11,<0.2.0"
+    assert devtools["recommended_version_specifier"] == ">=0.2.0,<0.3.0"
     assert "TaskWorkspace is never an event store" in (devtools["runtime_control"]["record_store_contract"])
     assert "model.reasoning.delta" in devtools["runtime_control"]["model_reasoning_observation_contract"]
     assert "model.validation_failed" in devtools["runtime_control"]["model_validation_diagnostics_contract"]
