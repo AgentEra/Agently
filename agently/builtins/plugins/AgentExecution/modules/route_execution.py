@@ -33,6 +33,8 @@ from .lifecycle import pause_at, resume_route, release_owned_resources
 from .result_views import _business_data_from_full_data
 from .output_validation import validate_final_output
 from .field_long_content import has_long_content, run_field_long_content
+from .judgment_schema import has_judgment
+from .judgment_flow import run_judgment_output
 from .routes import run_model_request_route
 from .runtime_guidance import mark_pending_guidance_not_applied
 from .review import run_declared_reviews
@@ -80,6 +82,7 @@ async def async_execute_route(
             route == "model_request"
             and owner.__class__._async_produce is AgentExecution._async_produce
             and not has_long_content(owner.request.prompt.to_prompt_object().output)
+            and not has_judgment(owner.request.prompt.get("output"))
         )
         registered = owner.request.extension_handlers.get("validate_handlers", [])
         local_handlers = owner.request.extension_handlers.get(inherit=False)
@@ -189,7 +192,9 @@ async def produce_default_route(
     if route == "agent_task":
         result = await run_agent_task_route(owner, route_meta)
     elif route == "model_request":
-        if has_long_content(owner.request.prompt.to_prompt_object().output):
+        if has_judgment(owner.request.prompt.get("output")):
+            result = await run_judgment_output(owner, options)
+        elif has_long_content(owner.request.prompt.to_prompt_object().output):
             result = await run_field_long_content(owner, options)
         else:
             result = await run_model_request_route(

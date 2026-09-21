@@ -206,4 +206,6 @@ def build_execution_meta(owner: "AgentExecution") -> dict[str, Any]:
             getattr(owner, "_long_output_meta", {})
             or {"enabled": True, "status": owner.status}
         )
+    if owner._producer_state.get("kind") == "judgment":
+        meta["judgment"] = DataFormatter.sanitize(owner._producer_state.get("judgment", {}))
     return meta

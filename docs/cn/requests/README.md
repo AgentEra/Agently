@@ -10,3 +10,4 @@
 6. [会话记忆](session-memory.md)：Session、多轮历史、窗口裁剪和导入导出。
 7. [Context Engineering](context-engineering.md)：session、info、KB 和工具结果该放哪里。
 8. [任务上下文、文件与记录](workspace.md)：用独立 owner 处理渐进式披露、任务文件、持久 records 与 recovery。
+9. [Jev 输出判断](jev.md)：概率、选择、评分与显式输出依赖。

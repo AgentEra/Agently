@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .model_requester import (
+    JevSettings,
     AnthropicCompatibleSettings,
     OpenAICompatibleSettings,
     OpenAIResponsesCompatibleSettings,
@@ -26,6 +27,7 @@ from .model_routing import (
 )
 
 __all__ = [
+    "JevSettings",
     "AnthropicCompatibleSettings",
     "OpenAICompatibleSettings",
     "OpenAIResponsesCompatibleSettings",

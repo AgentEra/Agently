@@ -157,6 +157,7 @@ class AgentExecutionActionLog(TypedDict, total=False):
 
 
 class AgentExecutionMeta(TypedDict):
+    judgment: NotRequired[dict[str, Any]]
     execution_id: str
     revision: NotRequired[int]
     status: AgentExecutionStatus
