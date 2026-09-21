@@ -657,7 +657,8 @@ class SkillsExtension(BaseAgent):
     async def _async_select_optional_packages(
         self,
         *,
-        task: str,
+        task: Mapping[str, Any],
+        task_context: Mapping[str, Any],
         packages: Sequence[SkillPackageRevision],
         diagnostics: list[dict[str, Any]],
     ) -> list[SkillPackageRevision]:
@@ -689,11 +690,16 @@ class SkillsExtension(BaseAgent):
             request = cast(Any, request_factory())
             result = await (
                 request
-                .input({"task": task})
-                .info({"offered_skills": cards})
+                .input(dict(task))
+                .info({"task_context": dict(task_context), "offered_skills": cards})
                 .instruct(
                     "Select only installed Skills whose real-world procedure is useful "
-                    "for this task. Return only offered skill_key values. Do not copy "
+                    "for the complete task described by input and info.task_context, "
+                    "including all goals, success criteria, constraints, and delivery requirements. "
+                    "Use the original task context only to judge applicability; "
+                    "do not perform the task in this request. "
+                    "Return only offered skill_key values, without duplicates; "
+                    "return an empty list when none apply. Do not copy "
                     "package identity, paths, revisions, metadata, or instructions."
                 )
                 .output(
@@ -818,8 +824,19 @@ class SkillsExtension(BaseAgent):
                 package.revision_ref for package in optional_packages
             ],
         }
+        prompt = execution.request_prompt.get()
+        task_context = {
+            slot: prompt[slot]
+            for slot in ("system", "info", "instruct", "output")
+            if prompt.get(slot) is not None and prompt[slot] != "" and prompt[slot] != [] and prompt[slot] != {}
+        }
         selected_optional = await self._async_select_optional_packages(
-            task=execution.task_target(),
+            task={
+                "goals": list(execution.goal_items),
+                "success_criteria": list(execution.success_criteria_items),
+                "input": prompt.get("input"),
+            },
+            task_context=task_context,
             packages=optional_packages,
             diagnostics=diagnostics,
         )

@@ -68,6 +68,75 @@ class _ExecutionAwareSelectionRequest(_SelectionRequest):
 
 
 @pytest.mark.asyncio
+async def test_skill_selection_receives_complete_task_without_replacing_its_output(
+    tmp_path: Path,
+) -> None:
+    """Request delivery is a protocol assertion, not a semantic relevance test."""
+    library = SkillLibrary(tmp_path / "library")
+    package = library.install(
+        _write_skill(tmp_path / "guide", name="Review", description="Review a report."),
+        trust="trusted",
+    )
+    agent = Agently.create_agent("skill-complete-task").use_task_workspace(tmp_path / "work")
+    agent.skill_library = library
+    request = _ExecutionAwareSelectionRequest(["skill-option:1"])
+    cast(Any, agent).create_temp_request = lambda: request
+    execution = (
+        agent.create_execution()
+        .goal(["Analyze the report", "Prepare the external handoff"],
+              success_criteria=["Remove personal details"], turn_on_long_task=False)
+        .input({"source": "quarterly report"})
+        .system({"audience": "external partners"})
+        .info({"handling": "contact information is private"})
+        .instruct("Deliver a reusable spreadsheet")
+        .output({"workbook": (str, "Path to the completed workbook", True)})
+        .use_skills(package.revision_ref)
+    )
+    # Use the authoritative draft, including direct pre-start Prompt writes.
+    execution.request_prompt.set("info", {"handling": "redact contacts before delivery"})
+    prompt = execution.request_prompt.get()
+    assert isinstance(prompt, dict)
+    original_prompt = dict(prompt)
+
+    await execution.async_prepare_task_context()
+    await execution.async_prepare_task_context()
+
+    assert request.slots["input"] == {
+        "goals": ["Analyze the report", "Prepare the external handoff"],
+        "success_criteria": ["Remove personal details"],
+        "input": {"source": "quarterly report"},
+    }
+    assert request.slots["info"]["task_context"] == {
+        key: original_prompt[key] for key in ("system", "info", "instruct", "output")
+    }
+    assert list(request.slots["output"]) == ["selected_keys"]
+    assert execution.request_prompt.get() == original_prompt
+    assert request.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_skill_selection_preserves_input_when_no_goal_is_declared(tmp_path: Path) -> None:
+    library = SkillLibrary(tmp_path / "library")
+    package = library.install(
+        _write_skill(tmp_path / "guide", name="Review", description="Review a report."),
+        trust="trusted",
+    )
+    agent = Agently.create_agent("skill-input-only").use_task_workspace(tmp_path / "work")
+    agent.skill_library = library
+    request = _SelectionRequest([])
+    cast(Any, agent).create_temp_request = lambda: request
+    execution = agent.create_execution().input("Review the attached report").use_skills(package.revision_ref)
+
+    await execution.async_prepare_task_context()
+
+    assert request.slots["input"] == {
+        "goals": [], "success_criteria": [], "input": "Review the attached report",
+    }
+    assert request.slots["info"]["task_context"] == {}
+    assert execution.skill_bindings == []
+
+
+@pytest.mark.asyncio
 async def test_model_decision_skill_selection_uses_host_keys_and_exact_revision(
     tmp_path: Path,
 ) -> None:
@@ -263,8 +332,7 @@ async def test_fresh_user_execution_reselects_agent_default_skills(tmp_path: Pat
     assert [binding.revision_ref for binding in first.skill_bindings] == [packages[0].revision_ref]
     assert [binding.revision_ref for binding in later.skill_bindings] == [packages[1].revision_ref]
     assert request.call_count == 2
-    assert "Deliver the report" in request.slots["input"]["task"]
-    assert "Plan the report" not in request.slots["input"]["task"]
+    assert request.slots["input"]["input"] == "Deliver the report"
     assert request.observed_execution_context is later.execution_context
 
 

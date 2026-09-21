@@ -49,6 +49,15 @@
     "prerequisite": "after_output"
   },
 
+  "skill_applicability_input": {
+    "status": "in_development",
+    "since": "4.1.4.9",
+    "owner": "AgentExecution / SkillsExtension",
+    "task_fields": ["all declared goals", "success_criteria", "input", "system", "info", "instruct", "output"],
+    "selection_output": "selected_keys: ordered unique subset of offered keys, including empty",
+    "additional_model_requests": false,
+    "scope_or_execution_authorization_changed": false
+  },
   "shell_capability": {
     "status": "in_development",
     "entry": "Agent.enable_shell",
