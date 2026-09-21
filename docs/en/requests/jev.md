@@ -50,8 +50,9 @@ SystemOne is disabled without a `system_one` model configuration. To select Jev,
 set `Agently.set_settings("system_one", {"provider": "Jev"})` as well as Jev credentials.
 Use `.use_system_one(False)` to return templates to the ordinary LLM. Explicit
 `Agently.set_settings("Jev.enabled", False)` also selects the LLM, even with
-stale Jev credentials. Explicit enablement or a partial connection configuration
-without a valid API key fails before dispatch. A failed Jev request never
+stale Jev credentials. Once Jev is selected and enabled through SystemOne,
+missing or invalid credentials fail before dispatch; unused Jev settings do not
+activate the provider or trigger its credential checks. A failed Jev request never
 silently falls back. LLM estimates are identified as such and have no fabricated
 native probability distribution or confidence.
 

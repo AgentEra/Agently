@@ -41,9 +41,11 @@ Jev 只做判断，不生成解释或思维链。
 每批最多 64 个判断。可配置 `base_url`、`model`、`timeout`、`batch_size`。
 凭据与 `OpenAICompatible` 独立，不进入模型上下文。
 
-未配置 Jev 连接时，判断转换为普通 LLM schema；
-`Agently.set_settings("Jev.enabled", False)` 也使用 LLM，即使留有无效 Jev 凭据。
-显式开启或部分配置连接却缺有效 API key 时，在调用前报错。Jev 调用失败不会静默转 LLM。
+未配置或关闭 `system_one` 时，判断转换为普通 LLM schema；仅配置 Jev 凭据不会启用它。
+通过 `Agently.set_settings("system_one", {"provider": "Jev"})` 选择 Jev 后，必须提供有效凭据；
+缺失或无效时在调用前报错，不自动降级。
+`Agently.set_settings("Jev.enabled", False)` 则显式使用普通 LLM，即使留有无效 Jev 凭据。
+Jev 调用失败不会静默转 LLM。
 LLM 结果标记实际生产者，不伪造 Jev 原生分布或 confidence，也不宣称概率已校准。
 
 纯静态 Jev 输出不需要 LLM 配置。混合输出还需要普通 ModelRequester；保持 LLM 为当前

@@ -24,7 +24,7 @@
     "binding": "from_output: string or path array",
     "configuration": "system_one.provider=Jev; Jev / plugins.ModelRequester.Jev credentials",
     "owner": "AgentExecution; atomic Jev ModelRequester",
-    "fallback": "unconfigured or explicitly disabled Jev uses LLM schema estimates; provider failures do not fall back",
+    "fallback": "unconfigured/disabled SystemOne or explicitly disabled Jev uses ordinary LLM; selected Jev requires valid credentials; provider failures do not fall back",
     "retry": "shared composition max_retries; child provider retries and key failover disabled",
     "details": "execution.get_meta().judgment",
     "forward_line": "4.2 uses canonical interfaces without deprecated compatibility layers",
