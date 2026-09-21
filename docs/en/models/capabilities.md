@@ -68,6 +68,26 @@ question/input/output processing requires the ordinary OCR -> LLM pipeline.
 Missing OCR configuration errors before dispatch. Multiple OCR images use
 separate atomic requests; no hidden VLM fallback is used.
 
+
+The OCR role can also reuse `OpenAICompatible` when the service exposes that
+protocol; a separate Requester is needed only for a different service protocol.
+For example, local GLM-OCR or PaddleOCR served by oMLX can use:
+
+```python
+agent.set_settings("ocr", {
+    "provider": "OpenAICompatible",
+    "base_url": os.environ["OCR_BASE_URL"],
+    "api_key": os.environ["OCR_API_KEY"],
+    "model": os.environ["OCR_MODEL"],
+})
+text = await agent.image("note.png", mode="ocr").async_to_text(max_retries=0)
+```
+
+Use the model ID returned by your service. `max_retries` defaults to 3; zero
+disables repair retries in the shared Execution budget. This does not change
+routing. See the [OCR example](../../../examples/model_capabilities/ocr.py)
+for direct extraction and a separate OCR -> LLM structured answer.
+
 ## Audio input and delivery
 
 Direct stt/tts remain independent AudioModelRequest operations. Their profiles

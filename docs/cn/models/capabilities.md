@@ -58,6 +58,24 @@ OCR 是文字提取能力。可配置：
 独立 mode=ocr/to_text 仅提取文字；需要 question/input/output 推理时用 OCR → LLM
 普通管线。缺少 OCR 配置提前报错，多图为多个原子 OCR 请求，不静默改用 VLM。
 
+
+OCR 服务若提供 OpenAI 兼容协议，可直接复用 `OpenAICompatible`；只有服务协议不同，
+才需要另写 Requester。例如通过 oMLX 提供服务的 GLM-OCR 或 PaddleOCR：
+
+```python
+agent.set_settings("ocr", {
+    "provider": "OpenAICompatible",
+    "base_url": os.environ["OCR_BASE_URL"],
+    "api_key": os.environ["OCR_API_KEY"],
+    "model": os.environ["OCR_MODEL"],
+})
+text = await agent.image("note.png", mode="ocr").async_to_text(max_retries=0)
+```
+
+model 使用服务实际返回的 ID。`max_retries` 默认是 3，设为 0 可关闭 Execution
+共享额度内的修复重试，不改变路由。完整的纯 OCR 与 OCR → LLM 结构化回答见
+[OCR 示例](../../../examples/model_capabilities/ocr.py)。
+
 ## 音频输入与朗读
 
 stt/tts 仍是独立 AudioModelRequest 转换动作，可配置不同提供方和模型。

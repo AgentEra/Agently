@@ -487,3 +487,20 @@ async def test_partial_speech_close_cancels_owned_execution(tmp_path, monkeypatc
         await asyncio.wait_for(entered.wait(), 3)
     await asyncio.wait_for(settled.wait(), 3)
     assert getattr(execution, "_cancel_requested") is True
+
+
+def test_direct_ocr_can_disable_shared_retries(tmp_path, monkeypatch):
+    import httpx
+    agent = make_agent(tmp_path, [], [], roles="llm")
+    OCRRequester.reset(["unused"])
+    agent.plugin_manager.register("ModelRequester", OCRRequester, activate=False)
+    agent.set_settings("ocr", {"provider":"OCRRequester", "model":"ocr"})
+    attempts = []
+    async def disconnect(self, data):
+        attempts.append(data)
+        raise httpx.ReadError("protocol fixture disconnect")
+        yield "response", "unreachable"
+    monkeypatch.setattr(OCRRequester, "request_model", disconnect)
+    with pytest.raises(httpx.ReadError):
+        image(agent, mode="ocr").to_text(max_retries=0)
+    assert len(attempts) == 1

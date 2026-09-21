@@ -942,16 +942,16 @@ class AgentExecution:
         target.request.settings.set("execution.vlm_only", enabled)
         return target
 
-    async def async_to_text(self) -> str:
+    async def async_to_text(self, *, max_retries: int = 3) -> str:
         """Process images directly; later readers reuse the same execution."""
         if not self._started:
             self.request.settings.set("execution.image_direct", True)
         elif not self.request.settings.get("execution.image_direct", False):
             raise RuntimeError("to_text must select direct image processing before execution starts.")
-        return await self.async_get_text()
+        return await self.async_get_text(max_retries=max_retries)
 
-    def to_text(self) -> str:
-        return default_stage_call_bridge.as_sync(self.async_to_text)()
+    def to_text(self, *, max_retries: int = 3) -> str:
+        return default_stage_call_bridge.as_sync(self.async_to_text)(max_retries=max_retries)
 
     def use_system_one(self, enabled: bool = True) -> "AgentExecution":
         """Select the dedicated template model; configured models default to enabled."""

@@ -14,7 +14,7 @@
     ],
     "profile": "independent inline provider/model or model_key; provider defaults only; no cross-role credentials/options inheritance",
     "image": "append groups; mode=vlm|llm|ocr; configuration selects single producer or VLM/OCR -> LLM",
-    "direct": "vlm_only(bool) before start; to_text selects direct image processing and respects output",
+    "direct": "vlm_only(bool) before start; to_text selects direct image processing and respects output; max_retries controls the shared retry budget (default 3)",
     "audio": "input(file=..., type=audio) -> STT -> Execution; say(scope=final|all); stream_say yields SpeechResult segments",
     "embeddings": "embed/async_embed returns ordered finite equal-dimension vector rows",
     "compatibility": "4.1 legacy provider settings remain fallback; 4.2 follows canonical APIs",
