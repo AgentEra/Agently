@@ -230,3 +230,5 @@ EOF 半采样帧报错，不补零；缺包不等于静默。拉取背压无法�
 输入预处理由 `AudioModelRequest` 负责。直接调用原生 driver 时，非空
 `input_options` 会被拒绝；第三方 `AudioCapability` 若接受此选项，需自行实现
 该合同。Agent 转发本身不会给自定义能力补上预处理。
+
+开发中 API 参见[独立模型用途与多模态串联](capabilities.md)。

@@ -128,7 +128,7 @@ def _requirements(owner: AgentExecution) -> dict[str, object]:
 
 def _fingerprint(owner: AgentExecution) -> str:
     prompt = owner.prompt_snapshot if owner._started else owner._snapshot_prompt()
-    return _hash(_contract_value({
+    contract = {
         "prompt": prompt,
         "options": dict(owner.options),
         "limits": dict(owner.limits),
@@ -136,11 +136,16 @@ def _fingerprint(owner: AgentExecution) -> str:
         "goal_switch": owner._goal_turn_on_long_task,
         "ensure_long_output": owner._ensure_long_output_enabled,
         "model_key": getattr(owner.request, "_model_key", None),
-    }))
+    }
+    media = {name: value for name in ("image_groups", "image_direct", "vlm_only")
+             if (value := owner.request.settings.get(f"execution.{name}"))}
+    if media:
+        contract["image_routing"] = media
+    return _hash(_contract_value(contract))
 
 
 def save(owner: AgentExecution) -> dict[str, object]:
-    if owner._bound_agent_capabilities:
+    if owner._bound_agent_capabilities or owner._audio_inputs:
         raise NotImplementedError("Snapshots with extra Agent capability bindings require a custom rebinding contract.")
     if owner.status != "paused" or owner._pause_flow is None:
         raise RuntimeError("Execution save requires a settled safe pause.")
@@ -195,7 +200,7 @@ def save(owner: AgentExecution) -> dict[str, object]:
 
 
 def load(owner: AgentExecution, snapshot: Mapping[str, object]) -> None:
-    if owner._bound_agent_capabilities:
+    if owner._bound_agent_capabilities or owner._audio_inputs:
         raise NotImplementedError("Snapshots with extra Agent capability bindings require a custom rebinding contract.")
     if owner._started or owner._run_completion is not None or owner._closed:
         raise RuntimeError("Load requires a fresh, explicitly configured execution.")

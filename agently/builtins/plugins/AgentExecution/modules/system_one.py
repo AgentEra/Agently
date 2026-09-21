@@ -85,3 +85,4 @@ class SystemOne:
         request.settings.set(f"plugins.ModelRequester.{self.provider}", {**defaults, **deepcopy(self.profile)})
         request.settings.set("plugins.ModelRequester.activate", self.provider)
         request._model_key = None
+        request._model_role = None

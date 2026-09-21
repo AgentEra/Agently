@@ -9,3 +9,5 @@
 5. [音频](audio.md)：独立 TTS/STT、Agent 挂载与流式边界（4.1.4.8 开发版）。
 
 具体模型名会随 provider 更新，配置时以 provider 官方文档和你的账号可用列表为准。
+
+开发中 API 参见[独立模型用途与多模态串联](capabilities.md)。

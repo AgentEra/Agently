@@ -289,3 +289,5 @@ Input preprocessing belongs to `AudioModelRequest`. Native driver methods reject
 nonempty `input_options`; a third-party `AudioCapability` must implement this
 contract itself when accepting the option. Agent forwarding alone does not add
 preprocessing to a custom capability.
+
+See [Independent model uses and multimodal tasks](capabilities.md) for the development API.

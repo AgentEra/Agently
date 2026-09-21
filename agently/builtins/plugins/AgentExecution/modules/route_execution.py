@@ -72,6 +72,8 @@ async def async_execute_route(
             execution_id=owner.id, route=route, route_meta=route_meta,
         )
         await owner.emit_stream("route.selected", owner.route_plan, route=route)
+        if hasattr(owner, "_media_result") and route != "model_request":
+            raise ValueError("Direct OCR requires the request route; it cannot satisfy an AgentTask/Action route contract.")
         if route == "route_policy_blocked":
             return route, await _blocked_route(owner, route_meta)
 
@@ -148,6 +150,10 @@ async def prepare_production(owner: "AgentExecution", options: ProductionOptions
         stage="agent_execution", status="started", event_type="agent_execution.started",
         meta={"execution_id": owner.id},
     )
+    from .media import prepare_media
+
+    with bind_runtime_context(agent_execution_context=owner.execution_context):
+        options = await prepare_media(owner, options)
     return await owner._async_execute_route(
         type=options.type, ensure_keys=options.ensure_keys, ensure_all_keys=options.ensure_all_keys,
         validate_handler=options.validate_handler, key_style=options.key_style,
@@ -189,7 +195,11 @@ async def produce_default_route(
             "as a direct execution, or let AgentTask produce bounded planning results and start "
             "a separate direct delivery execution."
         )
-    if route == "agent_task":
+    if hasattr(owner, "_media_result"):
+        from .routes import finish_model_request_route
+
+        result = await finish_model_request_route(owner, owner._media_result)
+    elif route == "agent_task":
         result = await run_agent_task_route(owner, route_meta)
     elif route == "model_request":
         if has_judgment(owner.request.prompt.get("output")):

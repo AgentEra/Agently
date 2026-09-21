@@ -49,6 +49,9 @@ from agently.types.data import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from contextlib import AbstractAsyncContextManager
+    from agently.types.data.audio import SpeechOptions, SpeechResult, TextSegmentOptions
     from pydantic import BaseModel
 
     from agently.core.Agent import BaseAgent
@@ -156,7 +159,8 @@ class AgentExecution(Protocol):
     ) -> "AgentExecution": ...
 
     def image(
-        self, *, question: str, file: str | os.PathLike[str] | None = None,
+        self, file: str | os.PathLike[str] | None = None, *, question: str | None = None,
+        mode: Literal["vlm", "llm", "ocr"] = "vlm",
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
@@ -226,6 +230,22 @@ class AgentExecution(Protocol):
     def info(self, *args: Any, **kwargs: Any) -> "AgentExecution": ...
 
     def output(self, *args: Any, **kwargs: Any) -> "AgentExecution": ...
+
+    def vlm_only(self, enabled: bool = True) -> "AgentExecution": ...
+
+    def to_text(self) -> str: ...
+
+    async def async_to_text(self) -> str: ...
+
+    def say(self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+            options: "SpeechOptions | None" = None) -> "SpeechResult | None": ...
+
+    async def async_say(self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+                        options: "SpeechOptions | None" = None) -> "SpeechResult | None": ...
+
+    def stream_say(self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+                   options: "SpeechOptions | None" = None, segments: "TextSegmentOptions | None" = None,
+                   ) -> "AbstractAsyncContextManager[AsyncIterator[SpeechResult]]": ...
 
     def use_system_one(self, enabled: bool = True) -> "AgentExecution":
         """Override automatic activation from system_one model configuration."""

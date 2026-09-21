@@ -24,6 +24,7 @@ from .model_routing import (
     APIKeyPoolSelectionPolicy,
     APIKeyPoolSettings,
     ModelProfileSettings,
+    ModelUseSettings,
     SystemOneSettings,
 )
 
@@ -37,5 +38,6 @@ __all__ = [
     "APIKeyPoolSelectionPolicy",
     "APIKeyPoolSettings",
     "ModelProfileSettings",
+    "ModelUseSettings",
     "SystemOneSettings",
 ]

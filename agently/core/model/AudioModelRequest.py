@@ -32,10 +32,15 @@ from .audio_stream.streams import (
 class AudioModelRequest:
     def __init__(
         self, driver: AudioModelRequester, *, tts_model: str | None = None, stt_model: str | None = None,
+        voice: str | None = None, speech_options: SpeechOptions | None = None,
+        transcription_options: TranscriptionOptions | None = None,
     ):
         self.__driver = driver
         self.__tts_model = tts_model
         self.__stt_model = stt_model
+        self.__voice = voice
+        self.__speech_options = speech_options
+        self.__transcription_options = transcription_options
 
     @property
     def supported_operations(self) -> frozenset[AudioOperation]:
@@ -76,9 +81,10 @@ class AudioModelRequest:
     ) -> SpeechRequest:
         if not isinstance(text, str) or not text.strip():
             raise ValueError("TTS text must be non-empty.")
+        voice = self.__voice if voice is None else voice
         if voice is not None and (not isinstance(voice, str) or not voice.strip()):
             raise ValueError("voice must be non-empty when supplied.")
-        selected = options or SpeechOptions()
+        selected = options or self.__speech_options or SpeechOptions()
         if isinstance(selected.speed, bool) or not math.isfinite(selected.speed) or selected.speed <= 0:
             raise ValueError("Speech speed must be finite and positive.")
         if selected.response_format not in {"wav", "mp3", "opus", "aac", "flac", "pcm"}:
@@ -97,7 +103,7 @@ class AudioModelRequest:
             raise ValueError("STT requires non-empty audio bytes.")
         if not audio.filename or not audio.content_type:
             raise ValueError("Audio filename and content_type must be non-empty.")
-        selected = options or TranscriptionOptions()
+        selected = options or self.__transcription_options or TranscriptionOptions()
         return TranscriptionRequest(audio, selected_model, replace(selected, extra=deepcopy(dict(selected.extra))))
 
     async def async_tts(
@@ -118,6 +124,7 @@ class AudioModelRequest:
         options: TranscriptionOptions | None = None,
     ) -> TranscriptResult:
         self.__require("stt")
+        options = options or self.__transcription_options
         if options is None or options.input_options is None:
             return await self.__driver.stt(self.__transcription(audio, model, options))
         config = options.input_options

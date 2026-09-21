@@ -77,6 +77,14 @@ class ModelProfileSettings(AgentlyConfigModel):
     stream_idle_timeout: float | None = None
 
 
+class ModelUseSettings(ModelProfileSettings):
+    """Independent model use: an inline profile or a model-pool reference."""
+
+    __secret_fields__ = {"api_key", "auth"}
+    model_key: str | None = None
+    vision: StrictBool | None = None
+
+
 class SystemOneSettings(ModelProfileSettings):
     """Dedicated model profile for SystemOne output-template stages."""
 

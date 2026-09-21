@@ -18,7 +18,7 @@ from agently.builtins.plugins.ModelRequester.Jev import supports_template
 from agently.core.orchestration import TriggerFlow
 from agently.types.trigger_flow import TriggerFlowRuntimeData
 from agently.utils import DataFormatter
-from agently.utils.ModelPool import resolve_model_pool_settings
+from agently.utils.ModelPool import apply_role_profile, resolve_model_pool_settings
 
 from .judgment_schema import JudgmentSchema, Path, has_judgment, merge_output, path_text
 from .long_output import LongOutputDelivery, _set_path
@@ -88,6 +88,9 @@ class _JudgmentOutput:
             key = getattr(owner.request, "_model_key", None)
             if key:
                 resolve_model_pool_settings(key, request.settings)
+            elif getattr(owner.request, "_model_role", None):
+                apply_role_profile(request, owner.request._model_role)
+            request._model_role = None
             if request.settings.get("plugins.ModelRequester.activate") == "Jev":
                 raise ValueError(
                     "Mixed output needs an LLM ModelRequester in addition to the independent Jev settings."

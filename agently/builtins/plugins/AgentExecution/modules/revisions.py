@@ -101,6 +101,7 @@ async def rework(
         settings = owner.request.settings.get()
         if isinstance(settings, dict):
             request.settings.update(deepcopy(settings))
+        request._model_role = owner.request._model_role
         request.prompt.update(deepcopy(owner.prompt_snapshot))
         handlers = owner.request.extension_handlers.get()
         if isinstance(handlers, dict):

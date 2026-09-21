@@ -130,6 +130,9 @@ from .record_store_records import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from contextlib import AbstractAsyncContextManager
+    from agently.types.data.audio import SpeechOptions, SpeechResult, TextSegmentOptions
     from agently.core.orchestration.TriggerFlow.Execution import TriggerFlowExecution
     from agently.core.operation import Action
     from agently.core.Agent import BaseAgent
@@ -197,6 +200,7 @@ class AgentExecution:
         self._rework_feedback: str | None = None
         self._rework_allow_replay = False
         self._producer_state: dict[str, Any] = {}
+        self._audio_inputs: list[Any] = []
         self._resource_release_error: Exception | None = None
         self.lineage: "AgentExecutionLineage" = normalize_execution_lineage(lineage)
         self.limits: "AgentExecutionLimits" = normalize_execution_limits(limits)
@@ -874,7 +878,21 @@ class AgentExecution:
 
     def input(self, *args: Any, **kwargs: Any) -> "AgentExecution":
         target = self._reconfiguration_target()
-        target._draft.input(*args, **kwargs)
+        if not args and kwargs.get("type") == "audio" and "file" in kwargs:
+            from agently.types.data.audio import AudioInput
+            from os import PathLike
+
+            extra = set(kwargs) - {"file", "type", "mappings"}
+            if extra:
+                raise TypeError(f"Unsupported audio input parameters: {sorted(extra)}")
+            source = kwargs["file"]
+            if not isinstance(source, (str, PathLike, AudioInput)):
+                raise TypeError("Audio file must be a path or AudioInput.")
+            sources = list(getattr(target, "_audio_inputs", []))
+            sources.append(source)
+            target._audio_inputs = sources
+        else:
+            target._draft.input(*args, **kwargs)
         return target._refresh_prompt_snapshot()
 
     def info(self, *args: Any, **kwargs: Any) -> "AgentExecution":
@@ -896,6 +914,44 @@ class AgentExecution:
         target = self._reconfiguration_target()
         target._draft.output(*args, **kwargs)
         return target._refresh_prompt_snapshot()
+
+    async def async_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        from .speech import say
+        return await say(self, scope=scope, voice=voice, options=options)
+
+    def say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        return default_stage_call_bridge.as_sync(self.async_say)(scope=scope, voice=voice, options=options)
+
+    def stream_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None, segments: "TextSegmentOptions | None" = None,
+    ) -> "AbstractAsyncContextManager[AsyncIterator[SpeechResult]]":
+        from .speech import stream_say
+        return stream_say(self, scope=scope, voice=voice, options=options, segments=segments)
+
+    def vlm_only(self, enabled: bool = True) -> "AgentExecution":
+        if not isinstance(enabled, bool):
+            raise TypeError("vlm_only expects a bool.")
+        target = self._reconfiguration_target()
+        target.request.settings.set("execution.vlm_only", enabled)
+        return target
+
+    async def async_to_text(self) -> str:
+        """Process images directly; later readers reuse the same execution."""
+        if not self._started:
+            self.request.settings.set("execution.image_direct", True)
+        elif not self.request.settings.get("execution.image_direct", False):
+            raise RuntimeError("to_text must select direct image processing before execution starts.")
+        return await self.async_get_text()
+
+    def to_text(self) -> str:
+        return default_stage_call_bridge.as_sync(self.async_to_text)()
 
     def use_system_one(self, enabled: bool = True) -> "AgentExecution":
         """Select the dedicated template model; configured models default to enabled."""
@@ -2067,6 +2123,8 @@ class AgentExecution:
             ))
 
     def _assert_rework_supported(self) -> None:
+        if hasattr(self, "_media_result"):
+            raise NotImplementedError("Direct OCR cannot apply rework feedback; create an OCR-to-LLM task instead.")
         if self.__class__._async_produce is not AgentExecution._async_produce:
             raise NotImplementedError(f"Producer {self.name!r} must declare its own safe rework contract.")
         route = self.route_info.get("selected_route")
@@ -2107,7 +2165,7 @@ class AgentExecution:
         """Describe implemented boundaries without starting the producer."""
         return {
             "pause_boundaries": ["before_production", "candidate_ready"],
-            "snapshot_boundaries": [] if self._bound_agent_capabilities else ["before_production", "candidate_ready"],
+            "snapshot_boundaries": [] if self._bound_agent_capabilities or self._audio_inputs else ["before_production", "candidate_ready"],
             "resume": "explicit_pending_pause",
             "rework": ("same_execution_revision" if (
                 self.__class__._async_produce is AgentExecution._async_produce

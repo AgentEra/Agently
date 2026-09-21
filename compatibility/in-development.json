@@ -2,6 +2,24 @@
   "schema_version": 1,
   "framework": "agently",
   "target_version": "4.1.4.9",
+  "model_capabilities": {
+    "status": "in_development",
+    "configuration": [
+      "llm",
+      "vlm",
+      "embeddings",
+      "stt",
+      "tts",
+      "ocr"
+    ],
+    "profile": "independent inline provider/model or model_key; provider defaults only; no cross-role credentials/options inheritance",
+    "image": "append groups; mode=vlm|llm|ocr; configuration selects single producer or VLM/OCR -> LLM",
+    "direct": "vlm_only(bool) before start; to_text selects direct image processing and respects output",
+    "audio": "input(file=..., type=audio) -> STT -> Execution; say(scope=final|all); stream_say yields SpeechResult segments",
+    "embeddings": "embed/async_embed returns ordered finite equal-dimension vector rows",
+    "compatibility": "4.1 legacy provider settings remain fallback; 4.2 follows canonical APIs",
+    "observation": "existing Execution/TriggerFlow lineage; additive media stage metadata; no unified audio token billing"
+  },
   "system_one": {
     "status": "in_development",
     "configuration": "system_one: inline model profile or model_key",
