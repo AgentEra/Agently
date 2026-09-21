@@ -897,6 +897,14 @@ class AgentExecution:
         target._draft.output(*args, **kwargs)
         return target._refresh_prompt_snapshot()
 
+    def use_system_one(self, enabled: bool = True) -> "AgentExecution":
+        """Select the dedicated template model; configured models default to enabled."""
+        if not isinstance(enabled, bool):
+            raise TypeError("use_system_one expects a bool.")
+        target = self._reconfiguration_target()
+        target.request.settings.set("system_one.enabled", enabled)
+        return target
+
     def auto_continue(self, enabled: bool = True) -> "AgentExecution":
         """Enable conditional continuation of unfinished model output for this draft.
 

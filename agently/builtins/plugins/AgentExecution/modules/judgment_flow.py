@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import TypeAdapter
 
-from agently.builtins.plugins.ModelRequester.Jev import jev_enabled, supports_template
+from agently.builtins.plugins.ModelRequester.Jev import supports_template
 from agently.core.orchestration import TriggerFlow
 from agently.types.trigger_flow import TriggerFlowRuntimeData
 from agently.utils import DataFormatter
@@ -25,6 +25,7 @@ from .long_output import LongOutputDelivery, _set_path
 from .model_stage import _record_action_logs
 from .production import ProductionOptions
 from .routes import finish_model_request_route
+from .system_one import SystemOne
 
 _RESOURCE = "judgment_output"
 
@@ -35,22 +36,31 @@ class _JudgmentOutput:
         self.options = options
         self.plan = JudgmentSchema(execution.request.prompt.get("output"))
         self.native_paths = {path for path, field in self.plan.fields.items() if supports_template(field.declaration)}
-        self.native = bool(self.native_paths) and jev_enabled(
+        self.system_one = SystemOne(
             execution.request.settings, path=path_text(next(iter(self.plan.fields))) or "output"
         )
-        if not self.native and all(
+        self.native = bool(self.native_paths) and self.system_one.enabled and self.system_one.provider == "Jev"
+        if not self.system_one.enabled and all(
             not field.sources and not field.prerequisites for field in self.plan.fields.values()
         ):
             self.plan.ordinary = self.plan.schema
             self.plan.stages = [None]
         if execution.request.prompt.to_prompt_object().output_format != "json":
             raise ValueError("Judgment output currently requires JSON output format.")
-        self.batch_size = execution.request.settings.get("plugins.ModelRequester.Jev.batch_size", 64)
+        self.batch_size = self.system_one.batch_size
+        if self.native and not self.system_one.batch_size_explicit:
+            self.batch_size = execution.request.settings.get("plugins.ModelRequester.Jev.batch_size", 64)
         if isinstance(self.batch_size, bool) or not isinstance(self.batch_size, int) or self.batch_size < 1:
-            raise ValueError("Jev.batch_size must be a positive integer.")
+            raise ValueError("SystemOne batch_size must be a positive integer.")
         if isinstance(options.max_retries, bool) or not isinstance(options.max_retries, int) or options.max_retries < 0:
             raise ValueError("max_retries must be a non-negative integer.")
-        self.meta: dict[str, Any] = {"native": self.native, "stages": [], "fields": {}, "retries_used": 0}
+        self.meta: dict[str, Any] = {
+            "native": self.native,
+            "system_one": {"enabled": self.system_one.enabled, "provider": self.system_one.provider},
+            "stages": [],
+            "fields": {},
+            "retries_used": 0,
+        }
         self.execution._producer_state = {"kind": "judgment", "judgment": self.meta}
         if execution._ensure_long_output_enabled:
             raise ValueError("Judgment composition cannot currently combine with auto_continue.")
@@ -60,6 +70,7 @@ class _JudgmentOutput:
         schema: Any,
         *,
         native: bool,
+        system_one: bool = False,
         targets: dict[str, Any] | None = None,
         evidence: Any = None,
         feedback: str | None = None,
@@ -67,9 +78,12 @@ class _JudgmentOutput:
         owner = self.execution
         request = owner.agent.create_request(inherit_agent_prompt=False, inherit_extension_handlers=not native)
         request.settings.update(deepcopy(owner.request.settings.get()))
+        # Child requests use a captured settings view; provider replacement must
+        # not re-merge the ordinary provider settings from a live parent.
+        request.settings.parent = None
         request._model_key = None
-        if native:
-            request.settings.set("plugins.ModelRequester.activate", "Jev")
+        if system_one:
+            self.system_one.apply(request)
         else:
             key = getattr(owner.request, "_model_key", None)
             if key:
@@ -82,7 +96,7 @@ class _JudgmentOutput:
         request.settings.set(f"plugins.ModelRequester.{provider}.request_retry", False)
         request.settings.set(f"plugins.ModelRequester.{provider}._api_key_pool_runtime", None)
         snapshot = deepcopy(dict(owner.request.prompt))
-        for name in ("output", "output_format", "ensure_all_keys"):
+        for name in ("output", "output_format", "ensure_all_keys", *(("options",) if system_one else ())):
             snapshot.pop(name, None)
         request.prompt.update(snapshot)
         request.output(schema, format="json")
@@ -108,39 +122,24 @@ class _JudgmentOutput:
 
     def preflight(self) -> None:
         # Check provider construction/configuration without executing transport.
-        schemas = [(self.plan.ordinary, False)] if None in self.plan.stages else []
-        if self.plan.remaining:
+        schemas: list[tuple[Any, bool, bool]] = []
+        if None in self.plan.stages:
+            schemas.append((self.plan.ordinary, False, False))
+        if self.plan.remaining and self.plan.stages != [None]:
             schemas.append(
-                ({f"field_{index}": schema for index, schema in enumerate(self.plan.remaining.values())}, False)
+                ({f"field_{index}": schema for index, schema in enumerate(self.plan.remaining.values())}, False, False)
             )
-        if any(path not in self.native_paths for path in self.plan.fields):
-            schemas.append(
-                (
-                    {
-                        "value": next(
-                            field.declaration
-                            for path, field in self.plan.fields.items()
-                            if path not in self.native_paths
-                        )
-                    },
-                    False,
+        families: set[tuple[bool, bool]] = set()
+        for path, field in self.plan.fields.items():
+            native = self.native and path in self.native_paths
+            dedicated = self.system_one.enabled and (self.system_one.provider != "Jev" or native)
+            if (native, dedicated) not in families:
+                families.add((native, dedicated))
+                schemas.append(
+                    ({"value": replace(field.declaration, from_output=None, after_output=None)}, native, dedicated)
                 )
-            )
-        if self.native_paths:
-            schemas.append(
-                (
-                    {
-                        "value": replace(
-                            self.plan.fields[next(iter(self.native_paths))].declaration,
-                            from_output=None,
-                            after_output=None,
-                        )
-                    },
-                    self.native,
-                )
-            )
-        for schema, native in schemas:
-            request = self.request(schema, native=native)
+        for schema, native, dedicated in schemas:
+            request = self.request(schema, native=native, system_one=dedicated)
             name = str(request.settings.get("plugins.ModelRequester.activate"))
             plugin = request.plugin_manager.get_plugin("ModelRequester", name)
             instance = plugin(request.prompt, request.settings)
@@ -185,7 +184,12 @@ class _JudgmentOutput:
                 )
                 schema[name] = declaration if native else declaration.to_schema()
         request = self.request(
-            schema, native=native, targets=targets, evidence=None if native else self.meta["fields"], feedback=feedback
+            schema,
+            native=native,
+            system_one=judgment_batch and self.system_one.enabled and (self.system_one.provider != "Jev" or native),
+            targets=targets,
+            evidence=None if native else self.meta["fields"],
+            feedback=feedback,
         )
         if batch is not None and not judgment_batch:
             request.prompt.append(
@@ -223,7 +227,14 @@ class _JudgmentOutput:
         provider = str(request.settings.get("plugins.ModelRequester.activate"))
         result = request.get_result(parent_run_context=owner.agent_execution_run_context)
         owner.record_model_response_id(result.id)
-        record: dict[str, Any] = {"stage": stage, "provider": provider, "request_id": result.id, "status": "running"}
+        record: dict[str, Any] = {
+            "stage": stage,
+            "provider": provider,
+            "model": request.settings.get(f"plugins.ModelRequester.{provider}.model"),
+            "system_one": judgment_batch and self.system_one.enabled and (self.system_one.provider != "Jev" or native),
+            "request_id": result.id,
+            "status": "running",
+        }
         self.meta["stages"].append(record)
         started = monotonic()
         try:
@@ -238,7 +249,13 @@ class _JudgmentOutput:
             else:
                 self.plan.validate_sources(merge_output(deepcopy(output), deepcopy(value)))
             await _record_action_logs(owner, result)
-            record.update({"status": "completed", "meta": await result.async_get_meta()})
+            record.update(
+                {
+                    "status": "completed",
+                    "meta": await result.async_get_meta(),
+                    "reasoning_chars": len(result.full_result_data.get("reasoning") or ""),
+                }
+            )
             raw = result.full_result_data.get("original_done") if native else None
             if raw is not None:
                 record["jev"] = deepcopy(raw)
@@ -247,8 +264,13 @@ class _JudgmentOutput:
                     field = self.plan.fields[abstract]
                     detail: dict[str, Any] = {
                         "question": field.declaration.question,
+                        "contract": {
+                            "description": field.declaration.to_schema()[1],
+                            "schema": TypeAdapter(field.declaration.to_schema()[0]).json_schema(),
+                        },
                         "value": value[f"field_{index}"],
                         "provider": provider,
+                        "model": record["model"],
                         "request_id": result.id,
                         "revision": owner.revision,
                     }
@@ -357,6 +379,10 @@ async def _assemble(data: TriggerFlowRuntimeData) -> None:
                 value = DataLocator.locate_path_in_dict(output, path_text(concrete)) if concrete else output
                 runtime.meta["fields"][path_text(concrete)] = {
                     "question": field.declaration.question,
+                    "contract": {
+                        "description": field.declaration.to_schema()[1],
+                        "schema": TypeAdapter(field.declaration.to_schema()[0]).json_schema(),
+                    },
                     "value": value,
                     "provider": record["provider"],
                     "request_id": record["request_id"],

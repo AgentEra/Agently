@@ -12,6 +12,7 @@ from agently import Agently, Probability, Choice, Score
 
 load_dotenv(find_dotenv(usecwd=True))
 Agently.set_settings("Jev", {"api_key": os.environ["JEV_API_KEY"]})
+Agently.set_settings("system_one", {"provider": "Jev"})
 agent = Agently.create_agent()
 execution = agent.input("All my payouts failed. Please fix this today.").output({
     "urgent": Probability("Does the customer request a same-day fix?"),
@@ -45,7 +46,9 @@ Agent settings, which override global settings. The default API base is
 size 64. Set `base_url`, `model`, `timeout`, or `batch_size` under `Jev` as needed.
 Credentials stay separate from `OpenAICompatible` and are never prompt context.
 
-No Jev connection configuration means LLM schema fallback. Explicit
+SystemOne is disabled without a `system_one` model configuration. To select Jev,
+set `Agently.set_settings("system_one", {"provider": "Jev"})` as well as Jev credentials.
+Use `.use_system_one(False)` to return templates to the ordinary LLM. Explicit
 `Agently.set_settings("Jev.enabled", False)` also selects the LLM, even with
 stale Jev credentials. Explicit enablement or a partial connection configuration
 without a valid API key fails before dispatch. A failed Jev request never
@@ -129,9 +132,9 @@ also be a Pydantic model for structured answers. See
 A template describes the result contract; execution strategy selects the model
 and its reasoning settings. A small LLM or a model's supported no-reasoning
 option can produce these templates and other structures. Configure those options
-through the existing model/provider settings. There is no new FastThinking
-configuration namespace in this change, and no claim that every template/model
-combination is fast or has Jev's native probability semantics.
+through the existing model/provider settings. Use the [SystemOne model-selection layer](system-one.md) to configure a separate
+model for templates. No template/model combination promises speed or Jev's
+native probability semantics.
 
 Current composition accepts JSON output, dictionaries and single-item list
 schemas. Literal keys containing `.`, brackets, or `*` are rejected. Optional

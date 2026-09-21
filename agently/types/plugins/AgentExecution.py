@@ -227,6 +227,10 @@ class AgentExecution(Protocol):
 
     def output(self, *args: Any, **kwargs: Any) -> "AgentExecution": ...
 
+    def use_system_one(self, enabled: bool = True) -> "AgentExecution":
+        """Override automatic activation from system_one model configuration."""
+        ...
+
     def auto_continue(self, enabled: bool = True) -> "AgentExecution":
         """Continue unfinished model output when needed; configure before start.
 

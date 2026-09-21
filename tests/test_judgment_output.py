@@ -48,6 +48,7 @@ def native(*values):
 def enabled(tmp_path, scripts):
     agent = create_execution_agent(tmp_path, "judgment", scripts)
     agent.set_settings("Jev", {"api_key": "test-key"})
+    agent.set_settings("system_one", {"provider": "Jev"})
     return agent
 
 
@@ -228,6 +229,7 @@ def test_disabled_jev_ignores_bad_credentials_and_combines_llm(tmp_path, wire):
 def test_explicit_enabled_missing_key_preflight(tmp_path, wire):
     agent = create_execution_agent(tmp_path, "missing-key", [])
     agent.set_settings("Jev.enabled", True)
+    agent.set_settings("system_one", {"provider": "Jev"})
     execution = agent.input("Evidence").output({"probability": Probability("P?"), "summary": str})
     with pytest.raises(ValueError, match="probability.*API key"):
         execution.get_data()
@@ -361,6 +363,7 @@ def test_invalid_dependency_repairs_llm_before_jev(tmp_path, wire):
 def test_mixed_missing_llm_config_fails_before_jev(wire):
     agent = Agently.create_agent("no-llm")
     agent.set_settings("Jev", {"api_key": "fake"})
+    agent.set_settings("system_one", {"provider": "Jev"})
     execution = agent.input("Evidence").output({"p": Probability("P?"), "summary": str})
     with pytest.raises(ValueError, match="LLM credentials"):
         execution.get_data()

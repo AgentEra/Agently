@@ -26,6 +26,7 @@ async def main(dynamic: bool) -> None:
     load_dotenv(find_dotenv(usecwd=True))
     agent = Agently.create_agent("jev-output-example")
     agent.set_settings("Jev", {"api_key": os.environ["JEV_API_KEY"]})
+    agent.set_settings("system_one", {"provider": "Jev"})
     if dynamic:
         agent.set_settings(
             "OpenAICompatible",

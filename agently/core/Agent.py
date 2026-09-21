@@ -1095,6 +1095,10 @@ class BaseAgent:
             parent_run_context=parent_run_context,
         )
 
+    def use_system_one(self, enabled: bool = True) -> "AgentExecution":
+        """Create an execution with an explicit SystemOne model-selection override."""
+        return self.create_execution().use_system_one(enabled)
+
     def use_capability(self, name: str, capability: object | None) -> "BaseAgent":
         """Bind an extra capability for future executions; None removes the binding.
 

@@ -36,7 +36,7 @@ def main():
             "api_key": os.getenv("LLM_API_KEY"),
         },
     )
-    agent.set_settings("Jev.enabled", False)
+    agent.set_settings("system_one.enabled", False)
     execution = agent.input(
         "The delivery is scheduled for Friday. The customer asks whether it can arrive Thursday."
     ).output(

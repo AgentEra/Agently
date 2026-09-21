@@ -11,6 +11,7 @@ from agently import Agently, Probability, Choice, Score
 
 load_dotenv(find_dotenv(usecwd=True))
 Agently.set_settings("Jev", {"api_key": os.environ["JEV_API_KEY"]})
+Agently.set_settings("system_one", {"provider": "Jev"})
 agent = Agently.create_agent()
 execution = agent.input("所有打款都失败了，请今天修复。").output({
     "urgent": Probability("客户是否明确要求今天修复？"),
@@ -129,4 +130,8 @@ Jev requester 负责把支持的模板翻译成原生协议，其他模板走普
 
 模板定义结果契约，Execution 策略负责模型和运行选项。小型 LLM、模型支持的
 no-reasoning 模式也可生产这些模板或其他结构；继续使用现有模型/provider 配置。
-本次没有新增 FastThinking 配置命名空间，也不将模板本身视作延迟或校准保证。
+通过 [SystemOne](system-one.md) 配置模板专用模型，不将模板本身视作延迟或校准保证。
+
+SystemOne 未配置时默认关闭。Agent 使用 Jev 还需设置
+`Agently.set_settings("system_one", {"provider": "Jev"})`；只有 Jev 凭据不会自动开启。
+`.use_system_one(False)` 将模板交回普通 LLM，显式依赖仍生效。
