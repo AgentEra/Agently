@@ -1,5 +1,9 @@
 # Models
 
+先阅读：[模型角色与多模态 Execution](model-capabilities-guide.md)。它从整体流程介绍
+用途配置、Requester、Execution、VLM/OCR、音频、向量以及 SystemOne/Jev；下面的页面
+再分别展开协议和配置细节。
+
 建议阅读顺序：
 
 1. [模型概览](overview.md)：先理解 `OpenAICompatible`、`OpenAIResponsesCompatible`、`AnthropicCompatible` 的边界。
