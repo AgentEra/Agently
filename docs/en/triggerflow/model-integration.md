@@ -100,6 +100,16 @@ tokens. Consumers can render `title` deltas while `body` is still generating.
 After the stream ends, `async_get_data()` returns the cached final parsed dict
 from the same result (no second request).
 
+Once a declared target field has emitted a complete instant event, Agently marks
+that field as observed for the request lifecycle. A later schema/ensure/validator
+failure does not replay the provider to repair that same request. The final
+validated result remains authoritative: the request can still fail, and the
+framework preserves its error, usage, and metadata with
+`instant_retry_suppressed` and `instant_complete_paths`. This rule applies to
+the AgentExecution structured stream as well; before any target field completes,
+the normal retry contract remains available. Treat instant values as provisional
+UI or idempotent preparation and use the final result for side effects.
+
 ## Overlap generation with downstream fan-out
 
 When a complete early field can start independent retrieval or preparation,

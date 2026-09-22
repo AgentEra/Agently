@@ -54,7 +54,12 @@ class MockValidateJSONRequester:
     async def request_model(self, request_data: AgentlyRequestData):
         attempt = int(request_data.data.get("attempt", 1))
         index = min(attempt - 1, len(type(self).responses) - 1)
-        yield "message", json.dumps(type(self).responses[index], ensure_ascii=False)
+        response = type(self).responses[index]
+        if isinstance(response, dict) and "__chunks__" in response:
+            for chunk in response["__chunks__"]:
+                yield "message", str(chunk)
+            return
+        yield "message", json.dumps(response, ensure_ascii=False)
 
     async def broadcast_response(
         self,
@@ -170,7 +175,7 @@ async def test_request_validate_chain_and_runtime_handler_order():
 
 
 @pytest.mark.asyncio
-async def test_agent_validate_failure_retries_and_emits_runtime_events():
+async def test_agent_structured_output_does_not_retry_after_instant_field():
     MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
     agent = _create_agent(MockValidateJSONRequester, "validate-agent")
     turn = agent.output({"status": (str,)}, format="json")
@@ -184,12 +189,12 @@ async def test_agent_validate_failure_retries_and_emits_runtime_events():
     hook_name = "test_model_request_validate.agent_retry"
     Agently.event_center.register_hook(capture, hook_name=hook_name)
     try:
-        data = await turn.async_start(max_retries=1)
+        with pytest.raises(ValueError, match="Validation failed"):
+            await turn.async_start(max_retries=1)
     finally:
         Agently.event_center.unregister_hook(hook_name)
 
-    assert data == {"status": "ready"}
-    assert MockValidateJSONRequester.attempts == 2
+    assert MockValidateJSONRequester.attempts == 1
 
     validation_event = next(event for event in captured if event.event_type == "model.validation_failed")
     assert validation_event.payload["validator_name"] == "<lambda>"
@@ -198,59 +203,70 @@ async def test_agent_validate_failure_retries_and_emits_runtime_events():
     assert validation_event.payload["max_retries"] == 1
     assert validation_event.payload["response_text"] == '{"status": "draft"}'
 
-    retry_event = next(event for event in captured if event.event_type == "model.retrying")
-    assert retry_event.payload["retry_reason"] == "validate"
-    assert retry_event.payload["validation_reason"] == "Validation failed in <lambda>."
-    assert retry_event.payload["next_attempt_index"] == 2
+    assert not any(event.event_type == "model.retrying" for event in captured)
 
 
 @pytest.mark.asyncio
-async def test_validate_retry_exposes_accepted_attempt_through_reopened_instant_stream():
+async def test_instant_stream_suppresses_validation_retry_and_replays_same_attempt():
     MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
     request = _create_request(MockValidateJSONRequester, "validate-retry-instant-stream")
     request.output({"status": (str,)}, format="json")
     response = request.validate(lambda result, context: result["status"] == "ready").get_response()
 
     first_attempt_items = [item async for item in response.get_async_generator(type="instant")]
-    data = await response.async_get_data(max_retries=1)
+    with pytest.raises(ValueError, match="Validation failed"):
+        await response.async_get_data(max_retries=1)
     accepted_attempt_items = [item async for item in response.get_async_generator(type="instant")]
 
-    assert data == {"status": "ready"}
-    assert MockValidateJSONRequester.attempts == 2
+    assert MockValidateJSONRequester.attempts == 1
     assert [item.value for item in first_attempt_items if item.path == "status" and item.is_complete] == ["draft"]
-    assert [item.value for item in accepted_attempt_items if item.path == "status" and item.is_complete] == ["ready"]
+    assert [item.value for item in accepted_attempt_items if item.path == "status" and item.is_complete] == ["draft"]
 
 
-def test_validate_retry_exposes_accepted_attempt_through_reopened_sync_instant_stream():
+@pytest.mark.asyncio
+async def test_complete_instant_field_suppresses_retry_after_final_carrier_failure():
+    MockValidateJSONRequester.reset([{"status": "draft", "title": "x"}])
+    request = _create_request(MockValidateJSONRequester, "instant-final-carrier-failure")
+    request.output({"status": (str,), "title": (str,)}, format="json")
+    request.validate(lambda result, context: False)
+    response = request.get_response()
+
+    instant_items = [item async for item in response.get_async_generator(type="instant")]
+    with pytest.raises(ValueError):
+        await response.async_get_data(max_retries=2)
+
+    assert MockValidateJSONRequester.attempts == 1
+    assert [item.value for item in instant_items if item.path == "status" and item.is_complete] == ["draft"]
+    meta = await response.async_get_meta()
+    assert meta["instant_retry_suppressed"] is True
+    assert "status" in meta["instant_complete_paths"]
+
+
+def test_sync_instant_stream_suppresses_validation_retry():
     MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
     request = _create_request(MockValidateJSONRequester, "validate-retry-sync-instant-stream")
     request.output({"status": (str,)}, format="json")
     response = request.validate(lambda result, context: result["status"] == "ready").get_response()
 
     list(response.get_generator(type="instant"))
-    data = response.get_data(max_retries=1)
+    with pytest.raises(ValueError, match="Validation failed"):
+        response.get_data(max_retries=1)
     accepted_attempt_items = list(response.get_generator(type="instant"))
 
-    assert data == {"status": "ready"}
-    assert MockValidateJSONRequester.attempts == 2
-    assert [item.value for item in accepted_attempt_items if item.path == "status" and item.is_complete] == ["ready"]
+    assert MockValidateJSONRequester.attempts == 1
+    assert [item.value for item in accepted_attempt_items if item.path == "status" and item.is_complete] == ["draft"]
 
 
 @pytest.mark.asyncio
-async def test_agent_execution_instant_stream_includes_accepted_validation_retry_attempt():
+async def test_agent_execution_instant_stream_suppresses_validation_retry():
     MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
     agent = _create_agent(MockValidateJSONRequester, "validate-agent-execution-retry-stream")
     execution = agent.output({"status": (str,)}, format="json")
     execution.validate(lambda result, context: result["status"] == "ready")
 
-    stream_items = [item async for item in execution.get_async_generator(type="instant")]
-    data = await execution.async_get_data(max_retries=1)
-    completed_status_items = [item for item in stream_items if item.path == "status" and item.is_complete]
-
-    assert data == {"status": "ready"}
-    assert MockValidateJSONRequester.attempts == 2
-    assert [item.value for item in completed_status_items] == ["draft", "ready"]
-    assert [item.meta.get("attempt_index") if item.meta else None for item in completed_status_items] == [1, 2]
+    with pytest.raises(ValueError, match="Validation failed"):
+        [item async for item in execution.get_async_generator(type="instant")]
+    assert MockValidateJSONRequester.attempts == 1
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from contextlib import suppress
 from copy import deepcopy
@@ -240,8 +241,26 @@ class _JudgmentOutput:
         }
         self.meta["stages"].append(record)
         started = monotonic()
+        instant_started = monotonic()
+        instant_task = asyncio.create_task(
+            self._bridge_judgment_instant_stream(
+                result,
+                record,
+                started=instant_started,
+                target_paths=(
+                    {f"field_{index}" for index in range(len(schema))}
+                    if batch is not None
+                    else set(schema)
+                ),
+            )
+        )
         try:
             value = await result.async_get_data(max_retries=0, raise_ensure_failure=True)
+            # The parser stream and the final getter share one result facade.
+            # Awaiting the stream here ensures every provisional field that was
+            # visible to Execution has reached its terminal event before the
+            # stage is accepted and assembled.
+            await instant_task
             if batch is not None:
                 if not isinstance(value, dict) or set(value) != set(schema):
                     raise ValueError("Judgment stage returned incomplete or extra fields.")
@@ -288,12 +307,71 @@ class _JudgmentOutput:
             )
             return value
         except BaseException as error:
-            record.update({"status": "failed", "error_type": type(error).__name__})
+            if not instant_task.done():
+                instant_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await instant_task
+            with suppress(BaseException):
+                record["meta"] = await result.async_get_meta()
+            record.update(
+                {
+                    "status": "failed_after_instant" if record.get("instant_completed_paths") else "failed",
+                    "error_type": type(error).__name__,
+                    "instant_only": bool(record.get("instant_completed_paths")),
+                    "final_validation_error": str(error)[:2000],
+                }
+            )
             raise
         finally:
             record["elapsed_seconds"] = monotonic() - started
             owner.record_context_consumption(package, request_id=str(result.response_id or result.id))
 
+    async def _bridge_judgment_instant_stream(
+        self,
+        result: Any,
+        record: dict[str, Any],
+        *,
+        started: float,
+        target_paths: set[str],
+    ) -> None:
+        """Project LLM structured fields into Execution while the request runs.
+
+        SystemOne/Jev native responses are not token streams, so this path is
+        primarily for an LLM-backed SystemOne provider.  The final getter still
+        validates and owns the accepted result; instant events are provisional
+        observations and are only used for progress timing and UI consumers.
+        """
+        first_field_seconds: float | None = None
+        completed_paths: list[str] = []
+        instant_values: dict[str, Any] = {}
+        event_count = 0
+        async for item in result.get_async_generator(type="instant"):
+            event_count += 1
+            path = str(getattr(item, "path", "") or "")
+            is_complete = bool(getattr(item, "is_complete", False))
+            if is_complete and path in target_paths:
+                instant_values[path] = deepcopy(getattr(item, "value", None))
+                if path not in completed_paths:
+                    completed_paths.append(path)
+                if first_field_seconds is None:
+                    first_field_seconds = monotonic() - started
+            await self.execution.bridge_model_stream_item(
+                item,
+                route="model_request",
+                meta={
+                    "response_id": result.response_id,
+                    "request_run_id": (
+                        result.request_run_context.run_id if result.request_run_context is not None else None
+                    ),
+                    "model_run_id": result.model_run_context.run_id if result.model_run_context is not None else None,
+                    "attempt_index": result.attempt_index,
+                    "system_one_stage": True,
+                },
+            )
+        record["instant_event_count"] = event_count
+        record["instant_completed_paths"] = completed_paths
+        record["instant_first_field_seconds"] = first_field_seconds
+        record["instant_values"] = instant_values
 
 def _runtime(data: TriggerFlowRuntimeData) -> _JudgmentOutput:
     runtime = data.require_resource(_RESOURCE)

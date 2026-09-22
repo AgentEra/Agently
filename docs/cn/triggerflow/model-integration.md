@@ -95,6 +95,13 @@ async def draft_with_streaming(data: TriggerFlowRuntimeData):
 消费者可以在 `body` 还在生成时先渲染 `title` delta。stream 结束后，
 `async_get_data()` 返回同一个 result 的最终缓存解析 dict（不再发请求）。
 
+当声明的目标字段已经发出 complete 的 instant 事件后，Agently 会把该字段记为本次
+请求已经观察到。之后若 schema、ensure 或 validator 校验失败，不会为修复同一个请求
+而重新请求 provider。最终校验结果仍然权威：请求可以继续失败，框架会保留错误、usage
+和 metadata，并标记 `instant_retry_suppressed` 与 `instant_complete_paths`。该规则也适用
+AgentExecution 的结构化流；在任何目标字段完成之前，原有 retry 合同仍然有效。请把
+instant 值只用于临时 UI 或幂等准备，不要直接据此执行副作用，副作用必须以最终结果为准。
+
 ## 让生成与下游 fan-out 重叠
 
 当靠前的完整字段能够启动独立检索或准备工作时，优先采用 TriggerFlow 可见的
