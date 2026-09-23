@@ -10,13 +10,14 @@ from typing import Any
 import pytest
 
 from agently import Agently
-from agently.core import PluginManager, SkillLibrary
+from agently.core import AgentTask, PluginManager, SkillLibrary
 from agently.types.data import AgentlyRequestData, ContextReadIntent
 from agently.utils import DataFormatter, Settings
 
 
 @pytest.mark.asyncio
-async def test_bound_root_reaches_actual_selector_request_once(tmp_path: Path) -> None:
+@pytest.mark.parametrize("owner", ["execution", "long_task"])
+async def test_bound_root_reaches_actual_selector_request_once(tmp_path: Path, owner: str) -> None:
     calls: list[dict[str, Any]] = []
 
     class CaptureRequester:
@@ -71,12 +72,23 @@ async def test_bound_root_reaches_actual_selector_request_once(tmp_path: Path) -
     agent.skill_library = SkillLibrary(tmp_path / "library")
     revision = agent.skill_library.install(skill_path, trust="trusted")
     execution = agent.create_execution().input("Prepare handoff").require_skills(revision.revision_ref)
-    package = await execution.async_read_task_context(consumer_id="worker", phase="handoff")
+    execution.goal("Prepare handoff", success_criteria=["Leave original source files unchanged."])
+    if owner == "long_task":
+        await execution.async_prepare_task_context()
+        task = AgentTask(
+            agent, goal="Prepare handoff", success_criteria=list(execution.success_criteria_items),
+            task_context=execution.task_context, task_workspace=execution.task_workspace,
+            options={"execution_prompt_snapshot": execution.request_prompt.get()},
+        )
+        package = await task._read_task_context_package(consumer_id="worker", phase="handoff")
+    else:
+        package = await execution.async_read_task_context(consumer_id="worker", phase="handoff")
 
     assert len(calls) == 1
     rendered = json.dumps(calls[0], ensure_ascii=False)
     assert rendered.count("ROOT_TRANSPORT_MARKER") == 1
     assert rendered.count("Keep the handoff suitable for external recipients.") == 1
+    assert rendered.count("Leave original source files unchanged.") == 1
     assert "selection_budget" not in rendered
     assert "estimated_chars" not in rendered
     assert "resource-index" not in rendered

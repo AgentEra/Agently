@@ -186,3 +186,5 @@ assumes reliable local filesystem identity/stat information. Large, BOM-bearing,
 parsed-document and custom-handler bodies use ordinary exact reads. It does not
 change write permission, artifact promotion or final readback, and introduces no
 public cache or index manager. Refresh stale readers explicitly.
+
+The complete task projection also reaches context selection inside long_task planning, execution, and verification, while each read keeps its own intent and phase.
