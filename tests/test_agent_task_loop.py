@@ -3574,10 +3574,7 @@ async def test_taskboard_lifecycle_does_not_schedule_fourth_repeated_setback_tic
     emitted_paths: list[str] = []
     original_emit = task._emit
 
-    async def build_context():
-        return {}
-
-    async def request_plan(_context_pack):
+    async def request_plan(_context_pack, *, context_package=None):
         return SimpleNamespace(
             revision=revision,
             planning_policy=planning_policy,
@@ -3602,7 +3599,6 @@ async def test_taskboard_lifecycle_does_not_schedule_fourth_repeated_setback_tic
         emitted_paths.append(path)
         await original_emit(path, value, *args, **kwargs)
 
-    monkeypatch.setattr(task, "_build_context", build_context)
     monkeypatch.setattr(task, "_request_taskboard_plan", request_plan)
     monkeypatch.setattr(task, "_taskboard_should_fallback_to_flat", lambda _revision: False)
     monkeypatch.setattr(task, "_run_taskboard_card", run_card)

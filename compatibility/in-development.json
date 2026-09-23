@@ -65,6 +65,7 @@
     "source_reuse": "local-stat-validated per-file observations and bounded complete UTF-8 bodies; source revision digest composition changes; refresh pinned readers across upgrade",
     "model_projection": "complete task at AgentExecution and long_task consumer reads, plus current intent/phase and relevant candidate facts; budgets and identity remain Host-owned",
     "skill_catalog": "resource-index omitted from default descriptors; direct source exact read retained",
+    "taskboard_planning": "preparation hands its package to the initial planner; context/source revision changes trigger reread; attachments and successful-request consumption preserved",
     "public_signatures_changed": false,
     "runtime_event_protocol_changed": false
   },

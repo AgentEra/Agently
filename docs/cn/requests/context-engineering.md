@@ -55,6 +55,11 @@ Skills、files、records、SessionMemory recall、evidence 或固定仓库时，
 绑定到 `TaskContext`，再由 `ContextReader` 按 consumer/phase 读取一份
 `ContextPackage`。
 
+TaskBoard 准备阶段按首次规划的用途读取资料，并把同一份包直接交给规划请求；
+资料未变化时，不在下一阶段再次选择和读取。若规划前任务上下文或来源 revision
+发生变化，则刷新资料包及后续卡片使用的上下文。图片等附件随包交付，只有规划请求
+成功后才记录消费。其他阶段和卡片仍按各自范围读取。
+
 TaskContext 拥有内部 `ContextIndex`。source 提供结构 descriptor 与有界精确读取；
 内部 index 构建可复用、带 revision 的 structural、lexical 或可选 hybrid partition。
 ContextReader 查询 index，完成由 ModelRequest 负责的可选相关性选择，读取 canonical

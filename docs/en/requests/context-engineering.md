@@ -55,6 +55,14 @@ catalog. When one task may need Skills, files, records, SessionMemory recall,
 evidence, or a pinned repository, bind those sources to `TaskContext` and read
 one consumer/phase-specific `ContextPackage` through `ContextReader`.
 
+TaskBoard preparation reads for its initial planner and passes that package
+directly to the planning request. An unchanged package is not selected and read
+again at the next stage. If task context or source revisions change before
+planning, the planner refreshes the package and the context used by downstream
+cards. Rich attachments stay bound to the same package, and consumption is
+recorded only after the planning request succeeds. Other phases and cards keep
+their own scoped reads.
+
 TaskContext owns an internal `ContextIndex`. Sources contribute structural
 descriptors and bounded exact reads; the internal index builds reusable
 revisioned structural, lexical, or optional hybrid partitions. ContextReader

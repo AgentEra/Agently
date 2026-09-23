@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from agently.types.data import ContextPackage
+
 from .TaskShared import (
     Any,
     build_task_board_evidence_view,
@@ -379,10 +381,15 @@ class AgentTaskTaskBoardStrategyMixin(
                 "TaskBoard: building a TaskContext package for board planning.",
             )
             await self._apply_guidance_boundary(iteration_index=iteration_index, boundary="taskboard_context")
-            context_pack = await self._await_task_deadline(
-                self._build_context(),
+            context_pack, context_package = await self._await_task_deadline(
+                self._read_task_context_view(
+                    phase="planning",
+                    consumer_id=f"agent_task:{self.id}:taskboard-planner",
+                    intent=f"Plan the TaskBoard: {self.goal}",
+                ),
                 stage="context",
             )
+            frame["planning_context_package"] = context_package
             await self._emit("agent_task.taskboard.context", context_pack)
             required_skill_blocker = self._required_skill_context_blocker(context_pack)
             if required_skill_blocker is not None:
@@ -457,7 +464,10 @@ class AgentTaskTaskBoardStrategyMixin(
                         "TaskBoard: asking the model to plan the initial board.",
                     )
                     planning_result = await self._await_task_deadline(
-                        self._request_taskboard_plan(context_pack),
+                        self._request_taskboard_plan(
+                            context_pack,
+                            context_package=frame.get("planning_context_package"),
+                        ),
                         stage="taskboard_plan",
                     )
                 else:
@@ -992,13 +1002,38 @@ class AgentTaskTaskBoardStrategyMixin(
         frame["iteration_result"] = dict(result)
         return frame
 
-    async def _request_taskboard_plan(self, context_pack: "TaskContextView"):
-        del context_pack
-        request_context_pack, context_package = await self._read_task_context_view(
-            phase="planning",
-            consumer_id=f"agent_task:{self.id}:taskboard-planner",
-            intent=f"Plan the TaskBoard: {self.goal}",
+    async def _request_taskboard_plan(
+        self,
+        context_pack: "TaskContextView",
+        *,
+        context_package: ContextPackage | None = None,
+    ):
+        consumer_id = f"agent_task:{self.id}:taskboard-planner"
+        reader = self._task_context_reader(
+            phase="planning", consumer_id=consumer_id,
         )
+        snapshot = reader.snapshot
+        if (
+            context_package is None
+            or context_package.task_context_id != snapshot.context_id
+            or context_package.consumer_id != consumer_id
+            or context_package.phase != "planning"
+            or context_package.context_revision != snapshot.revision
+            or context_package.source_revisions != snapshot.source_revisions
+        ):
+            request_context_pack, context_package = await self._read_task_context_view(
+                phase="planning",
+                consumer_id=consumer_id,
+                intent=f"Plan the TaskBoard: {self.goal}",
+            )
+        else:
+            reader.ensure_required_delivery(context_package)
+            request_context_pack = dict(self._context_pack_with_guidance(
+                cast("TaskContextView", self._project_task_context_package(context_package))
+            ))
+        # Keep the orientation used by downstream cards aligned with the actual
+        # planning input, including when sources changed after preparation.
+        context_pack.update(request_context_pack)
         policy = resolve_task_board_planning_policy(
             self._taskboard_effort(),
             metadata={"execution_strategy": self.execution_strategy, "task_id": self.id},
