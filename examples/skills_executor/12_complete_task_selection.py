@@ -4,8 +4,9 @@ Set AGENTLY_BASE_URL, AGENTLY_API_KEY and AGENTLY_MODEL.
 Optional AGENTLY_REQUEST_OPTIONS supplies a JSON object of provider options.
 
 Working principle:
-    all goals + criteria + original task facts -> one real selection request
+    all goals + criteria + original task facts in input -> one real selection request
     -> validated host keys -> exact Skill bindings
+    Candidate cards stay in info; Host enforces limits and joins package identity.
 
 This example inspects preparation only. It does not execute the probe or
 claim that binding a Skill authorizes its script.

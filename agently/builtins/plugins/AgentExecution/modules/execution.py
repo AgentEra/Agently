@@ -1653,6 +1653,29 @@ class AgentExecution:
                 query=resolved_intent,
                 metadata=policy_metadata,
             )
+        # Complete task facts interpret the current read scope; limits and
+        # canonical source identities remain Host-owned.
+        prompt = self.request_prompt.get() or {}
+        task = {
+            "goals": list(self.goal_items),
+            "success_criteria": list(self.success_criteria_items),
+            "input": prompt.get("input"),
+            "task_context": {
+                slot: prompt[slot] for slot in ("system", "info", "instruct", "output")
+                if prompt.get(slot) not in (None, "", [], {})
+            },
+        }
+        current_intent = (
+            resolved_intent if isinstance(resolved_intent, ContextReadIntent)
+            else ContextReadIntent(query=str(resolved_intent))
+        )
+        resolved_intent = ContextReadIntent(
+            query=current_intent.query,
+            explicit_refs=current_intent.explicit_refs,
+            roles=current_intent.roles,
+            filters=current_intent.filters,
+            metadata={**dict(current_intent.metadata), "task": task},
+        )
         with bind_runtime_context(
             agent_execution_context=self.execution_context,
             settings=self.request.settings,

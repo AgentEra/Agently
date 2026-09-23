@@ -120,7 +120,10 @@ class _TaskWorkspaceFileIORegistry:
         handler: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> TaskWorkspaceReadResult:
-        file_info = self.inspect(path, relative_path=relative_path)
+        # Classification, digest and built-in text decoding share one observation.
+        # Custom handlers retain their original path-based read contract.
+        raw = path.read_bytes()
+        file_info = inspect_task_workspace_file(path, relative_path=relative_path, _raw=raw)
         selected = self._select(operation="read", file_info=file_info, handler=handler)
         if selected is None:
             return unsupported_read_result(
@@ -129,6 +132,8 @@ class _TaskWorkspaceFileIORegistry:
                 code="task_workspace.file.no_read_handler",
                 message="No registered TaskWorkspace file IO handler can read this file type.",
             )
+        if type(selected) is DefaultTextTaskWorkspaceFileIOHandler:
+            return selected._read_bytes(raw, file_info, max_bytes=max_bytes, offset=offset)
         return await selected.read(
             path=path,
             file_info=file_info,

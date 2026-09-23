@@ -58,7 +58,7 @@ async def test_bound_root_reaches_actual_selector_request_once(tmp_path: Path) -
     agent = Agently.AgentType(plugins, parent_settings=settings)
     agent.use_task_workspace(tmp_path / "work")
     agent.use_record_store(tmp_path / "records")
-    agent.set_agent_prompt("instruct", "UNRELATED_AGENT_PROMPT")
+    agent.set_agent_prompt("instruct", "Keep the handoff suitable for external recipients.")
     skill_path = tmp_path / "skill"
     (skill_path / "references").mkdir(parents=True)
     root_text = "# Routing\nRead references/detail.md before handoff. ROOT_TRANSPORT_MARKER"
@@ -76,7 +76,10 @@ async def test_bound_root_reaches_actual_selector_request_once(tmp_path: Path) -
     assert len(calls) == 1
     rendered = json.dumps(calls[0], ensure_ascii=False)
     assert rendered.count("ROOT_TRANSPORT_MARKER") == 1
-    assert "UNRELATED_AGENT_PROMPT" not in rendered
+    assert rendered.count("Keep the handoff suitable for external recipients.") == 1
+    assert "selection_budget" not in rendered
+    assert "estimated_chars" not in rendered
+    assert "resource-index" not in rendered
     assert "OPTIONAL_UNREAD_BODY" not in rendered
     assert "OTHER_UNREAD_BODY" not in rendered
     assert revision.revision_ref not in rendered

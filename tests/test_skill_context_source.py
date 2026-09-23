@@ -94,7 +94,7 @@ async def test_skill_context_source_exposes_typed_progressive_candidates(tmp_pat
     assert package.revision in source.source_revision
     assert by_path["SKILL.md"].role == "instruction"
     assert by_path["SKILL.md"].required is True
-    assert by_path["resource-index"].role == "index"
+    assert "resource-index" not in by_path
     assert by_path["references/criteria.md"].role == "information"
     assert by_path["examples/accepted.md"].role == "example"
     assert by_path["assets/report.txt"].role == "artifact"
@@ -459,3 +459,16 @@ def test_skill_binding_pins_exact_revision_across_library_updates(tmp_path: Path
     assert latest.revision != first.revision
     assert context_source.bindings[0].revision_ref == first.revision_ref
     assert context_source.packages[0].instruction_body == first.instruction_body
+
+
+@pytest.mark.asyncio
+async def test_skill_catalog_remains_exact_readable_without_becoming_a_candidate(tmp_path: Path) -> None:
+    library = SkillLibrary(tmp_path / 'library')
+    package = library.install(_write_skill(tmp_path / 'skill'), trust='trusted')
+    source = SkillContextSource(library, bindings=(SkillBinding.create(package, task_id='catalog', mode='required'),))
+    page = await source.async_enumerate_descriptors(profile={}, cursor=None, limit=100)
+    assert all(item.role != 'index' for item in page.descriptors)
+    read = await source.async_read_exact(package.revision_ref + '/resource-index', max_chars=10_000)
+    assert read.content
+    assert read.completeness == 'complete'
+    assert read.source_revision == source.source_revision

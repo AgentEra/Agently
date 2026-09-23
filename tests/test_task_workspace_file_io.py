@@ -99,3 +99,22 @@ def test_agent_execution_inherits_task_workspace_file_io_extensions(
 
     assert "synthetic_export" in execution.task_workspace.list_file_io_handlers()
     assert execution.task_workspace.execution_id == execution.id
+
+
+def test_inspection_streams_large_unknown_files_and_checks_utf8_tail(tmp_path, monkeypatch):
+    import hashlib
+    from agently.core.TaskWorkspace.FileIO import inspect_task_workspace_file
+
+    target = tmp_path / 'payload.custom'
+    body = b'a' * (2 * 1024 * 1024) + b'\xff'
+    target.write_bytes(body)
+
+    def no_full_read(*args, **kwargs):
+        raise AssertionError('metadata inspection must stream, not read_bytes')
+
+    monkeypatch.setattr(Path, 'read_bytes', no_full_read)
+    info = inspect_task_workspace_file(target, relative_path='payload.custom')
+    assert info['bytes'] == len(body)
+    assert info['sha256'] == hashlib.sha256(body).hexdigest()
+    assert info['content_kind'] == 'unknown'
+    assert not info['readable']

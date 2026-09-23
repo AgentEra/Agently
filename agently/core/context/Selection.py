@@ -65,19 +65,17 @@ class ModelRequestContextSelector:
                 "block_key": candidate.block_key,
                 "role": candidate.role,
                 "summary": candidate.summary,
-                "estimated_chars": candidate.estimated_chars,
                 "completeness": candidate.completeness,
             }
             for candidate in candidates
         ]
         request_input: dict[str, Any] = {
             "intent": intent.query,
-            "consumer_id": consumer.consumer_id,
             "phase": str(phase),
         }
-        selection_budget = intent.metadata.get("selection_budget")
-        if isinstance(selection_budget, Mapping):
-            request_input["selection_budget"] = dict(selection_budget)
+        task = intent.metadata.get("task")
+        if isinstance(task, Mapping):
+            request_input["task"] = dict(task)
         request.input(request_input)
         request_info: dict[str, Any] = {"offered_context_blocks": cards}
         guidance = intent.metadata.get("selection_guidance")
@@ -93,13 +91,12 @@ class ModelRequestContextSelector:
                 request_info["selection_guidance"] = projected_guidance
         request.info(request_info)
         instruction = (
-            "Select only optional Context blocks that are semantically useful "
-            "for this intent and consumer phase. Return them in descending task relevance, "
-            "putting exact API, schema, integration-contract, or directly requested evidence "
-            "before general background. Keep the ordered subset within selection_budget using "
-            "the offered estimated_chars and block count; omit lower-value blocks instead of "
-            "selecting everything. Return only offered block_key values. Do not reproduce source "
-            "ids, paths, revisions, bindings, content, permissions, or executable objects."
+            "Select only optional Context blocks that are semantically useful for the current "
+            "[input.intent] and [input.phase]. Use [input.task] when present to interpret this scope, "
+            "without expanding it to other task stages. "
+            "Return them in descending task relevance, putting exact API, schema, "
+            "integration-contract, or directly requested evidence before general background. "
+            "Return only offered block_key values. Do not perform the downstream task."
         )
         if "selection_guidance" in request_info:
             instruction += (

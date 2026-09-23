@@ -690,11 +690,11 @@ class SkillsExtension(BaseAgent):
             request = cast(Any, request_factory())
             result = await (
                 request
-                .input(dict(task))
-                .info({"task_context": dict(task_context), "offered_skills": cards})
+                .input({**dict(task), "task_context": dict(task_context)})
+                .info({"offered_skills": cards})
                 .instruct(
                     "Select only installed Skills whose real-world procedure is useful "
-                    "for the complete task described by input and info.task_context, "
+                    "for the complete task described by input and input.task_context, "
                     "including all goals, success criteria, constraints, and delivery requirements. "
                     "Use the original task context only to judge applicability; "
                     "do not perform the task in this request. "

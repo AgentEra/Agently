@@ -73,7 +73,7 @@ task_context.configure_index(
 
 hybrid 模式会先通过 vector/lexical 排序，把可选 descriptor 窗口缩到 reader 的
 `max_blocks`，再交给语义选择，而不是把候选窗口扩成四倍。selector 仍可全部省略，
-或在交付预算内返回有序子集。当结构 filter 已经只留下一个 canonical candidate 时，
+或按相关性返回有序子集，由 Host 执行交付预算。当结构 filter 已经只留下一个 canonical candidate 时，
 index 不再请求 query embedding，因为此时不存在需要优化的候选顺序。
 
 当一个 canonical ref 已经通过结构过滤选定后，source 可以选择支持在该 ref 内进行
@@ -153,3 +153,18 @@ result = (
 - [会话记忆](session-memory.md) —— chat history 与 memo
 - [知识库](../knowledge/knowledge-base.md) —— 检索-后-prompt 模式
 - [Action Runtime](../actions/action-runtime.md) —— 工具目录是自动注入的
+
+### 任务准备与来源复用（4.1.4.9）
+
+资料选择同时收到完整执行任务、当前读取意图与阶段；后续目标不扩大当前阶段的
+读取范围。候选只携带选择 key、role、摘要和完整性。字节估算、限额和规范身份由
+Host 持有。已读的必要指令可以说明可选资料的读取条件，可选正文在选中后读取。
+Skill 资源目录不再作为额外的 `resource-index` 候选，资源摘要也不再附带字节数；
+直接对来源执行目录 exact read 的能力仍保留。
+
+内置 TaskWorkspace 来源复用文件观察以及有界、完整的小型 UTF-8 文本正文。
+使用时仍检查路径归属和本地文件身份；替换、删除或 stat 变化会使观察失效。
+pinned revision 检查继续生效，读取中变化的文件拒绝交付。这项复用依赖可靠的
+本地文件系统身份/stat 信息。大文件、BOM 文本、解析文档和自定义 handler 正文
+走普通 exact read。写入权限、产物晋级和最终读回不受影响，也没有新增公共缓存
+或索引 manager。旧 reader 失效后需要显式 refresh。

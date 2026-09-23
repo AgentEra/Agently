@@ -105,8 +105,10 @@ async def test_skill_selection_receives_complete_task_without_replacing_its_outp
         "goals": ["Analyze the report", "Prepare the external handoff"],
         "success_criteria": ["Remove personal details"],
         "input": {"source": "quarterly report"},
+        "task_context": {key: original_prompt[key] for key in ("system", "info", "instruct", "output")},
     }
-    assert request.slots["info"]["task_context"] == {
+    assert set(request.slots["info"]) == {"offered_skills"}
+    assert request.slots["input"]["task_context"] == {
         key: original_prompt[key] for key in ("system", "info", "instruct", "output")
     }
     assert list(request.slots["output"]) == ["selected_keys"]
@@ -130,9 +132,9 @@ async def test_skill_selection_preserves_input_when_no_goal_is_declared(tmp_path
     await execution.async_prepare_task_context()
 
     assert request.slots["input"] == {
-        "goals": [], "success_criteria": [], "input": "Review the attached report",
+        "goals": [], "success_criteria": [], "input": "Review the attached report", "task_context": {},
     }
-    assert request.slots["info"]["task_context"] == {}
+    assert request.slots["input"]["task_context"] == {}
     assert execution.skill_bindings == []
 
 

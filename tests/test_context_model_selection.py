@@ -88,13 +88,7 @@ async def test_model_request_selector_uses_prompt_lanes_and_host_keys_only() -> 
     assert result.selected_keys == ("context-block:2",)
     assert request.slots["input"] == {
         "intent": "Prepare the acceptance report",
-        "consumer_id": "planner",
         "phase": "planning",
-        "selection_budget": {
-            "available_chars": 1200,
-            "available_blocks": 2,
-            "max_block_chars": 900,
-        },
     }
     cards = request.slots["info"]["offered_context_blocks"]
     assert [card["block_key"] for card in cards] == ["context-block:1", "context-block:2"]
