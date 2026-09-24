@@ -341,7 +341,7 @@
       ],
       "default_root": "<entry-directory>/.agently/task_workspaces/<agent-id>",
       "ownership": "Task files, path policy, physical readback, digest, file refs, scoped execution grants, immutable bundle materialization, and declared-output collection",
-      "terminal_artifact_contract": "Required AgentTask deliverables remain digest-pinned staged candidates through verifier acceptance, then use atomic target promotion and complete post-promotion readback; failure blocks delivery without overwriting the prior accepted target. A sufficient completed control result with a draftable manifest but no body enters the dedicated artifact-draft stage with the same bounded canonical evidence ledger; framework-owned materialization is not semantic remaining work."
+      "terminal_artifact_contract": "Required AgentTask deliverables remain digest-pinned staged candidates through verifier acceptance, then use atomic target promotion and complete post-promotion readback; failure blocks delivery without overwriting the prior accepted target. A sufficient completed control result with a draftable manifest but no body enters the dedicated artifact-draft stage with the same bounded canonical evidence ledger; framework-owned materialization is not semantic remaining work. Initial TaskBoard cards with a final delivery path and no fixed Action commands preserve their declared execution shape; the delivery path alone does not select control execution."
     },
     "record_store": {
       "surface": [

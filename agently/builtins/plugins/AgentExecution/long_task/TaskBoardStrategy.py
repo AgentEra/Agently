@@ -1426,7 +1426,8 @@ class AgentTaskTaskBoardStrategyMixin(
                 continue
 
             if not commands:
-                card["allowed_execution_shape"] = "control"
+                # A delivery location does not determine how its content is
+                # produced. Missing commands may require an adaptive Action loop.
                 card.pop("action_commands", None)
                 prepared.append(card)
                 continue

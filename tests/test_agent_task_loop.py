@@ -6957,9 +6957,11 @@ async def test_taskboard_task_workspace_artifact_action_card_dispatches_without_
 
 
 @pytest.mark.asyncio
-async def test_taskboard_initial_plan_receives_capability_contract_and_normalizes_final_card(
+@pytest.mark.parametrize("execution_shape", ["actions", "auto", "control"])
+async def test_taskboard_initial_plan_preserves_execution_shape_with_final_path(
     tmp_path,
     monkeypatch,
+    execution_shape,
 ):
     agent = _create_agent("agent-taskboard-initial-capability-contract").use_task_workspace(
         tmp_path / "task_workspace",
@@ -7010,7 +7012,7 @@ async def test_taskboard_initial_plan_receives_capability_contract_and_normalize
                         "objective": "Synthesize and deliver the report.",
                         "depends_on": [],
                         "done_when": "final.md is complete.",
-                        "allowed_execution_shape": "actions",
+                        "allowed_execution_shape": execution_shape,
                         "requires_capability_ids": ["write_file"],
                         "final_task_workspace_deliverables": ["final.md"],
                     }
@@ -7058,7 +7060,8 @@ async def test_taskboard_initial_plan_receives_capability_contract_and_normalize
     assert "exhaustive command batch" in captured["instruct"]
     assert "final_task_workspace_deliverables" in captured["instruct"]
     final_card = result.revision.graph.cards[0]
-    assert final_card.allowed_execution_shape == "control"
+    assert final_card.allowed_execution_shape == execution_shape
+    assert task._taskboard_card_uses_control_request(final_card) is (execution_shape == "control")
     assert final_card.metadata["final_task_workspace_deliverables"] == ["final.md"]
 
 

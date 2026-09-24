@@ -76,3 +76,10 @@ Use `context_read` only with a caller-bound ContextReader. Use TaskWorkspace
 Actions for file operations and RecordStore ports for persistence. Never use a
 readback from one owner as proof that a required capability owned by another
 owner executed.
+
+For TaskBoard cards, a final file path specifies delivery, not an execution
+method. A card that needs Actions keeps its execution shape even when its
+arguments must be decided later. A control card can still hand text to the Host
+for writing. When a final path is required, the Host can promote the accepted
+staged artifact to that path and verify the copied content before reporting
+completion; the model does not need to perform the copy itself.
