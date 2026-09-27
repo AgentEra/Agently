@@ -463,11 +463,17 @@ class AgentTaskTaskBoardStrategyMixin(
                         "taskboard_plan",
                         "TaskBoard: asking the model to plan the initial board.",
                     )
-                    planning_result = await self._await_task_deadline(
+                    planning_context_package = frame.get("planning_context_package")
+                    plan_request = (
                         self._request_taskboard_plan(
                             context_pack,
-                            context_package=frame.get("planning_context_package"),
-                        ),
+                            context_package=planning_context_package,
+                        )
+                        if planning_context_package is not None
+                        else self._request_taskboard_plan(context_pack)
+                    )
+                    planning_result = await self._await_task_deadline(
+                        plan_request,
                         stage="taskboard_plan",
                     )
                 else:
@@ -1044,6 +1050,10 @@ class AgentTaskTaskBoardStrategyMixin(
         self._apply_language_policy_to_request(request, language_policy)
         previous_iterations = self._iteration_prompt_summaries()
         repair_context = self._planner_repair_context(previous_iterations)
+        planning_policy_payload = policy.to_prompt_payload()
+        # Execution identity and task-local budget bookkeeping belong to Host;
+        # the planner only needs the orchestration guidance itself.
+        planning_policy_payload.pop("metadata", None)
         request.input(
             {
                 "task_id": self.id,
@@ -1052,27 +1062,7 @@ class AgentTaskTaskBoardStrategyMixin(
                 "task_context_contract": self._task_context_contract_for_model_prompt(),
                 "context_pack": DataFormatter.sanitize(request_context_pack),
                 "execution_prompt": self._execution_prompt_context(),
-                "planning_policy": policy.to_prompt_payload(),
-                "taskboard_harness_policy": {
-                    "acceptance_index": {
-                        "schema_version": "task_board_acceptance_index/v1",
-                        "authority": "projection_only",
-                        "semantic_owner": "verifier",
-                    },
-                    "handoff_projection": {
-                        "schema_version": "task_board_handoff_projection/v1",
-                        "authority": "orientation_only",
-                    },
-                    "preflight": {
-                        "allowed_only_with_mounted_capabilities": True,
-                        "metadata_fields": [
-                            "preflight_kind",
-                            "requires_capability_ids",
-                            "requires_task_workspace_refs",
-                            "focus_item_ids",
-                        ],
-                    },
-                },
+                "planning_policy": planning_policy_payload,
                 "retrieval_policy": self._task_context_retrieval_policy(),
                 "planner_capabilities": self._planner_capabilities(),
                 "capability_evidence_requirements": self._capability_evidence_requirements(),
@@ -1084,11 +1074,8 @@ class AgentTaskTaskBoardStrategyMixin(
             "Plan a card board for this submitted task. "
             "Do not discuss route selection. "
             "Use task_context_contract for prompt-safe temporal policy and ref-backed intermediate-resource handling. "
-            "Concrete runtime current_time values may be omitted from the model hot path; do not infer or write a "
-            "current date/time as a business fact unless it appears in task facts or source evidence. It is not a resource cap. "
             "Use the planning_policy as vocabulary guidance for orchestration complexity, evidence depth, "
-            "reflection density, and repair tendency. Do not create hard budgets, fixed card counts, "
-            "or action allowlists from the effort profile. "
+            "reflection density, and repair tendency. "
             "When context_pack.skill_projection is present, its guidance and selected_resources are already "
             "TaskContext-disclosed Skill procedure. Apply it directly; do not treat it as business evidence or create readback "
             "cards or scoped_retrieval query groups for skills/... citations, and do not treat Skill citations "

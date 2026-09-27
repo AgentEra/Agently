@@ -394,7 +394,7 @@ async def test_taskboard_full_run_completes_with_identity_manifest_without_datab
     async def build_context() -> dict[str, Any]:
         return {"goal": task.goal, "profile": "none", "items": [], "omitted": [], "diagnostics": {}}
 
-    async def request_plan(_context: Mapping[str, Any]) -> SimpleNamespace:
+    async def request_plan(_context: Mapping[str, Any], **_kwargs: Any) -> SimpleNamespace:
         return SimpleNamespace(revision=revision, planning_policy=planning_policy)
 
     async def run_card(context: Any, _context: Mapping[str, Any]) -> TaskBoardCardResult:

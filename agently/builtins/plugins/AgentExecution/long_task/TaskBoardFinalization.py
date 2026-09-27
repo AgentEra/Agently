@@ -1350,19 +1350,34 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         _terminal_deliverables, invalid_internal_terminal_paths = (
             self._taskboard_terminal_task_workspace_deliverables(revision)
         )
-        should_verify_final = (
-            accepted
-            or bool(str(final.get("final_result") or "").strip())
-            or bool(str(effective_candidate_final_result or "").strip())
-            or bool(final_refs)
+        required_skill_ids, required_skill_pack_ids = self._required_skill_context_selectors()
+        # Skill/SkillPack requirements are authored context contracts. They
+        # remain Host-owned hard gates, while ordinary semantic completion stays
+        # with the TaskBoard loop.
+        required_context_contract = bool(required_skill_ids or required_skill_pack_ids)
+        # The TaskBoard loop owns ordinary semantic completion. A second
+        # semantic verdict is only justified by an explicit Host-owned hard
+        # contract or a deterministic integrity/lifecycle block.
+        explicit_delivery_contract = bool(self._required_task_workspace_deliverables())
+        explicit_capability_contract = bool(self._capability_evidence_requirements())
+        terminal_hard_gate = bool(
+            explicit_delivery_contract
+            or explicit_capability_contract
+            or required_context_contract
+            or bool(missing_deliverables)
+            or bool(_terminal_deliverables)
+            or staged_promotions
+            or invalid_internal_terminal_paths
+            or blocking_state_facts
         )
+        should_verify_final = terminal_hard_gate
         if should_verify_final:
+            taskboard_evidence_logs = self._taskboard_final_evidence_logs(revision)
             verifier_final_result = str(final.get("final_result") or "").strip()
             if not verifier_final_result and trusted_final_refs:
                 verifier_final_result = self._task_workspace_artifact_final_result_from_refs(trusted_final_refs)
             if not verifier_final_result:
                 verifier_final_result = str(effective_candidate_final_result or "").strip()
-            taskboard_evidence_logs = self._taskboard_final_evidence_logs(revision)
             verification_options = dict(DataFormatter.sanitize(self.options))
             final_source_refs = self._taskboard_final_source_refs_from_evidence_view(evidence_view)
             final_execution_result = {
@@ -2273,7 +2288,9 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         )
         request.instruct(
             "Assemble a verifier-ready final result for this TaskBoard task from completed card evidence. "
-            "Self-check obvious success-criteria gaps, but do not act as the terminal verifier. "
+            "Return the TaskBoard loop's completion decision and final user-facing synthesis. "
+            "Do not create a second semantic review layer; Host-owned hard delivery and integrity gates "
+            "remain authoritative when they are explicitly present. "
             "Use evidence_ledger as the authoritative grounding ledger and bind factual claims only through exact "
             "offered evidence_ledger.items[].reference_id values in evidence_use.evidence_ids; no other prompt field "
             "is an evidence identity. Use the hot evidence view for summaries and preserve cold refs "

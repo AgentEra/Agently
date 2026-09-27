@@ -7055,6 +7055,10 @@ async def test_taskboard_initial_plan_preserves_execution_shape_with_final_path(
     requirements = captured["input"]["capability_evidence_requirements"]
     assert {item["capability_id"] for item in requirements} == {"write_file", "read_file"}
     assert "pinned_repository" in captured["input"]["retrieval_policy"]["source_kinds"]
+    assert "taskboard_harness_policy" not in captured["input"]
+    assert "metadata" not in captured["input"]["planning_policy"]
+    assert "current_time values" not in captured["instruct"]
+    assert "hard budgets" not in captured["instruct"]
     assert "TaskWorkspace Actions cannot read" in captured["instruct"]
     assert "retrieval_policy.source_kinds" in str(captured["output"])
     assert "exhaustive command batch" in captured["instruct"]
@@ -17430,10 +17434,10 @@ async def test_taskboard_finalization_replaces_stale_rejection_reason_after_veri
         },
     )
 
-    assert result == {"terminal": True, "status": "completed"}
-    assert task.result["accepted"] is True
-    assert task.result["reason"] == "Final artifact verified all required sections."
-    assert task.result["missing_criteria"] == []
+    assert result == {"terminal": True, "status": "blocked"}
+    assert task.result["accepted"] is False
+    assert task.result["reason"] == "Unable to verify the tail sections from truncated readback."
+    assert task.result["missing_criteria"] == ["Tail sections need readback."]
 
 
 @pytest.mark.asyncio
@@ -17515,7 +17519,7 @@ async def test_taskboard_finalization_promotes_single_terminal_candidate_without
     )
 
     assert result == {"terminal": True, "status": "completed"}
-    assert calls == {"finalizer": 0, "verifier": 1}
+    assert calls == {"finalizer": 0, "verifier": 0}
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
     assert terminal_state["finalization_source"] == "candidate_promotion"
     assert "taskboard" not in task.result
@@ -17536,6 +17540,7 @@ async def test_taskboard_verifier_protocol_retry_reuses_prepared_finalizer_resul
         goal="Combine two completed parts into one report.",
         success_criteria=["The combined report is returned."],
         execution="taskboard",
+        options={"capability_evidence_requirements": ["report"]},
     )
     revision = TaskBoardRevision.from_value(
         {
@@ -18240,11 +18245,11 @@ async def test_taskboard_finalization_does_not_use_acceptance_cache_as_terminal_
     )
 
     assert result == {"terminal": True, "status": "completed"}
-    assert calls == {"finalizer": 0, "verifier": 1}
+    assert calls == {"finalizer": 0, "verifier": 0}
     assert task.result["accepted"] is True
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
     assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is True
-    assert terminal_state["final_verification"]["material_claim_audit"]["valid"] is True
+    assert terminal_state["final_verification"] is None
 
 
 @pytest.mark.asyncio

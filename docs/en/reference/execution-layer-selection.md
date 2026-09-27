@@ -83,3 +83,8 @@ arguments must be decided later. A control card can still hand text to the Host
 for writing. When a final path is required, the Host can promote the accepted
 staged artifact to that path and verify the copied content before reporting
 completion; the model does not need to perform the copy itself.
+
+For ordinary TaskBoard results without an explicit delivery or capability
+contract, the loop's finalization decision drives completion. Terminal semantic
+verification remains for explicit hard contracts and deterministic integrity or
+lifecycle blocks; it is not an automatic second review of every text result.

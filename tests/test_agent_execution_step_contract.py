@@ -6163,7 +6163,7 @@ def test_taskboard_completion_notes_do_not_degrade_resolved_repair_history():
 
 
 @pytest.mark.asyncio
-async def test_taskboard_finalizer_rejection_still_runs_terminal_verifier(tmp_path, monkeypatch):
+async def test_taskboard_finalizer_rejection_stops_without_redundant_terminal_verifier(tmp_path, monkeypatch):
     agent = _create_agent("execution-taskboard-finalizer-rejection-verifier").use_task_workspace(
         tmp_path / "task_workspace"
     )
@@ -6241,16 +6241,14 @@ async def test_taskboard_finalizer_rejection_still_runs_terminal_verifier(tmp_pa
 
     terminal = await task._finalize_taskboard(completed_revision, context_pack=cast(dict[str, Any], {}))
 
-    assert verification_calls
-    assert verification_calls[0]["execution_result"]["final_result"] == "Complete candidate final answer."
-    assert terminal == {"terminal": True, "status": "completed"}
-    assert task.result["status"] == "completed"
-    assert task.result["accepted"] is True
-    assert task.result["final_result"] == "Verified final answer."
+    assert verification_calls == []
+    assert terminal == {"terminal": True, "status": "blocked"}
+    assert task.result["status"] == "blocked"
+    assert task.result["accepted"] is False
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
-    assert terminal_state["final_verification"]["is_complete"] is True
-    assert terminal_state["taskboard_acceptance_index"]["metadata"]["green_count"] == 1
-    assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is True
+    assert terminal_state["final_verification"] is None
+    assert terminal_state["taskboard_acceptance_index"]["metadata"]["green_count"] == 0
+    assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is False
     assert "taskboard" not in task.result
 
 
@@ -8891,7 +8889,7 @@ async def test_taskboard_card_transient_timeout_retries_and_completes(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_taskboard_action_card_stops_planning_after_one_successful_action_round(tmp_path):
+async def test_taskboard_action_card_stops_after_stall_without_semantic_override(tmp_path):
     agent = _create_taskboard_action_post_execution_planning_stall_agent(
         "execution-taskboard-card-partial-evidence-stall"
     ).use_task_workspace(tmp_path / "task_workspace")
@@ -8918,7 +8916,7 @@ async def test_taskboard_action_card_stops_planning_after_one_successful_action_
         item.get("evidence_summary") for item in diagnostics if isinstance(item, dict) and item.get("evidence_summary")
     ]
 
-    assert result["status"] == "completed", json.dumps(result, ensure_ascii=False, default=str)
+    assert result["status"] == "blocked", json.dumps(result, ensure_ascii=False, default=str)
     assert partial_result["status"] == "completed"
     assert MockTaskBoardActionPostExecutionPlanningStallRequester.action_planning_calls == 1
     assert evidence_summaries
