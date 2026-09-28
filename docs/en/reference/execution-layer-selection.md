@@ -88,3 +88,5 @@ For ordinary TaskBoard results without an explicit delivery or capability
 contract, the loop's finalization decision drives completion. Terminal semantic
 verification remains for explicit hard contracts and deterministic integrity or
 lifecycle blocks; it is not an automatic second review of every text result.
+A completed leaf-card candidate is not semantic proof by itself; candidate
+promotion is reserved for an explicit final TaskWorkspace delivery contract.

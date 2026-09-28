@@ -1138,6 +1138,12 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                 budget_selection="content_first",
             )
         )
+        _terminal_deliverables, invalid_internal_terminal_paths = (
+            self._taskboard_terminal_task_workspace_deliverables(revision)
+        )
+        explicit_delivery_contract = bool(
+            self._required_task_workspace_deliverables() or _terminal_deliverables
+        )
         explicit_state_facts = (
             list(prepared["explicit_state_facts"])
             if isinstance(prepared.get("explicit_state_facts"), Sequence)
@@ -1246,11 +1252,20 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         )
         if final is None:
             finalization_source = "model_finalizer"
-            final = self._promote_taskboard_final_candidate(
-                revision,
-                candidate_final_result=effective_candidate_final_result,
-                final_refs=final_refs,
-                board_status=result_status,
+            # A completed leaf card is not semantic proof for an ordinary
+            # task. Candidate promotion is a delivery fast path only after
+            # Host has an explicit final TaskWorkspace contract; otherwise
+            # the TaskBoard finalizer remains the single semantic completion
+            # owner.
+            final = (
+                self._promote_taskboard_final_candidate(
+                    revision,
+                    candidate_final_result=effective_candidate_final_result,
+                    final_refs=final_refs,
+                    board_status=result_status,
+                )
+                if explicit_delivery_contract
+                else None
             )
         if final is not None and not reusing_prepared_final:
             promotion_guard = validate_evidence_use(collect_evidence_use(final), evidence_ledger)
@@ -1347,9 +1362,6 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
             if self._taskboard_task_workspace_path_key(path)
             not in staged_target_keys
         ]
-        _terminal_deliverables, invalid_internal_terminal_paths = (
-            self._taskboard_terminal_task_workspace_deliverables(revision)
-        )
         required_skill_ids, required_skill_pack_ids = self._required_skill_context_selectors()
         # Skill/SkillPack requirements are authored context contracts. They
         # remain Host-owned hard gates, while ordinary semantic completion stays
@@ -1358,7 +1370,6 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         # The TaskBoard loop owns ordinary semantic completion. A second
         # semantic verdict is only justified by an explicit Host-owned hard
         # contract or a deterministic integrity/lifecycle block.
-        explicit_delivery_contract = bool(self._required_task_workspace_deliverables())
         explicit_capability_contract = bool(self._capability_evidence_requirements())
         terminal_hard_gate = bool(
             explicit_delivery_contract

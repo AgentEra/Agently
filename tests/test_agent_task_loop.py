@@ -17441,7 +17441,8 @@ async def test_taskboard_finalization_replaces_stale_rejection_reason_after_veri
 
 
 @pytest.mark.asyncio
-async def test_taskboard_finalization_promotes_single_terminal_candidate_without_finalizer(tmp_path, monkeypatch):
+@pytest.mark.parametrize("accepted", [True, False])
+async def test_taskboard_finalization_uses_loop_finalizer_for_ordinary_terminal_candidate(tmp_path, monkeypatch, accepted):
     agent = _create_agent("agent-taskboard-final-promotion").use_task_workspace(tmp_path / "task_workspace")
     task = AgentTask(
         agent,
@@ -17477,9 +17478,14 @@ async def test_taskboard_finalization_promotes_single_terminal_candidate_without
     )
     calls = {"finalizer": 0, "verifier": 0}
 
-    async def fail_finalizer(*_args, **_kwargs):
+    async def finalizer(*_args, **_kwargs):
         calls["finalizer"] += 1
-        raise AssertionError("TaskBoard finalizer should be skipped for promotable terminal candidate.")
+        return {
+            "accepted": accepted,
+            "reason": "The TaskBoard finalizer owns the completion decision.",
+            "final_result": "Final report body from the completed terminal card.",
+            "missing_criteria": [] if accepted else ["Required report content is missing."],
+        }
 
     async def complete_verifier(*_args, **kwargs):
         calls["verifier"] += 1
@@ -17502,7 +17508,7 @@ async def test_taskboard_finalization_promotes_single_terminal_candidate_without
     async def noop(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(cast(Any, task), "_request_taskboard_final", fail_finalizer)
+    monkeypatch.setattr(cast(Any, task), "_request_taskboard_final", finalizer)
     monkeypatch.setattr(cast(Any, task), "_request_verification", complete_verifier)
     monkeypatch.setattr(cast(Any, task), "_record_phase", noop)
     monkeypatch.setattr(cast(Any, task), "_emit", noop)
@@ -17518,10 +17524,11 @@ async def test_taskboard_finalization_promotes_single_terminal_candidate_without
         },
     )
 
-    assert result == {"terminal": True, "status": "completed"}
-    assert calls == {"finalizer": 0, "verifier": 0}
+    assert result == {"terminal": True, "status": "completed" if accepted else "blocked"}
+    assert task.result["accepted"] is accepted
+    assert calls == {"finalizer": 1, "verifier": 0}
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
-    assert terminal_state["finalization_source"] == "candidate_promotion"
+    assert terminal_state["finalization_source"] == "model_finalizer"
     assert "taskboard" not in task.result
     assert task.result["artifact_refs"] == []
 
@@ -17728,7 +17735,12 @@ async def test_taskboard_finalization_repairs_missing_declared_leaf_artifact_ins
     )
 
     async def fail_finalizer(*_args, **_kwargs):
-        raise AssertionError("The unique leaf candidate should skip redundant final synthesis.")
+        return {
+            "accepted": True,
+            "reason": "The finalizer accepted the candidate pending Host path checks.",
+            "final_result": "# Final Report\n\nComplete candidate body.\n",
+            "missing_criteria": [],
+        }
 
     async def accepting_verifier(*_args, **kwargs):
         execution_result = kwargs["execution_result"]
@@ -17840,7 +17852,12 @@ async def test_taskboard_finalization_fails_closed_for_model_declared_internal_w
     )
 
     async def fail_finalizer(*_args, **_kwargs):
-        raise AssertionError("The unique leaf candidate should skip redundant final synthesis.")
+        return {
+            "accepted": True,
+            "reason": "The finalizer accepted the candidate pending Host path checks.",
+            "final_result": "TaskWorkspace artifact delivered.",
+            "missing_criteria": [],
+        }
 
     async def accepting_verifier(*_args, **kwargs):
         return {
@@ -18192,7 +18209,12 @@ async def test_taskboard_finalization_does_not_use_acceptance_cache_as_terminal_
 
     async def fail_finalizer(*_args, **_kwargs):
         calls["finalizer"] += 1
-        raise AssertionError("TaskBoard finalizer should be skipped for promotable terminal candidate.")
+        return {
+            "accepted": True,
+            "reason": "The finalizer accepted the current candidate.",
+            "final_result": "Final report body from the completed terminal card.",
+            "missing_criteria": [],
+        }
 
     async def terminal_verifier(*_args, **_kwargs):
         calls["verifier"] += 1
@@ -18245,7 +18267,7 @@ async def test_taskboard_finalization_does_not_use_acceptance_cache_as_terminal_
     )
 
     assert result == {"terminal": True, "status": "completed"}
-    assert calls == {"finalizer": 0, "verifier": 0}
+    assert calls == {"finalizer": 1, "verifier": 0}
     assert task.result["accepted"] is True
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
     assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is True
@@ -18302,7 +18324,7 @@ async def test_taskboard_final_gate_blocks_only_explicit_dirty_state_facts(tmp_p
 
     async def fail_finalizer(*_args, **_kwargs):
         calls["finalizer"] += 1
-        raise AssertionError("TaskBoard finalizer should be skipped for promotable terminal candidate.")
+        return {"accepted": True, "reason": "Complete candidate.", "final_result": "Final report body from the completed terminal card.", "missing_criteria": []}
 
     async def complete_verifier(*_args, **kwargs):
         calls["verifier"] += 1
@@ -18342,7 +18364,7 @@ async def test_taskboard_final_gate_blocks_only_explicit_dirty_state_facts(tmp_p
     )
 
     assert result == {"terminal": True, "status": "blocked"}
-    assert calls == {"finalizer": 0, "verifier": 1}
+    assert calls == {"finalizer": 1, "verifier": 1}
     assert task.result["accepted"] is False
     assert task.result["artifact_status"] == "partial"
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
