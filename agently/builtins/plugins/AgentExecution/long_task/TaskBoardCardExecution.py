@@ -2701,8 +2701,16 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 execution_id=None,
             )
         required_deliverables = self._required_task_workspace_deliverables()
+        card_evidence_contract = getattr(context.card, "evidence_contract", None)
+        inline_repair = (
+            isinstance(card_evidence_contract, Mapping)
+            and card_evidence_contract.get("deliverable_mode") == "inline_final"
+            and not required_deliverables
+            and not self._taskboard_context_final_task_workspace_deliverables(context)
+        )
         allow_task_workspace_delivery = (
             not grounding_patch_mode
+            and not inline_repair
             and self._taskboard_control_output_allows_task_workspace_delivery(card_output)
         )
         deliverable_mode = self._task_workspace_artifact_delivery_mode(card_output) if allow_task_workspace_delivery else None

@@ -1580,6 +1580,7 @@ def _is_taskboard_final_request(text: str) -> bool:
     return (
         "Synthesize the final result for this TaskBoard task" in text
         or "Assemble a verifier-ready final result for this TaskBoard task" in text
+        or "Assemble the final result for this task from completed card evidence" in text
     )
 
 
@@ -8211,7 +8212,8 @@ async def test_taskboard_resume_blocked_snapshot_retries_finalization_without_re
     assert resumed_result.get("resumed") is not True
     assert not _is_taskboard_plan_request(request_text)
     assert "Execute exactly one TaskBoard card" not in request_text
-    assert not _is_taskboard_final_request(request_text)
+    assert _is_taskboard_final_request(request_text)
+    assert "Verify the task against every success criterion" not in request_text
 
 
 @pytest.mark.asyncio

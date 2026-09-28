@@ -58,3 +58,10 @@ The examples do not install MCP, ACP, model, language, or package-manager
 dependencies. Prepare the environment first; for the local development setup,
 run them from the `3.10` conda environment when those optional dependencies are
 installed there.
+
+For TaskBoard runs, an ordinary incomplete final answer can return to the existing
+repair loop through the finalizer's structured continuation decision. A repair
+using available facts does not need another verifier to decide whether to run.
+Missing external input can still produce a blocked partial result; a task is
+not completed merely because all original cards finished. Explicit file delivery
+continues to require actual Host delivery and readback.

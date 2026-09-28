@@ -28,6 +28,8 @@ from .TaskShared import (
     collect_evidence_use,
     DataFormatter,
     Mapping,
+    Literal,
+    ReplanSignal,
     Sequence,
     source_refs_from_ledger,
     task_board_blocking_state_facts,
@@ -1750,65 +1752,12 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                             terminal_transition
                         ),
                     }
-                repair_revision = None
-                if self._taskboard_final_verification_allows_repair(
-                    final_verification,
+                repair_result = await self._taskboard_repair(
+                    revision, final=final, final_verification=final_verification,
                     blocking_state_facts=blocking_state_facts,
-                ):
-                    raw_replan_signal = final_verification.get("replan_signal")
-                    replan_signal = (
-                        raw_replan_signal
-                        if isinstance(raw_replan_signal, Mapping)
-                        else {}
-                    )
-                    evidence_replan = (
-                        str(replan_signal.get("status") or "").strip()
-                        == "replan_segment"
-                    )
-                    missing_capability_ids = self._normalize_string_list(
-                        final_verification.get("missing_capability_evidence")
-                    )
-                    evidence_retrieval_plan: dict[str, Any] | None = None
-                    evidence_plan_ready = True
-                    if evidence_replan and not missing_capability_ids:
-                        evidence_retrieval_plan = (
-                            await self._request_taskboard_final_evidence_retrieval_plan(
-                                revision=revision,
-                                final_verification=final_verification,
-                            )
-                        )
-                        evidence_plan_ready = bool(evidence_retrieval_plan)
-                    if evidence_plan_ready:
-                        repair_revision = self._taskboard_final_verification_repair_revision(
-                            revision,
-                            final=final,
-                            final_verification=final_verification,
-                            evidence_retrieval_plan=evidence_retrieval_plan,
-                        )
-                if repair_revision is not None:
-                    await self._record_phase(
-                        "taskboard_final_repair_requested",
-                        diagnostics={
-                            "revision_id": repair_revision.revision_id,
-                            "previous_revision_id": revision.revision_id,
-                            "reason": final_verification.get("reason"),
-                            "missing_criteria": final_verification.get("missing_criteria", []),
-                        },
-                    )
-                    await self._emit(
-                        "agent_task.taskboard.final_verification.repair_requested",
-                        {
-                            "revision_id": repair_revision.revision_id,
-                            "previous_revision_id": revision.revision_id,
-                            "missing_criteria": final_verification.get("missing_criteria", []),
-                        },
-                    )
-                    return {
-                        "terminal": False,
-                        "status": "repair_requested",
-                        "revision": repair_revision.to_dict(),
-                        "final_verification": DataFormatter.sanitize(final_verification),
-                    }
+                )
+                if repair_result is not None:
+                    return repair_result
                 accepted = False
                 final = dict(final)
                 final["accepted"] = False
@@ -1837,6 +1786,57 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                     evidence_ledger=evidence_ledger,
                 )
                 self._latest_taskboard_acceptance_index = DataFormatter.sanitize(acceptance_index)
+        else:
+            signal_value = final.get("replan_signal")
+            signal = None
+            signal_error = ""
+            if signal_value is not None:
+                try:
+                    if not isinstance(signal_value, Mapping) or not isinstance(signal_value.get("reason"), str):
+                        raise ValueError("Finalizer continuation requires a reason.")
+                    refs = signal_value.get("evidence_refs")
+                    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+                        raise ValueError("Finalizer continuation evidence_refs must be a string list.")
+                    signal = ReplanSignal.from_value(signal_value)
+                    if signal.status not in {"continue", "repair", "replan_segment", "blocked", "clarify"}:
+                        raise ValueError("Unsupported finalizer continuation status.")
+                    if accepted != (signal.status == "continue"):
+                        raise ValueError("Finalizer accepted and replan_signal.status disagree.")
+                    current_refs = {
+                        str(item.get("reference_id") or "")
+                        for item in evidence_ledger.get("items", [])
+                        if isinstance(item, Mapping)
+                    } & set(self._task_reference_catalog.offered_references())
+                    if not set(signal.evidence_refs).issubset(current_refs):
+                        raise ValueError("Finalizer continuation references unoffered evidence.")
+                except (TypeError, ValueError) as error:
+                    signal_error = str(error)
+            if signal_error:
+                accepted = False
+                final = {**final, "accepted": False, "reason": signal_error}
+                self.diagnostics.setdefault("taskboard_finalizer", []).append(
+                    {"code": "invalid_continuation", "reason": signal_error}
+                )
+            elif not accepted and signal is not None and signal.status in {"repair", "replan_segment"}:
+                # Adapt the same finalizer decision to the existing repair
+                # consumer. This does not call or fabricate a second verifier.
+                continuation = {
+                    **final,
+                    "is_complete": False,
+                    "requires_block": False,
+                    "decision_source": "taskboard_finalizer",
+                    "replan_signal": {
+                        "status": signal.status,
+                        "reason": signal.reason,
+                        "evidence_refs": list(signal.evidence_refs),
+                    },
+                }
+                repair_result = await self._taskboard_repair(
+                    revision, final=final, final_verification=continuation,
+                    blocking_state_facts=blocking_state_facts,
+                )
+                if repair_result is not None:
+                    return repair_result
         degraded_finalization_attempted = result_status != "completed"
         completion_notes = self._taskboard_completion_notes(
             revision,
@@ -1936,6 +1936,76 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         )
         await self._emit("agent_task.completed" if accepted else "agent_task.blocked", self.result)
         return {"terminal": True, "status": self.status}
+
+    async def _taskboard_repair(
+        self,
+        revision: Any,
+        *,
+        final: Mapping[str, Any],
+        final_verification: Mapping[str, Any],
+        blocking_state_facts: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Dispatch an existing repair path from one model completion decision."""
+        repair_revision = None
+        if self._taskboard_final_verification_allows_repair(
+            final_verification,
+            blocking_state_facts=blocking_state_facts,
+        ):
+            raw_replan_signal = final_verification.get("replan_signal")
+            replan_signal = (
+                raw_replan_signal
+                if isinstance(raw_replan_signal, Mapping)
+                else {}
+            )
+            evidence_replan = (
+                str(replan_signal.get("status") or "").strip()
+                == "replan_segment"
+            )
+            missing_capability_ids = self._normalize_string_list(
+                final_verification.get("missing_capability_evidence")
+            )
+            evidence_retrieval_plan: dict[str, Any] | None = None
+            evidence_plan_ready = True
+            if evidence_replan and not missing_capability_ids:
+                evidence_retrieval_plan = (
+                    await self._request_taskboard_final_evidence_retrieval_plan(
+                        revision=revision,
+                        final_verification=final_verification,
+                    )
+                )
+                evidence_plan_ready = bool(evidence_retrieval_plan)
+            if evidence_plan_ready:
+                repair_revision = self._taskboard_final_verification_repair_revision(
+                    revision,
+                    final=final,
+                    final_verification=final_verification,
+                    evidence_retrieval_plan=evidence_retrieval_plan,
+                )
+        if repair_revision is not None:
+            await self._record_phase(
+                "taskboard_final_repair_requested",
+                diagnostics={
+                    "revision_id": repair_revision.revision_id,
+                    "previous_revision_id": revision.revision_id,
+                    "reason": final_verification.get("reason"),
+                    "missing_criteria": final_verification.get("missing_criteria", []),
+                },
+            )
+            await self._emit(
+                "agent_task.taskboard.final_verification.repair_requested",
+                {
+                    "revision_id": repair_revision.revision_id,
+                    "previous_revision_id": revision.revision_id,
+                    "missing_criteria": final_verification.get("missing_criteria", []),
+                },
+            )
+            return {
+                "terminal": False,
+                "status": "repair_requested",
+                "revision": repair_revision.to_dict(),
+                "final_verification": DataFormatter.sanitize(final_verification),
+            }
+        return None
 
     @staticmethod
     def _taskboard_final_verification_allows_repair(
@@ -2298,10 +2368,16 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
             }
         )
         request.instruct(
-            "Assemble a verifier-ready final result for this TaskBoard task from completed card evidence. "
-            "Return the TaskBoard loop's completion decision and final user-facing synthesis. "
-            "Do not create a second semantic review layer; Host-owned hard delivery and integrity gates "
-            "remain authoritative when they are explicitly present. "
+            "Assemble the final result for this task from completed card evidence and decide whether "
+            "it satisfies the goal and success criteria. If incomplete, return replan_signal: repair when "
+            "available task facts and evidence are sufficient to satisfy the unmet criteria by correcting "
+            "the result. Facts explicitly supplied in the goal are available facts even without ledger entries. "
+            "Merely restating an unavailable input or substituting a placeholder does not satisfy a criterion "
+            "that requires that input. Use replan_segment when additional evidence "
+            "or executable work is needed; blocked or clarify only when progress needs unavailable external "
+            "state, authority, capability, or user input. Use continue only when accepted=true. "
+            "State the concrete gap and relevant offered evidence references; do not prescribe tools or "
+            "execution mechanics. "
             "Use evidence_ledger as the authoritative grounding ledger and bind factual claims only through exact "
             "offered evidence_ledger.items[].reference_id values in evidence_use.evidence_ids; no other prompt field "
             "is an evidence identity. Use the hot evidence view for summaries and preserve cold refs "
@@ -2347,6 +2423,16 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         request.output(
             {
                 "accepted": (bool, "True only when all success criteria are satisfied", True),
+                "replan_signal": (
+                    {
+                        "status": (Literal["continue", "repair", "replan_segment", "blocked", "clarify"],
+                                   "continue iff accepted=true; otherwise choose the next step from the current evidence.", False),
+                        "reason": (str, "Concrete gap or completion reason.", False),
+                        "evidence_refs": ([str], "Only exact offered evidence_ledger reference_id values relevant to this decision; empty when none.", False),
+                    },
+                    "Next step when incomplete; continue when accepted. Do not infer missing external facts.",
+                    False,
+                ),
                 "reason": (str, "Concise final verification reason", True),
                 "final_result": (
                     str,

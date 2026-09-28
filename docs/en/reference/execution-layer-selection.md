@@ -90,3 +90,10 @@ verification remains for explicit hard contracts and deterministic integrity or
 lifecycle blocks; it is not an automatic second review of every text result.
 A completed leaf-card candidate is not semantic proof by itself; candidate
 promotion is reserved for an explicit final TaskWorkspace delivery contract.
+
+When an ordinary finalizer rejects the result, its `replan_signal` directs the
+existing loop: `repair` corrects the result with current evidence;
+`replan_segment` obtains missing evidence before repair; `blocked` or `clarify`
+stops for an unavailable external condition. No second verifier is added to
+choose that transition. Host validates the signal and retains no-progress
+convergence; inline repairs preserve the inline output form.

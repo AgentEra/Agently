@@ -84,3 +84,8 @@ Host 写入。指定最终路径时，Host 可以将已接受的候选制品复�
 每个文字结果追加第二轮审阅。
 已完成的叶卡候选本身不等于语义完成证明；候选提升仅用于明确的最终
 TaskWorkspace 交付合同。
+
+普通 finalizer 拒绝结果时，由同一次响应的 `replan_signal` 驱动既有 loop：
+`repair` 使用现有证据修复，`replan_segment` 先补充证据再修复，`blocked` 或
+`clarify` 等待缺失的外部条件。不追加 verifier 来选择下一步。Host 校验结构化信号，
+沿用无进展收敛；普通文字修复保留原来的内联输出形式。
