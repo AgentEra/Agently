@@ -172,3 +172,95 @@ async def test_finalizer_references_must_belong_to_current_evidence(boundary, cu
     )
     assert result["status"] == ("repair_requested" if current else "blocked")
     assert calls["verifier"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ledger,offered", [
+    ({"items": []}, None),
+    ({"items": [{"id": "raw-id", "body": "Unselectable"}]}, None),
+    ({"items": [{"reference_id": "ref_old"}]}, {"ref_current"}),
+    ({"overflow_item_refs": [{"reference_id": "ref_old"}]}, set()),
+])
+async def test_binding_repair_skips_empty_offered_candidates(boundary, monkeypatch, ledger, offered):
+    task, _, _, _ = boundary
+    requests = []
+
+    def unexpected_request():
+        requests.append(True)
+        raise AssertionError("An empty choice set must not create a model request")
+
+    monkeypatch.setattr(task.agent, "create_temp_request", unexpected_request)
+    repaired = await task._request_evidence_binding_repair(
+        {"blocking_count": 1, "normalized_evidence_use": [{"claim": "Unresolved", "evidence_ids": []}]},
+        ledger,
+        language_policy={},
+        offered_reference_ids=offered,
+    )
+    assert repaired == []
+    assert requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owner", ["finalizer", "card"])
+async def test_skipped_binding_request_preserves_unresolved_claim(boundary, monkeypatch, owner):
+    from agently.builtins.plugins.AgentExecution.long_task.EvidenceLedger import validate_evidence_use
+
+    task, _, _, _ = boundary
+    final = {"accepted": False, "final_result": "Partial result", "missing_criteria": ["External fact"],
+             "evidence_use": [{"claim": "External fact missing", "evidence_ids": [], "support_type": "unavailability"}]}
+    ledger = {"items": []}
+    guard = validate_evidence_use(final["evidence_use"], ledger)
+    assert guard["blocking_count"] > 0
+    requests = []
+
+    def unexpected_request():
+        requests.append(True)
+        raise AssertionError("No binding candidates")
+
+    monkeypatch.setattr(task.agent, "create_temp_request", unexpected_request)
+    if owner == "finalizer":
+        result, after = await task._repair_taskboard_final_evidence_use(final, guard, ledger, language_policy={})
+    else:
+        result, after, diagnostic = await task._repair_taskboard_card_evidence_use_with_model(
+            final, guard, ledger, language_policy={})
+        assert diagnostic["status"] == "no_match"
+    assert requests == []
+    assert after == guard
+    assert result["accepted"] is False
+    assert result["final_result"] == final["final_result"]
+    assert result["missing_criteria"] == final["missing_criteria"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ledger_key", ["items", "overflow_item_refs"])
+async def test_binding_repair_still_dispatches_for_offered_candidate(boundary, monkeypatch, ledger_key):
+    task, _, _, _ = boundary
+    captured = {}
+    expected = [{"claim": "Observed fact", "evidence_ids": ["ref_visible"], "support_type": "content"}]
+
+    class Request:
+        def input(self, value):
+            captured["input"] = value
+            return self
+
+        def instruct(self, *args, **kwargs):
+            return self
+
+        def output(self, *args, **kwargs):
+            return self
+
+        async def async_get_data(self):
+            captured["dispatches"] = captured.get("dispatches", 0) + 1
+            return {"evidence_use": expected}
+
+    monkeypatch.setattr(task.agent, "create_temp_request", Request)
+    monkeypatch.setattr(task, "_apply_language_policy_to_request", lambda *args: None)
+    result = await task._request_evidence_binding_repair(
+        {"blocking_count": 1},
+        {ledger_key: [{"reference_id": "ref_hidden", "body": "Hidden"},
+                      {"reference_id": "ref_visible", "body": "Observed fact", "body_state": "full", "status": "ok"}]},
+        language_policy={}, offered_reference_ids={"ref_visible"},
+    )
+    assert result == expected
+    assert captured["dispatches"] == 1
+    assert [item["reference_id"] for item in captured["input"]["available_evidence_refs"]] == ["ref_visible"]

@@ -97,3 +97,7 @@ existing loop: `repair` corrects the result with current evidence;
 stops for an unavailable external condition. No second verifier is added to
 choose that transition. Host validates the signal and retains no-progress
 convergence; inline repairs preserve the inline output form.
+
+Evidence-binding repair requests a model only when the offered reference set has
+at least one candidate. With no candidates, existing errors and incomplete state
+remain unchanged; skipping the request does not authorize completion.

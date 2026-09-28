@@ -2612,6 +2612,14 @@ class AgentTaskVerificationMixin(AgentTaskMixinBase):
         language_policy: Mapping[str, Any],
         offered_reference_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
+        candidates = self._evidence_binding_repair_candidate_refs(
+            evidence_ledger,
+            offered_reference_ids=offered_reference_ids,
+        )
+        # No selectable identity means no model repair is possible. Returning
+        # no repair preserves the caller's existing evidence errors.
+        if not candidates:
+            return []
         request = self.agent.create_temp_request()
         self._apply_language_policy_to_request(request, language_policy)
         request.input(
@@ -2619,10 +2627,7 @@ class AgentTaskVerificationMixin(AgentTaskMixinBase):
                 "task_id": self.id,
                 "blocking_evidence_use_diagnostics": self._evidence_binding_repair_diagnostics(grounding_guard),
                 "current_evidence_use": grounding_guard.get("normalized_evidence_use", []),
-                "available_evidence_refs": self._evidence_binding_repair_candidate_refs(
-                    evidence_ledger,
-                    offered_reference_ids=offered_reference_ids,
-                ),
+                "available_evidence_refs": candidates,
                 "grounding_rules": evidence_ledger.get("grounding_rules", {}) if isinstance(evidence_ledger, Mapping) else {},
             }
         )

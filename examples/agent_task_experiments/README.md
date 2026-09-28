@@ -65,3 +65,6 @@ using available facts does not need another verifier to decide whether to run.
 Missing external input can still produce a blocked partial result; a task is
 not completed merely because all original cards finished. Explicit file delivery
 continues to require actual Host delivery and readback.
+
+When evidence bindings fail and no offered references are available, the Host
+skips the binding-repair model request and retains the unresolved result.
