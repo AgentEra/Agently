@@ -445,10 +445,10 @@ AgentExecution 默认继承父执行的 strategy context，除非子执行显式
 Auto 可以复用 task-shape analysis 中通过校验的最小 board 形状；如果这个候选 board
 只是很小的线性序列，且没有真实 dependency、parallelism、readback 或 recovery 价值，
 则会记录 diagnostics 并回落到 Flat。显式 `execution="taskboard"` 仍然保留
-TaskBoard。TaskBoard 也可以把已经完成的终态 candidate 直接提升到 verification，
-跳过第二次 final synthesis 请求。这些优化只减少重复模型调用；最终 acceptance 仍然
-必须通过 canonical evidence ledger、TaskWorkspace readback evidence、deterministic host
-guards 和模型拥有的 terminal verification。
+TaskBoard。有明确最终 TaskWorkspace 交付合同时，可以把已完成的终态 candidate 直接
+提升到 verification，再由 Host 交付并读回。普通候选由 loop finalizer 判断语义完成；
+叶卡已完成本身不代表整个任务完成。明确的交付、能力及必需上下文合同，以及确定性的
+完整性或生命周期阻断，仍触发 terminal verification。
 
 ```python
 agent.language("zh-CN")

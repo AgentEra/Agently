@@ -505,12 +505,13 @@ strategy context unless the child explicitly calls `.strategy(...)`.
 Auto may reuse a validated minimal board shape from task-shape analysis or fall
 back to Flat when the proposed board is only a small linear sequence with no
 real dependency, parallelism, readback, or recovery value. Explicit
-`execution="taskboard"` still preserves TaskBoard. TaskBoard may also promote a
-completed terminal candidate directly to verification instead of paying for a
-second final synthesis request. These optimizations only remove redundant model
-calls; final acceptance still requires the canonical evidence ledger, TaskWorkspace
-readback evidence, deterministic host guards, and model-owned terminal
-verification.
+`execution="taskboard"` still preserves TaskBoard. With an explicit final
+TaskWorkspace delivery contract, TaskBoard may promote a completed terminal
+candidate directly to verification, followed by Host delivery and readback.
+Ordinary candidates go through the loop finalizer for their semantic completion
+decision; a completed leaf card alone does not establish task completion.
+Explicit delivery, capability and required-context contracts, and deterministic
+integrity or lifecycle blocks still trigger terminal verification.
 
 ```python
 agent.language("en")
