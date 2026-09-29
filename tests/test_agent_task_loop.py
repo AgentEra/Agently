@@ -1079,8 +1079,9 @@ def test_verifier_prompt_keeps_optional_risk_sections_optional():
     assert "not exact heading-text mandates" in text
     assert "do not reject a " in text
     assert "long artifact solely because an exact locator label missed" in text
-    assert "Precise taxonomies, module lists, item counts" in text
-    assert "verification page, or title-only ref is not enough" in text
+    assert "support the claim at its stated specificity, scope," in text
+    assert "and certainty; a citation or locator alone is not support" in text
+    assert "a citation or locator alone is not support" in text
 
 
 def test_agent_task_process_progress_delta_uses_only_explicit_progress_event():

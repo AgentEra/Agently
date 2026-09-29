@@ -8623,7 +8623,12 @@ async def test_taskboard_agent_card_prefetches_dependency_action_artifact_refs(t
     assert dependency_carrier["block_graph"]["execution_block_kinds"] == ["action_call"]
     assert MockTaskBoardDependencyReadbackRequester.dependency_readback_seen is True
     assert MockTaskBoardDependencyReadbackRequester.source_refs_seen is True
-    request_text = "\n".join(MockTaskBoardDependencyReadbackRequester.requests)
+    # Inspect content independently of JSON escaping and YAML line wrapping.
+    request_text = " ".join(
+        " ".join(message["content"].split())
+        for request in MockTaskBoardDependencyReadbackRequester.requests
+        for message in json.loads(request).get("messages", [])
+    )
     assert "Action success or a selection_key proves only execution/ref availability" in request_text
     assert "do not read a recall Action''s output as a new artifact" in request_text
     assert any(item.path == "agent_task.taskboard.card.synthesize.dependency_readback.started" for item in stream_items)
