@@ -750,6 +750,8 @@ file carrier，不再静默切换到 inline summary hash。
 TaskWorkspace。未知 carrier id、未知 evidence id，或不是当前 carrier 精确 span 的 quote 都会
 fail closed，并生成结构化 material-claim repair contract。
 
+TaskBoard 卡片的普通 `candidate_final_result` / `final_result` 保持为正文答复；只有显式 artifact 或最终文件交付合同才物化为文件。最终卡片已返回完整正文但未给 manifest 路径时，Host 将现有正文暂存到指定目标对应的候选位置，不为搬运文件重新生成正文。readback 卡片也会通过现有 ContextReader 执行所声明的 `scoped_retrieval`；仅定位的结果仍是引用，正文读取的实际完整性则保留在共享证据账本中。
+
 当某个 bounded step 或 TaskBoard card 返回短小 `artifact_markdown` 正文或分段
 `artifact_manifest` 时，AgentTask 会通过绑定的 TaskWorkspace 写入交付物，并立刻
 readback。冷证据会记录 `path`、`bytes`、`sha256`、有界 preview 和 `file_refs`；
@@ -760,7 +762,7 @@ Markdown / plain text，不必为了携带正文而声明 `.output()`；如果�
 `.output(..., format=...)` 的 `xml_field`、`hybrid` 或 `yaml_literal`；AgentTask 的
 TaskWorkspace artifact writer 消费的是 AgentExecution stream 事实：自然正文来自原始
 delta item，retry 边界优先来自 provider 报告的 `$status`。因此这条自然文本路径不要求
-draft request 使用 `.output()`。如果 public `type="delta"` replay marker
+draft request 使用 `.output()`。非流式草稿没有 delta 时，写入器读取同一次成功执行的最终正文，不追加模型请求，也不重复写入已有流式正文。如果 public `type="delta"` replay marker
 `"<$retry>...</$retry>"` 到达 artifact consumer，它会被当作 public replay
 delimiter 处理，绝不会写入或转运为 deliverable text，也不会被提升为 retry metadata；
 structured `$status` 仍是 retry control source。如果 bounded work unit 已经在结构化

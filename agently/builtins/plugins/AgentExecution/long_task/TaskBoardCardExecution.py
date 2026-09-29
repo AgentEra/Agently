@@ -1886,7 +1886,7 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             card_output, delivery_plan = self._prepare_taskboard_task_workspace_artifact_delivery(
                 card_output,
                 context,
-                deliverable_mode=self._task_workspace_artifact_delivery_mode(card_output),
+                deliverable_mode=self._task_workspace_artifact_delivery_mode(card_output, context=context),
             )
             card_output = await self._deliver_task_workspace_artifact(
                 card_output,
@@ -2700,7 +2700,10 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             and not inline_repair
             and self._taskboard_control_output_allows_task_workspace_delivery(card_output)
         )
-        deliverable_mode = self._task_workspace_artifact_delivery_mode(card_output) if allow_task_workspace_delivery else None
+        deliverable_mode = (
+            self._task_workspace_artifact_delivery_mode(card_output, context=context)
+            if allow_task_workspace_delivery else None
+        )
         prefer_stream_draft = False
         if (
             allow_task_workspace_delivery

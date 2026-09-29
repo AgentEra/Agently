@@ -68,3 +68,9 @@ continues to require actual Host delivery and readback.
 
 When evidence bindings fail and no offered references are available, the Host
 skips the binding-repair model request and retains the unresolved result.
+
+`09_taskboard_inline_inventory.py` uses the configured local OpenAI-compatible
+model (`OMLX_BASE_URL`, `OMLX_API_KEY`, optional `OMLX_MODEL`). It reads two
+synthetic CSV sources and returns an inline inventory report. A normal text
+result does not request a file artifact; explicit file-delivery contracts still
+stage and promote the requested file through TaskWorkspace.

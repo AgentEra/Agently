@@ -5268,7 +5268,8 @@ async def test_taskboard_intermediate_card_relocates_required_final_deliverable_
 
 
 def test_empty_artifact_manifest_does_not_request_task_workspace_delivery():
-    assert AgentTask._task_workspace_artifact_delivery_mode({"artifact_manifest": {}}) == ""
+    task = AgentTask(_create_agent("empty-artifact"), goal="Answer", success_criteria=["Answer supplied"])
+    assert task._task_workspace_artifact_delivery_mode({"artifact_manifest": {}}) == ""
 
 
 @pytest.mark.asyncio
@@ -8676,9 +8677,10 @@ async def test_taskboard_control_card_prefetches_dependency_action_artifact_refs
     assert result["status"] == "completed"
     assert result["accepted"] is True
     assert result["final_result"] == (
-        "TaskWorkspace artifact delivered at final.md; full content is available through file_refs/readback."
+        "taskboard control dependency readback accepted result"
     )
-    assert taskboard["finalization_source"] == "candidate_promotion"
+    assert taskboard["finalization_source"] == "model_finalizer"
+    assert not synthesize_result["file_refs"]
     assert synthesize_result["status"] == "completed"
     assert dependency_carrier["work_unit"]["runtime_preferences"]["handler"] == (
         "agent_task_dependency_artifact_readback"

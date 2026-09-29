@@ -908,6 +908,8 @@ duplicate verifier claim keys and unknown evidence ids fail closed. Exact
 carrier identity and quote scope are reconstructed from the immutable host
 claim map before a structured material-claim repair contract is created.
 
+A TaskBoard card's ordinary `candidate_final_result` or `final_result` stays inline. It is materialized only when the card explicitly supplies an artifact or has a final file-delivery contract. If a final card supplies complete text without a manifest path, the Host stages that text for the declared target; it does not ask the model to rewrite it just to move it. A readback card also executes its declared `scoped_retrieval` through the existing ContextReader. Locator-only results remain references, while returned source bodies retain their actual completeness in the shared evidence ledger.
+
 When a bounded step or TaskBoard card returns a short `artifact_markdown` body
 or a sectioned `artifact_manifest`, AgentTask writes the deliverable through the
 bound TaskWorkspace and immediately reads it back. The cold evidence records
@@ -919,7 +921,9 @@ document can draft as natural Markdown/plain text with no `.output()` contract.
 AgentTask's TaskWorkspace artifact writer consumes AgentExecution stream facts:
 natural body text comes from raw delta items, and retry boundaries come from
 `$status` when the provider reports it. This natural-text path does not require
-the draft request to use `.output()`. If the public `type="delta"` replay marker
+the draft request to use `.output()`. A non-streaming draft uses the completed
+text from that same execution when no delta was delivered, without another
+model request or duplicating an already streamed body. If the public `type="delta"` replay marker
 `"<$retry>...</$retry>"` reaches the artifact consumer, it is treated as a
 public replay delimiter and is never written or transported as deliverable text.
 It is not promoted into retry metadata; structured `$status` remains the retry
