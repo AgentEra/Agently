@@ -908,6 +908,8 @@ duplicate verifier claim keys and unknown evidence ids fail closed. Exact
 carrier identity and quote scope are reconstructed from the immutable host
 claim map before a structured material-claim repair contract is created.
 
+Public answer delivery preserves the complete value; metadata and log preview limits do not truncate `final_result`.
+
 TaskBoard model/control cards use `candidate_final_result` as their single complete-body slot. Ordinary text stays inline. Only a declared task/card final file-delivery contract authorizes automatic Host materialization and exposes the `artifact_manifest` content plan. Legacy `final_result` / `artifact_markdown` bodies remain readable, but their field names alone do not authorize file creation. When the task requests a file without naming it, the planner chooses a relative path through the existing delivery field. If a final card supplies complete text without a manifest path, the Host stages that text for the declared target; it does not ask the model to rewrite it just to move it. A readback card also executes its declared `scoped_retrieval` through the existing ContextReader. Locator-only results remain references, while returned source bodies retain their actual completeness in the shared evidence ledger.
 
 When a bounded step returns an explicit artifact, or a TaskBoard card with a

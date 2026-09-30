@@ -148,3 +148,15 @@ async def test_artifact_draft_consumes_one_completed_response(tmp_path, monkeypa
     else:
         assert delivered is None
         assert task.diagnostics['task_workspace_artifact_delivery'][-1]['error']['type'] == 'EmptyWorkspaceArtifactDraft'
+
+
+@pytest.mark.parametrize('file_backed,preserve', [(False, False), (False, True), (True, False), (True, True)])
+def test_terminal_delivery_does_not_apply_metadata_preview_limit(file_backed, preserve):
+    task = AgentTask(Agently.create_agent(), goal='Return the complete report.', success_criteria=['Complete report.'])
+    body = ('Evidence and analysis.\n' * 140) + 'END OF REPORT'
+    refs = [{'path': 'report.md'}] if file_backed else []
+    result = task._compact_terminal_final_result(body, trusted_file_refs=refs, preserve_value=preserve)
+    if file_backed and not preserve:
+        assert result == 'TaskWorkspace artifact delivered at report.md; full content is available through file_refs/readback.'
+    else:
+        assert result == body

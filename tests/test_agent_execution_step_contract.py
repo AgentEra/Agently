@@ -7927,10 +7927,7 @@ async def test_flat_promotes_report_like_evidence_to_candidate_final_result(tmp_
 
     assert result["status"] == "completed"
     assert result["accepted"] is True
-    assert result["final_result"]["preview"].startswith("# Weekly Report")
-    assert result["final_result"]["chars"] == len(MockFlatEvidenceCandidateRequester.report.strip())
-    assert result["final_result"]["truncated"] is True
-    assert MockFlatEvidenceCandidateRequester.report not in str(result["final_result"])
+    assert result["final_result"] == MockFlatEvidenceCandidateRequester.report.strip()
     assert verify_requests
     assert "candidate_final_result" in verify_requests[-1]
     assert "Weekly Report" in verify_requests[-1]

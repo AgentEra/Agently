@@ -9657,12 +9657,12 @@ def _create_agent(name: str = "agent-task-loop-test"):
     return Agently.AgentType(plugin_manager, parent_settings=settings, name=name)
 
 
-def test_agent_task_terminal_final_result_is_bounded_and_file_body_free(tmp_path):
+def test_agent_task_terminal_result_preserves_text_and_file_pointer(tmp_path):
     agent = _create_agent("agent-task-terminal-result-bounds").use_task_workspace(tmp_path / "task_workspace")
     task = AgentTask(
         agent,
         task_id="agent-task-terminal-result-bounds",
-        goal="Return a bounded terminal result.",
+        goal="Return the complete answer or a file pointer.",
         success_criteria=["The result remains useful without duplicating file bodies."],
         execution="flat",
     )
@@ -9676,7 +9676,7 @@ def test_agent_task_terminal_final_result_is_bounded_and_file_body_free(tmp_path
         "role": "task_workspace_artifact",
     }
     compact = getattr(task, "_compact_terminal_final_result", None)
-    assert callable(compact), "AgentTask must own one bounded terminal final_result compactor."
+    assert callable(compact), "AgentTask must own the terminal final_result projection."
 
     file_result = cast(Any, compact)(body, trusted_file_refs=[file_ref])
     summary_result = cast(Any, compact)(
@@ -9690,10 +9690,7 @@ def test_agent_task_terminal_final_result_is_bounded_and_file_body_free(tmp_path
     assert file_result.startswith("TaskWorkspace artifact delivered at reports/final.md")
     assert "FILE_BODY_MUST_NOT_REACH_TERMINAL_RESULT" not in file_result
     assert summary_result == "Compact summary returned separately from the file body."
-    assert isinstance(natural_result, Mapping)
-    assert natural_result["truncated"] is True
-    assert str(natural_result["preview"]).startswith("BUSINESS_RESULT_START")
-    assert len(json.dumps(natural_result, ensure_ascii=False)) < 2200
+    assert natural_result == "BUSINESS_RESULT_START\n" + ("useful detail\n" * 800)
 
 
 def test_agent_task_file_backed_final_response_ignores_model_body_and_is_byte_bounded(tmp_path):

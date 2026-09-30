@@ -54,7 +54,6 @@ from .TaskShared import (
 )
 
 _WORKSPACE_ARTIFACT_LOCATOR_SCAN_BYTES = 5_000_000
-_AGENT_TASK_TERMINAL_FINAL_RESULT_CHARS = 1600
 _GROUNDING_WORKSPACE_REPLACE_OLD_KEYS = (
     "old_string",
     "old",
@@ -359,14 +358,11 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
         trusted_file_refs: Sequence[Mapping[str, Any]] = (),
         preserve_value: bool = False,
     ) -> Any:
-        """Keep one useful bounded result, or a pointer for file-backed output."""
+        """Keep the actual answer, or a pointer for file-backed output."""
 
         if trusted_file_refs and not preserve_value:
             return self._task_workspace_artifact_final_result_from_refs(trusted_file_refs)
-        return self._compact_value_for_meta(
-            DataFormatter.sanitize(value),
-            max_chars=_AGENT_TASK_TERMINAL_FINAL_RESULT_CHARS,
-        )
+        return DataFormatter.sanitize(value)
 
     async def _register_terminal_deliverables(
         self,

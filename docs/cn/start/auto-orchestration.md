@@ -750,6 +750,8 @@ file carrier，不再静默切换到 inline summary hash。
 TaskWorkspace。未知 carrier id、未知 evidence id，或不是当前 carrier 精确 span 的 quote 都会
 fail closed，并生成结构化 material-claim repair contract。
 
+公共正文交付保留完整值；日志和元数据的预览长度限制不会裁剪 `final_result`。
+
 TaskBoard 的 model/control 卡片使用 `candidate_final_result` 作为唯一完整正文槽。普通文字任务保持正文答复；只有任务或卡片声明的最终文件交付合同才授权 Host 自动物化，并开放 `artifact_manifest` 内容计划。旧响应的 `final_result` / `artifact_markdown` 正文仍可读取，但字段名本身不再授权创建文件。用户请求文件而未指定文件名时，由规划模型在既有交付字段中选择相对路径。最终卡片已返回完整正文但未给 manifest 路径时，Host 将现有正文暂存到指定目标对应的候选位置，不为搬运文件重新生成正文。readback 卡片也会通过现有 ContextReader 执行所声明的 `scoped_retrieval`；仅定位的结果仍是引用，正文读取的实际完整性则保留在共享证据账本中。
 
 当 bounded step 返回显式 artifact，或具有文件交付合同的 TaskBoard card 返回完整正文或分段
