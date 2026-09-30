@@ -1733,6 +1733,8 @@ assert await execution.get_result(revision=0).async_get_full_data() == first
 Rework produces a new candidate and returns its full result. New readers select
 its revision; captured readers retain their original result, metadata and stream.
 The original task and acceptance contract remain available alongside the feedback.
+Request rework preserves the original `info` and `instruct` slots and appends the
+current feedback and previous candidate; repeated revisions do not accumulate obsolete feedback.
 Request producers revise the previous candidate; Plan keeps accepted clarification;
 LongContent reuses an unchanged prefix and rewrites affected dependent sections.
 LongTask asks the model to select retained work, then validates the IDs and

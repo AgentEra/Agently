@@ -1452,6 +1452,7 @@ assert await execution.get_result(revision=0).async_get_full_data() == first
 
 `rework` 返回新候选的完整结果，已有 reader 保留原版本的数据、meta 和 stream；
 新 reader 默认读取当前 revision。原始任务和验收标准与本次反馈一起交给生产者。
+Request 返工保留原始 `info` 和 `instruct`；当前反馈与上一候选单独追加，连续返工不累积过时反馈。
 Request 修改上一候选；Plan 保留已接受的澄清；LongContent 复用未变的前缀，
 重写受影响章节及后续章节。LongTask 由模型选择需失效的工作，Host 校验 ID
 并失效依赖：Flat 失效后续串行工作，TaskBoard 保留无关卡片并核验复用文件内容。
