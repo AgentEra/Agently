@@ -55,6 +55,8 @@ Skills、files、records、SessionMemory recall、evidence 或固定仓库时，
 绑定到 `TaskContext`，再由 `ContextReader` 按 consumer/phase 读取一份
 `ContextPackage`。
 
+ContextPackage 的不可变结构化信息在进入 Prompt 时会递归投影为普通数据，保留嵌套字段、数值、布尔值和空值；不会把只读映射转成 Python 对象描述。投影不修改原包。
+
 TaskBoard 准备阶段按首次规划的用途读取资料，并把同一份包直接交给规划请求；
 资料未变化时，不在下一阶段再次选择和读取。若规划前任务上下文或来源 revision
 发生变化，则刷新资料包及后续卡片使用的上下文。图片等附件随包交付，只有规划请求

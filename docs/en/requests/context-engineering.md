@@ -55,6 +55,8 @@ catalog. When one task may need Skills, files, records, SessionMemory recall,
 evidence, or a pinned repository, bind those sources to `TaskContext` and read
 one consumer/phase-specific `ContextPackage` through `ContextReader`.
 
+Immutable structured content in a ContextPackage is projected recursively as ordinary data for the Prompt, preserving nested fields, numbers, booleans, and nulls. Read-only mappings are not rendered as Python object descriptions, and projection does not mutate the package.
+
 TaskBoard preparation reads for its initial planner and passes that package
 directly to the planning request. An unchanged package is not selected and read
 again at the next stage. If task context or source revisions change before
