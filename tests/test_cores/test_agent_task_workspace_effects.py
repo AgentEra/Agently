@@ -379,7 +379,10 @@ async def test_taskboard_full_run_completes_with_identity_manifest_without_datab
         success_criteria=["The report is written and read back."],
         execution="taskboard",
     )
-    card = TaskBoardCard.from_value({"id": "write", "objective": "Write the report.", "required_outputs": ["report"]})
+    card = TaskBoardCard.from_value({
+        "id": "write", "objective": "Write the report.", "required_outputs": ["report"],
+        "metadata": {"final_task_workspace_deliverables": ["reports/final.md"]},
+    })
     revision = TaskBoardRevision.from_value(
         {
             "board_id": task.id,

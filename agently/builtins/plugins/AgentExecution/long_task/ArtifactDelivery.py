@@ -1113,6 +1113,11 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
     def _task_workspace_artifact_delivery_mode(self, result: Any, *, context: Any = None) -> str:
         if not isinstance(result, Mapping):
             return ""
+        if context is not None and not (
+            self._taskboard_context_final_task_workspace_deliverables(context)
+            or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+        ):
+            return ""
         manifest = result.get("artifact_manifest")
         if isinstance(manifest, Mapping) and manifest:
             return "sectioned_task_workspace_artifact"
@@ -2286,6 +2291,20 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
         if manifest_dict:
             manifest_dict.pop("file_refs", None)
             result["artifact_manifest"] = DataFormatter.sanitize(manifest_dict)
+
+        if card_context is not None and not str((plan or {}).get("deliverable_mode") or "").strip():
+            # A text carrier does not authorize a file side effect. Retain old
+            # response bodies for replay without turning their field names into
+            # a new delivery contract.
+            if not result.get("candidate_final_result"):
+                for key in ("final_result", "artifact_markdown", "artifact_html"):
+                    body = result.get(key)
+                    if isinstance(body, str) and body.strip():
+                        result["candidate_final_result"] = body
+                        break
+            if diagnostics:
+                result["diagnostics"] = DataFormatter.sanitize(diagnostics)
+            return DataFormatter.sanitize(result)
 
         deliverable_mode = str((plan or {}).get("deliverable_mode") or "").strip()
         preserve_result_fields: tuple[str, ...] = (

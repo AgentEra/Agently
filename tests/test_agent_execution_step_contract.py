@@ -1761,6 +1761,7 @@ class MockTaskBoardSectionedArtifactRequester(MockAgentExecutionRequester):
                         "evidence_to_use": [],
                         "done_when": "The complete sectioned report is available in TaskWorkspace.",
                         "allowed_execution_shape": "control",
+                        "final_task_workspace_deliverables": ["final.md"],
                     }
                 ],
                 "reflection_points": ["Ensure the artifact is complete and backed by TaskWorkspace readback."],
@@ -8236,12 +8237,12 @@ async def test_taskboard_control_card_runs_single_model_request_through_block_ca
     assert result["status"] == "completed"
     assert result["accepted"] is True
     assert result["final_result"] == (
-        "TaskWorkspace artifact delivered at final.md; full content is available through file_refs/readback."
+        "# Control Result\n\nComplete deliverable body."
     )
-    assert taskboard["finalization_source"] == "candidate_promotion"
+    assert taskboard["finalization_source"] == "model_finalizer"
     assert card_result["status"] == "completed"
-    assert card_result["preview"]["task_workspace_artifact_delivery"]["status"] == "delivered"
-    assert "Complete deliverable body." in card_result["preview"]["task_workspace_artifact_delivery"]["file_refs"][0]["preview"]
+    assert not card_result["file_refs"]
+    assert not (tmp_path / "task_workspace" / "final.md").exists()
     assert card_result["metadata"]["execution_kind"] == "taskboard_control_request"
     block_carrier = card_result["metadata"]["block_carrier"]
     assert block_carrier["work_unit"]["origin"] == "taskboard_card"

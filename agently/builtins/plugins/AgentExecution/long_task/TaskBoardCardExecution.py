@@ -1602,14 +1602,14 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "card.evidence_contract.prior_final_evidence_use and change only bindings or claims implicated by the repair contract. "
                 "Only return failed or blocked when the card cannot produce the required outcome or the missing "
                 "evidence is truly critical. If this card produces the user-facing deliverable, provide the complete "
-                "bounded body in candidate_final_result, final_result, or artifact_markdown when it fits the bounded "
+                "bounded body in candidate_final_result when it fits the bounded "
                 "response. Preserve task-provided facts and ground factual claims in available evidence, including "
                 "additions beyond the success criteria. Distinguish evidence-derived analysis from reported facts; "
                 "preserve the evidence's scope, uncertainty, and pending states. Provide the content required by the "
                 "task; unresolved required content remains a gap. Templates or intentionally open fields are valid "
                 "when the task requests them. "
-                "For a long, sectioned, or file-backed deliverable that cannot fit the bounded response, "
-                "return artifact_manifest as a structured deliverable contract with path='final.md', section "
+                "Use artifact_manifest only for a file deliverable declared by this card's output contract "
+                "when the body is not yet supplied. Include its path, section "
                 "ids/titles, brief section intent, and source/evidence refs to use; artifact_manifest is not itself "
                 "the deliverable body or proof of completion. Do not include full section content in "
                 "artifact_manifest, and do not self-declare trusted file_refs for deliverables. Apply "
@@ -1627,6 +1627,10 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "These process fields are not evidence. Do not claim the whole task is complete; report only this "
                 "card's local status."
             )
+            file_delivery = bool(
+                self._taskboard_context_final_task_workspace_deliverables(context)
+                or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+            )
             card_output_schema = {
                 "card_intent": (
                     str,
@@ -1643,16 +1647,6 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "candidate_final_result": (
                     str,
                     "Complete user-facing deliverable body when this card directly produces one",
-                    False,
-                ),
-                "final_result": (
-                    str,
-                    "Complete final deliverable body when this card directly produces the final answer",
-                    False,
-                ),
-                "artifact_markdown": (
-                    str,
-                    "Bounded short markdown deliverable only; when this bounded JSON response is a compact control plane for a long, sectioned, or file-backed deliverable, return an artifact_manifest outline without full section content",
                     False,
                 ),
                 "artifact_manifest": (
@@ -1694,6 +1688,8 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 ),
                 "diagnostics": ([dict], "Optional card diagnostics", False),
             }
+            if not file_delivery:
+                card_output_schema.pop("artifact_manifest")
             action_requirements = self._taskboard_card_action_requirements(context.card)
             required_action_ids = self._taskboard_card_required_action_ids(context.card)
             work_unit = WorkUnitIntent(
@@ -2266,9 +2262,9 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             "known content_version and use range={offset,max_bytes} only for an intentional bounded segment. Never "
             "return a bare target string or guess an owner from URI syntax; do not mention the target only in gaps prose. "
             "When the card can produce the user-facing deliverable, provide the complete bounded body in "
-            "artifact_markdown, candidate_final_result, or final_result when it fits the bounded output. For a long, "
-            "sectioned, or file-backed deliverable that cannot fit the bounded response, return artifact_manifest as "
-            "a structured deliverable contract with path='final.md', section ids/titles, brief section intent, and "
+            "candidate_final_result when it fits the bounded output. Use artifact_manifest only for a file deliverable "
+            "declared by this card's output contract when the body is not yet supplied. Include its path, "
+            "section ids/titles, brief section intent, and "
             "source/evidence refs to use; artifact_manifest is not itself the deliverable body or proof of completion. "
             "Do not include full section content in artifact_manifest, and do not self-declare trusted file_refs for "
             "deliverables. If the task is source-grounded, include "
@@ -2352,6 +2348,10 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "artifact_quote, and new_string for its bounded replacement; "
                 "do not use write, append, insert, full-file replacement, or unrelated edits."
             )
+        file_delivery = bool(
+            self._taskboard_context_final_task_workspace_deliverables(context)
+            or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+        )
         control_output_schema = {
             "card_intent": (
                 str,
@@ -2370,16 +2370,6 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "Complete user-facing deliverable body when this card directly produces one",
                 False,
             ),
-            "final_result": (
-                str,
-                "Complete final deliverable body when this card directly produces the final answer",
-                False,
-            ),
-                "artifact_markdown": (
-                    str,
-                    "Bounded short markdown deliverable only; when this bounded JSON response is a compact control plane for a long, sectioned, or file-backed deliverable, return an artifact_manifest outline without full section content",
-                    False,
-                ),
             "artifact_manifest": (
                 dict,
                 "Preferred TaskWorkspace artifact manifest proposal for sectioned or file-backed deliverables",
@@ -2473,6 +2463,8 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 False,
             ),
         }
+        if not file_delivery or grounding_patch_mode:
+            control_output_schema.pop("artifact_manifest")
         work_unit = WorkUnitIntent(
             id=f"taskboard:{context.card.id}:control",
             origin="taskboard_card",

@@ -72,5 +72,7 @@ skips the binding-repair model request and retains the unresolved result.
 `09_taskboard_inline_inventory.py` uses the configured local OpenAI-compatible
 model (`OMLX_BASE_URL`, `OMLX_API_KEY`, optional `OMLX_MODEL`). It reads two
 synthetic CSV sources and returns an inline inventory report. A normal text
-result does not request a file artifact; explicit file-delivery contracts still
-stage and promote the requested file through TaskWorkspace.
+result uses the card’s single `candidate_final_result` body slot. A legacy
+`artifact_markdown` field alone does not turn it into a file. Explicit file-delivery
+contracts still stage and promote the requested file through TaskWorkspace; when
+the user leaves the filename open, the planner chooses a relative target.

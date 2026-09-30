@@ -72,7 +72,8 @@ async def test_readback_executes_declared_context_reads(tmp_path, monkeypatch, r
 @pytest.mark.asyncio
 @pytest.mark.parametrize('shape', ['control', 'model'])
 @pytest.mark.parametrize('required_path', [False, True])
-async def test_first_card_text_stays_inline_unless_delivery_required(tmp_path, monkeypatch, shape, required_path):
+@pytest.mark.parametrize('body_field', ['candidate_final_result', 'artifact_markdown', 'final_result'])
+async def test_first_card_text_stays_inline_unless_delivery_required(tmp_path, monkeypatch, shape, required_path, body_field):
     task = AgentTask(Agently.create_agent().use_task_workspace(tmp_path),
                      goal='Return a report.', success_criteria=['Report supplied.'], execution='taskboard')
     context = context_for(task, shape=shape)
@@ -80,9 +81,13 @@ async def test_first_card_text_stays_inline_unless_delivery_required(tmp_path, m
         task._taskboard_planned_task_workspace_deliverables = ['report.md']
 
     async def work(**kwargs):
+        if shape == 'control':
+            schema = kwargs['work_unit'].delivery_contract['execution_prompt']['output']
+            assert 'candidate_final_result' in schema
+            assert 'final_result' not in schema and 'artifact_markdown' not in schema
+            assert ('artifact_manifest' in schema) is required_path
         return ({'status': 'completed', 'sufficient': True, 'next_board_action': 'finalize',
-                 'candidate_final_result': 'Complete report', 'final_result': 'Complete report',
-                 'artifact_markdown': '', 'artifact_manifest': {}, 'remaining_work': []},
+                 body_field: 'Complete report', 'artifact_manifest': {}, 'remaining_work': []},
                 {'execution_id': 'synthetic-card', 'status': 'completed',
                  'logs': {'action_logs': [], 'route_logs': {}, 'errors': []}},
                 WorkUnitResult(id=str(kwargs['work_unit'].id), status='completed'))
