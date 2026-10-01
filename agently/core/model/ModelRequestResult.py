@@ -109,11 +109,6 @@ class ModelRequestResult:
         self._validate_lock = asyncio.Lock()
         self._validate_handler_signature: tuple[int, ...] | None = None
         self._accepted_retry_result: ModelRequestResult | None = None
-        # Structured instant fields are provisional observations.  Once a
-        # complete field has been observed, output validation must not replay
-        # the provider merely to repair a later carrier-level failure.
-        self._instant_complete_paths: set[str] = set()
-        self._instant_complete_values: dict[str, Any] = {}
         self._data_flow = ModelRequestResultDataFlow(self)
         self.full_result_data = self._response_parser.full_result_data
         self._get_meta_sync = cast(Callable[[], dict[str, Any]], default_stage_call_bridge.as_sync(self.async_get_meta))
@@ -489,11 +484,6 @@ class ModelRequestResult:
         try:
             for data in parsed_generator:
                 self._drain_response_parser_observations_sync()
-                if type in ("instant", "streaming_parse"):
-                    path = getattr(data, "path", None)
-                    if bool(getattr(data, "is_complete", False)) and isinstance(path, str) and path:
-                        self._instant_complete_paths.add(path)
-                        self._instant_complete_values[path] = getattr(data, "value", None)
                 yield data
                 self._drain_response_parser_observations_sync()
             completed = True
@@ -586,11 +576,6 @@ class ModelRequestResult:
         try:
             async for data in parsed_generator:
                 await self._drain_response_parser_observations()
-                if type in ("instant", "streaming_parse"):
-                    path = getattr(data, "path", None)
-                    if bool(getattr(data, "is_complete", False)) and isinstance(path, str) and path:
-                        self._instant_complete_paths.add(path)
-                        self._instant_complete_values[path] = getattr(data, "value", None)
                 yield data
                 await self._drain_response_parser_observations()
             completed = True

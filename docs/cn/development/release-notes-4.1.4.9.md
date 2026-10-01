@@ -42,7 +42,7 @@ current = agent.create_execution("long_task").input("新的任务")
 | 上下文 / Skills | 选择时提供完整任务事实，复用资料读取，减少冗余索引和 Host 预算投影 | 现有 Skills 与 ContextPackage 接口 | 权限、作用域和 Host 预算仍有效 | `examples/skills_executor/12_complete_task_selection.py`、Context/Skill 测试 |
 | 模型能力 | LLM/VLM/OCR/embedding/STT/TTS 独立配置和按能力执行 | [模型能力](../models/model-capabilities-guide.md) | 不隐式继承其他角色的凭据和参数 | 模型能力示例与协议测试 |
 | SystemOne / Jev | 输出模板选择独立模型，支持 Probability/Choice/Score 与字段依赖；LLM 阶段转发 instant | 配置 `system_one`，普通字段仍由普通模型处理 | 已选 provider 失败不暗中换模型；未配置时保持普通模型路径 | `tests/test_system_one.py`、`tests/test_judgment_output.py` |
-| instant 与校验 | 完整结构字段被观察后，后续输出校验失败保留错误，不为修复而重放 provider | 把 instant 用于临时展示或幂等准备 | AgentExecution 内部也消费结构流，仅读最终结果的调用也可能停止重试；最终失败不能当成功 | `tests/test_cores/test_model_request_validate.py` |
+| instant 与校验 | 仅实际 SystemOne 阶段在完整字段已观察后禁止重放 | 普通 instant 保留校验失败后的有界重试，以最终结果为准 | 普通 Agent、ModelRequest 及组合中的普通 LLM 阶段保持既有重试行为 | 冻结示例 06、validate 与 SystemOne 回归 |
 | 语音输入 | 可选声学检测和有界 PCM/WAV 分段，保留原始采样时间轴 | 显式传入 `AudioInputOptions` | 默认行为不变；不保证语义去噪或任意格式解码 | 音频输入预处理示例与测试 |
 | 安装后的类型提示 | 明确导出已有公开类型，使配套包正确识别 | 原导入路径不变 | 不改变运行时对象 | 安装包类型 smoke、DevTools 类型检查 |
 | 延期 | 4.2 旧入口移除、活跃子任务/内部任意位置快照、无损旧状态转换 | 继续使用已声明的安全暂停点 | 本版不承诺这些能力 | [长任务迁移与边界](../start/long-task-loop.md) |
@@ -53,11 +53,12 @@ current = agent.create_execution("long_task").input("新的任务")
 response = agent.create_request().input("任务").output({"answer": str}).get_result()
 async for item in response.get_async_generator(type="instant"):
     render_provisional(item)  # 应用自己的临时展示函数
-# 如果完整字段已被观察，失败的最终校验不会通过重新调用 provider 修复。
+# 普通请求仍可校验重试；以通过校验的最终结果更新临时展示。
 final = await response.async_get_data(max_retries=2)
 ```
 
-没有观察到完整字段的普通 ModelRequest 保留原有有界输出校验重试。
+普通 ModelRequest 和 Agent 保留原有有界输出校验重试，不因读取 instant 改变。
+只有实际 SystemOne 阶段在完整字段被观察后不重放；普通前后置阶段不受此限制。
 provider 传输重试与 `$status` 的重放边界仍遵循 provider 契约；本变更针对输出校验重试。
 不要从临时值直接执行不可撤销操作。详见 [模型与流集成](../triggerflow/model-integration.md)。
 

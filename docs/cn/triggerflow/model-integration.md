@@ -95,12 +95,13 @@ async def draft_with_streaming(data: TriggerFlowRuntimeData):
 消费者可以在 `body` 还在生成时先渲染 `title` delta。stream 结束后，
 `async_get_data()` 返回同一个 result 的最终缓存解析 dict（不再发请求）。
 
-当声明的目标字段已经发出 complete 的 instant 事件后，Agently 会把该字段记为本次
-请求已经观察到。之后若 schema、ensure 或 validator 校验失败，不会为修复同一个请求
-而重新请求 provider。最终校验结果仍然权威：请求可以继续失败，框架会保留错误、usage
-和 metadata，并标记 `instant_retry_suppressed` 与 `instant_complete_paths`。该规则也适用
-AgentExecution 的结构化流；在任何目标字段完成之前，原有 retry 合同仍然有效。请把
-instant 值只用于临时 UI 或幂等准备，不要直接据此执行副作用，副作用必须以最终结果为准。
+普通 ModelRequest 和 AgentExecution 的 instant 值仍是暂定结果。即使已观察到完整字段，
+schema、ensure 或 validator 失败仍按原有额度重试。最终校验后重新打开结果流会读取通过的
+attempt；AgentExecution 转发带 attempt metadata 的替换结果。副作用以最终校验结果为准。
+
+只有实际使用 SystemOne 的阶段在观察到完整字段后禁止重放该阶段。最终校验仍可失败，
+阶段保留错误、观察值及 `instant_retry_suppressed`，下游不消费失败结果。SystemOne 前后的
+普通 LLM 阶段仍共享既有重试额度；provider 传输重试合同不变。
 
 ## 让生成与下游 fan-out 重叠
 

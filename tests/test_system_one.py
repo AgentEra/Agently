@@ -1,11 +1,13 @@
 """Synthetic orchestration evidence; real-model effects are in the experiment report."""
 
 from copy import deepcopy
+from typing import cast
 
 import pytest
 from test_builtin_agent_executions import ScriptedExecutionRequester, create_execution_agent
 
 from agently import Probability
+from agently.builtins.plugins.AgentExecution import AgentExecution as BuiltinAgentExecution
 from agently.builtins.plugins.AgentExecution.modules.system_one import SystemOne
 from agently.types.settings import SystemOneSettings
 from agently.utils import Settings
@@ -234,3 +236,48 @@ def test_system_one_can_retry_before_any_complete_instant_field(tmp_path):
     execution = agent.input("Evidence").output({"p": Probability("P?")})
     assert execution.get_data(max_retries=1) == {"p": 0.5}
     assert SmallRequester.model_dispatches == 2
+
+
+def test_system_one_complete_instant_field_prevents_stage_replay(tmp_path):
+    agent = agent_with_models(tmp_path, [], [{"field_0": None}, {"field_0": 0.5}])
+    execution = agent.input("Evidence").output({"p": Probability("P?"), "summary": str})
+    with pytest.raises(ValueError):
+        execution.get_data(max_retries=1)
+    assert SmallRequester.model_dispatches == 1
+    assert ScriptedExecutionRequester.model_dispatches == 0
+    stage = cast(BuiltinAgentExecution, execution)._producer_state["judgment"]["stages"][0]
+    assert stage["system_one"] is True
+    assert stage["instant_completed_paths"] == ["field_0"]
+    assert stage["instant_retry_suppressed"] is True
+
+
+def test_ordinary_predecessor_of_system_one_retains_retry(tmp_path):
+    agent = agent_with_models(tmp_path, [{"name": None}, {"name": "A"}], [{"field_0": 0.5}])
+    execution = agent.input("Evidence").output({"name": str, "p": Probability("P?", from_output="name")})
+    assert execution.get_data(max_retries=1) == {"name": "A", "p": 0.5}
+    assert ScriptedExecutionRequester.model_dispatches == 2
+    assert SmallRequester.model_dispatches == 1
+    stages = execution.get_meta().get("judgment", {})["stages"]
+    assert [stage["system_one"] for stage in stages] == [False, False, True]
+    assert stages[0]["instant_completed_paths"] == ["name"]
+    assert not stages[0].get("instant_retry_suppressed", False)
+
+
+def test_ordinary_successor_of_system_one_retains_retry(tmp_path):
+    agent = agent_with_models(tmp_path, [{"field_0": None}, {"field_0": "Summary"}], [{"field_0": 0.5}])
+    execution = agent.input("Evidence").output({"p": Probability("P?"), "summary": (str, "Summary", "not_null")})
+    assert execution.get_data(max_retries=1) == {"p": 0.5, "summary": "Summary"}
+    assert SmallRequester.model_dispatches == 1
+    assert ScriptedExecutionRequester.model_dispatches == 2
+    stages = execution.get_meta().get("judgment", {})["stages"]
+    assert [stage["system_one"] for stage in stages] == [True, False, False]
+    assert stages[1]["instant_completed_paths"] == ["field_0"]
+    assert not stages[1].get("instant_retry_suppressed", False)
+
+
+def test_disabled_system_one_retains_ordinary_instant_retry(tmp_path):
+    agent = agent_with_models(tmp_path, [{"p": None}, {"p": 0.5}], [])
+    execution = agent.use_system_one(False).input("Evidence").output({"p": Probability("P?")})
+    assert execution.get_data(max_retries=1) == {"p": 0.5}
+    assert ScriptedExecutionRequester.model_dispatches == 2
+    assert SmallRequester.model_dispatches == 0

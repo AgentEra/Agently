@@ -155,10 +155,9 @@ cover effective task context instead of Host budgets, generic grounding guidance
 and the single candidate body slot. They do not waive result, file, lifecycle or
 comparator negative-control assertions and are not model-quality evidence.
 
-The accepted SystemOne instant integration additionally changes validation_repair
-and validation_exhaustion on AgentExecution: its internal structured stream has
-already observed a complete field, so failed final validation stays failed after
-one provider call. It is not silently retried, even for a final-data-only caller.
-Direct ModelRequest validation without observed complete fields retains retries.
-Both immutable baseline environments were replayed twice again after the
-current-only reply change; exact failure, reader and event deltas are recorded.
+The release compatibility audit restored validation_repair and validation_exhaustion
+to the published ordinary Agent retry contract. Both baseline and current probes
+consume the same two responses again. Only actual SystemOne stages suppress
+replay after complete instant fields; these ordinary cases have no SystemOne stage.
+The earlier no-replay approved deltas are removed; immutable baseline observations
+remain unchanged. Pinned example 06 now also executes in pytest.

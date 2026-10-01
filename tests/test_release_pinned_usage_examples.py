@@ -195,3 +195,16 @@ def test_release_pinned_skill_scope_runs() -> None:
         "fresh_execution_sees_new_default=True",
         "empty_declarations_do_not_scan_library=True",
     ]
+
+
+def test_release_pinned_retry_stream_runs():
+    result = subprocess.run(
+        [sys.executable, str(PINNED_ROOT / "06_validate_retry_accepted_stream.py")],
+        cwd=ROOT, capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    assert "model_request_final_status=attempt=2; input=retry-stream" in lines
+    assert "model_request_reopened_status=attempt=2; input=retry-stream" in lines
+    assert "agent_execution_statuses=['attempt=1; input=retry-stream', 'attempt=2; input=retry-stream']" in lines
+    assert "agent_execution_attempt_indexes=[1, 2]" in lines

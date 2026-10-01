@@ -366,7 +366,7 @@ class _JudgmentOutput:
                     ),
                     "model_run_id": result.model_run_context.run_id if result.model_run_context is not None else None,
                     "attempt_index": result.attempt_index,
-                    "system_one_stage": True,
+                    "system_one_stage": bool(record["system_one"]),
                 },
             )
         record["instant_event_count"] = event_count
@@ -422,8 +422,9 @@ async def _request(data: TriggerFlowRuntimeData) -> None:
         value = await runtime.dispatch(stage, batch, output, data.get_state("feedback"))
     except Exception as error:
         retries = data.get_state("retries", 0)
-        if runtime.meta["stages"] and runtime.meta["stages"][-1].get("status") == "failed_after_instant":
-            runtime.meta["stages"][-1]["instant_retry_suppressed"] = True
+        failed_stage = runtime.meta["stages"][-1] if runtime.meta["stages"] else {}
+        if failed_stage.get("system_one") and failed_stage.get("status") == "failed_after_instant":
+            failed_stage["instant_retry_suppressed"] = True
             raise
         retryable = isinstance(error, (ValueError, httpx.RequestError, TimeoutError))
         if isinstance(error, httpx.HTTPStatusError):

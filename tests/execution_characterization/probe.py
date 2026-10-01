@@ -280,10 +280,7 @@ async def probe(case: str, root: Path) -> dict[str, Any]:
                       second_prompt=second.prompt_snapshot, distinct_identity=first.id != second.id)
 
     if case in {"validation_repair", "validation_exhaustion"}:
-        responses = [{"count": 1}, {"count": 2}] if ARGS.api == "baseline" else [{"count": 1}]
-        # Execution observes complete structured fields before final validation;
-        # accepted instant semantics prohibit a provider replay after that point.
-        agent = create_agent(root, responses)
+        agent = create_agent(root, [{"count": 1}, {"count": 2}])
         calls = []
 
         def validate(value: Any, context: Any) -> bool:

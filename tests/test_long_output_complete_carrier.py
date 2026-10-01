@@ -1,7 +1,4 @@
-"""A provider stop is not proof that the entire JSON carrier is valid.
-
-Repair probes start with no complete field: observed fields prohibit replay.
-"""
+"""A provider stop is not proof that the entire JSON carrier is valid."""
 import pytest
 from pydantic import BaseModel, Field
 
@@ -44,7 +41,7 @@ async def test_validation_replacement_cannot_discard_its_tail(tmp_path):
     class Body(BaseModel):
         body: str = Field(min_length=3)
     agent=create_execution_agent(tmp_path,'replacement-carrier',[
-        '{}', '{"body":"valid"}\n{"body":"lost"}'])
+        '{"body":"x"}', '{"body":"valid"}\n{"body":"lost"}'])
     execution=agent.create_execution().input('Write.').output(Body).auto_continue()
     with pytest.raises(Exception,match='complete JSON carrier'):
         await execution.async_get_data(max_retries=1)
@@ -70,7 +67,7 @@ async def test_internal_stage_replacement_uses_its_own_delivery_evidence(tmp_pat
     class Body(BaseModel):
         body: str = Field(min_length=3)
 
-    agent = create_execution_agent(tmp_path, 'internal-replacement', [{}, {'body': 'valid'}])
+    agent = create_execution_agent(tmp_path, 'internal-replacement', [{'body': 'x'}, {'body': 'valid'}])
     execution = agent.create_execution().input('Write.')
     assert isinstance(execution, AgentExecution)
     request = run_model_stage(
@@ -108,7 +105,7 @@ async def test_replacement_length_cannot_borrow_initial_stop(tmp_path,monkeypatc
     monkeypatch.setattr(ScriptedExecutionRequester,'broadcast_response',terminal)
     class Body(BaseModel):
         body: str = Field(min_length=3)
-    agent=create_execution_agent(tmp_path,'replacement-length',[{}, {'body':'valid'}])
+    agent=create_execution_agent(tmp_path,'replacement-length',[{'body':'x'},{'body':'valid'}])
     with pytest.raises(Exception,match='length-limited validation replacement'):
         await agent.create_execution().input('Write.').output(Body).auto_continue().async_get_data(max_retries=1)
     assert ScriptedExecutionRequester.model_dispatches==2

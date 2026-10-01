@@ -41,9 +41,7 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                 'evidence': 'template description/JSON Schema and actual stage provider/model, role, latency, '
                             'reasoning length',
                 'timing': 'no universal latency or calibration guarantee',
-                'instant': 'Structured LLM-backed stages forward provisional instant fields; after a complete field is '
-                           'observed, output validation does not replay the provider. Final validation may still fail; '
-                           'direct requests without an observed complete field retain bounded validation retry.'},
+                'instant': 'Structured LLM-backed stages forward provisional instant fields. Only actual SystemOne stages suppress replay after a complete field is observed; final validation may still fail. Ordinary ModelRequest, AgentExecution and ordinary LLM composition stages retain bounded validation retry and accepted replacement streams.'},
  'jev_output': {'status': 'in_development',
                 'declarations': ['OutputTemplate', 'Probability', 'Choice', 'Score'],
                 'binding': 'from_output: string or path array',
