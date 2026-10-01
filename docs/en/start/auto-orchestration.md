@@ -1,5 +1,7 @@
 # Agent Auto-Orchestration
 
+> New 4.1.4.9 long tasks use the [unified Loop](long-task-loop.md). Flat/TaskBoard card scheduling, goal preparation and legacy task recovery below apply only to explicit 4.1.x compatibility strategies.
+
 Agently 4.1.4 makes `agent.start()` the default user-layer entrypoint for an
 Agent turn. It keeps returning the business result, while the Agent can route
 through ordinary model response, Actions, or SkillLibrary-backed Skills

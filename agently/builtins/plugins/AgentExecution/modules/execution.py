@@ -2152,6 +2152,8 @@ class AgentExecution:
             raise NotImplementedError(f"Producer {self.name!r} must declare its own safe rework contract.")
         route = self.route_info.get("selected_route")
         if route == "agent_task":
+            if self._producer_state.get("kind") == "task_loop":
+                return
             if self.task_record is None or self._producer_state.get("kind") != "long_task":
                 raise RuntimeError("Long-task rework requires its retained producer and evidence bindings.")
             if any(not task.done() for task in self.task_record._background_stream_tasks):
@@ -2161,8 +2163,12 @@ class AgentExecution:
 
     async def _async_rework_produce(self, options: ProductionOptions) -> tuple[str, object]:
         if self.route_info.get("selected_route") == "agent_task":
-            from ..long_task.Rework import prepare_task_rework
-            await prepare_task_rework(self)
+            if self._producer_state.get("kind") == "task_loop":
+                from .task_loop import prepare_rework
+                await prepare_rework(self)
+            else:
+                from ..long_task.Rework import prepare_task_rework
+                await prepare_task_rework(self)
         else:
             from .revisions import rework_request
             await rework_request(self)
@@ -2186,9 +2192,19 @@ class AgentExecution:
     @property
     def control_capabilities(self) -> AgentExecutionControlCapabilities:
         """Describe implemented boundaries without starting the producer."""
+        boundaries: list[Literal["before_production", "candidate_ready", "long_task_step"]] = [
+            "before_production", "candidate_ready"]
+        if self._producer_state.get("kind") == "task_loop" or (
+            self.name == "long_task" and self.strategy_name not in {"flat", "taskboard", "task", "task_loop"}
+            and self.task_options.get("execution") not in {"flat", "taskboard"}
+            and self.task_record is None and not self.task_options.get("resume")
+            and self.task_options.get("resume_task_id") is None
+            and not getattr(self, "_agent_task_step_overrides", None)
+        ):
+            boundaries.append("long_task_step")
         return {
-            "pause_boundaries": ["before_production", "candidate_ready"],
-            "snapshot_boundaries": [] if self._bound_agent_capabilities or self._audio_inputs else ["before_production", "candidate_ready"],
+            "pause_boundaries": list(boundaries),
+            "snapshot_boundaries": [] if self._bound_agent_capabilities or self._audio_inputs else list(boundaries),
             "resume": "explicit_pending_pause",
             "rework": ("same_execution_revision" if (
                 self.__class__._async_produce is AgentExecution._async_produce

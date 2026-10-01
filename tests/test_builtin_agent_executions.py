@@ -401,7 +401,7 @@ async def test_long_task_terminal_policies_share_structured_business_value(tmp_p
         return True
 
     execution = (
-        agent.create_execution("long_task").goal("Declared goal", ["Declared criterion"])
+        agent.create_execution("long_task").strategy("flat").goal("Declared goal", ["Declared criterion"])
         .output({"answer": (str, "Final answer", True)})
         .validate(validate).artifact("answer.json", render).review(review)
     )
@@ -464,7 +464,7 @@ async def test_missing_long_task_contract_is_prepared_once_and_preserves_declara
     if declared_criteria is None:
         response["success_criteria"] = ["Inferred criterion"]
     agent = create_execution_agent(tmp_path, "prepare-goal", [response])
-    execution = cast(AgentExecution, agent.create_execution("long_task").input("Original source request"))
+    execution = cast(AgentExecution, agent.create_execution("long_task").strategy("flat").input("Original source request"))
     if declared_goal:
         execution.goal(declared_goal, turn_on_long_task=False)
     if declared_criteria:
@@ -499,9 +499,9 @@ async def test_complete_or_restored_contract_needs_no_preparation_request(tmp_pa
         PreparedGoal, prepare_missing_goal, retain_prepared_goal,
     )
     agent = create_execution_agent(tmp_path, "complete-goal", [])
-    complete = agent.create_execution("long_task").goal("Declared", ["Declared criterion"])
+    complete = agent.create_execution("long_task").strategy("flat").goal("Declared", ["Declared criterion"])
     assert (await complete.async_get_full_data())["status"] == "completed"
-    restored = cast(AgentExecution, agent.create_execution("long_task").input("Original request"))
+    restored = cast(AgentExecution, agent.create_execution("long_task").strategy("flat").input("Original request"))
     retain_prepared_goal(restored, PreparedGoal.from_record(
         PreparedGoal(("Retained goal",), ("Retained criterion",), "retained-request").to_record(),
     ))
@@ -516,7 +516,7 @@ async def test_missing_goal_information_blocks_without_task_or_final_policy(tmp_
     response = {"status": "missing_information", "goals": [], "success_criteria": [],
                 "missing_information": ["Which supplied record is the requested subject?"]}
     agent = create_execution_agent(tmp_path, "missing-goal-info", [response])
-    execution = agent.create_execution("long_task").input("Handle it.")
+    execution = agent.create_execution("long_task").strategy("flat").input("Handle it.")
     seen = []
     execution.validate(lambda result, context: seen.append(result) or True).review(
         lambda result, context: seen.append(result) or True,
@@ -803,7 +803,7 @@ async def test_review_receives_inferred_contract_and_host_provenance(tmp_path, s
     review = {"passed": True, "quality_level": "adequate", "checks": [],
               "summary": "Fixture judgment.", "issues": [], "overall_suggestions": []}
     agent = create_execution_agent(tmp_path, "prepared-review", [response, review])
-    execution = agent.create_execution("long_task").input("Original requirement").review()
+    execution = agent.create_execution("long_task").strategy("flat").input("Original requirement").review()
     await execution.async_get_data()
     request = ScriptedExecutionRequester.requests[1]
     contract = request["info"]["request_contract"]

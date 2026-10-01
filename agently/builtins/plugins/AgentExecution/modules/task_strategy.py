@@ -158,8 +158,16 @@ async def _resolve_required_skill_availability(
 
 
 async def run_agent_task_route(execution: "AgentExecution", route_meta: dict[str, Any]) -> Any:
-    """Run one ordinary AgentTask route with Skill bindings in TaskContext."""
-
+    """Use the unified producer; explicit 4.1 strategies retain their migration path."""
+    options = execution.task_strategy_options()
+    legacy = (execution.strategy_name in {"task", "task_loop"}
+              or options.get("execution") in {"flat", "taskboard"}
+              or execution.task_record is not None
+              or options.get("resume") or options.get("resume_task_id") is not None
+              or bool(getattr(execution, "_agent_task_step_overrides", None)))
+    if not legacy and execution.limits.get("allow_create_task") is not False:
+        from .task_loop import run_task_loop
+        return await run_task_loop(execution)
     return await _run_agent_task_route_impl(execution, route_meta)
 
 

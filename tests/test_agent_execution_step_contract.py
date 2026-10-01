@@ -8956,6 +8956,8 @@ async def test_execution_first_chain_from_goal_accepts_skills_input_and_stream(t
         .effort("low")
     )
 
+    execution.strategy("flat")  # Legacy producer fixture.
+
     stream_items = [item async for item in execution.get_async_generator(type="instant")]
     meta = await execution.async_get_meta()
 
@@ -9047,6 +9049,8 @@ async def test_goal_pursuit_effort_iteration_limit_is_soft_strategy_metadata(tmp
     execution = agent.goal("Build the site.", success_criteria=["The runnable page exists."]).effort(
         "low", budget={"iteration_limit": 2}
     )
+
+    execution.strategy("flat")  # Legacy producer fixture.
 
     await execution.async_start()
     meta = await execution.async_get_meta()
@@ -9282,6 +9286,8 @@ async def test_execution_first_chain_allows_goal_after_prompt_output(tmp_path):
         .output({"summary": (str, "summary", True)}, format="json")
         .goal("Write the final summary.", success_criteria=["The final summary is returned."])
     )
+
+    execution.strategy("flat")  # Legacy producer fixture.
 
     data = await execution.async_get_full_data()
     meta = await execution.async_get_meta()

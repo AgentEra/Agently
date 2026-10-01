@@ -114,7 +114,7 @@ async def async_get_data_object(
         return owner._producer_result_object
     if owner._ensure_long_output_enabled and owner._long_output_result_object is not None:
         return owner._long_output_result_object
-    if owner._restored_result_pending:
+    if owner._restored_result_pending or owner._producer_state.get("kind") == "task_loop":
         from copy import deepcopy
 
         # Snapshots retain data, never live parser/model objects. Rebind only

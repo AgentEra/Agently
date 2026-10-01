@@ -42,8 +42,8 @@ AgentExecutionStatus: TypeAlias = Literal[
 class AgentExecutionControlCapabilities(TypedDict):
     """Supported semantic boundaries, independent from execution state."""
 
-    pause_boundaries: list[Literal["before_production", "candidate_ready"]]
-    snapshot_boundaries: list[Literal["before_production", "candidate_ready"]]
+    pause_boundaries: list[Literal["before_production", "candidate_ready", "long_task_step"]]
+    snapshot_boundaries: list[Literal["before_production", "candidate_ready", "long_task_step"]]
     resume: Literal["explicit_pending_pause"]
     rework: Literal["same_execution_revision", "unsupported"]
     active_child_snapshot: Literal[False]

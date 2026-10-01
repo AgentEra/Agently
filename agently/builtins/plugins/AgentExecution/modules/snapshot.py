@@ -210,7 +210,7 @@ def load(owner: AgentExecution, snapshot: Mapping[str, object]) -> None:
     if state.get("plugin") != owner.name:
         raise ValueError("Execution snapshot belongs to a different plugin.")
     boundary = state.get("boundary")
-    if boundary not in {"before_production", "candidate_ready"}:
+    if boundary not in {"before_production", "candidate_ready", "long_task_step"}:
         raise ValueError("Execution snapshot has no supported safe boundary.")
     identity = state.get("execution_id")
     if not isinstance(identity, str) or len(identity) != 32 or any(c not in "0123456789abcdef" for c in identity):
@@ -369,7 +369,7 @@ def load(owner: AgentExecution, snapshot: Mapping[str, object]) -> None:
     owner.status = "paused"
 
     async def continue_saved() -> tuple[str, object]:
-        if boundary == "before_production":
+        if boundary in {"before_production", "long_task_step"}:
             return await prepare_production(owner, options)
         route = state.get("route")
         if not isinstance(route, str):

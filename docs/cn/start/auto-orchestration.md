@@ -1,5 +1,7 @@
 # Agent 自动编排
 
+> 4.1.4.9 新长任务已使用[统一 Loop](long-task-loop.md)。下文 Flat/TaskBoard 卡片调度、目标补全和旧任务恢复说明仅适用于 4.1.x 显式旧策略兼容路径。
+
 Agently 4.1.4 将 `agent.start()` 作为 Agent turn 的默认用户层入口。它仍然返回
 业务结果，但 Agent 可以在显式注入候选能力后，路由到普通模型响应、Actions 或
 AgentExecution-bound Skill context。

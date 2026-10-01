@@ -119,6 +119,21 @@ async def add_guidance(
         return DataFormatter.sanitize(guidance_ref)
 
 
+async def insert_pending_guidance(owner: "AgentExecution") -> None:
+    """Make queued execution guidance available to the next ContextPackage read."""
+    async with _guidance_lock(owner):
+        for receipt in owner._pending_guidance:
+            if receipt.get("status") != "queued":
+                continue
+            owner.task_context.put(
+                role="information", content=receipt["content"], entry_id=receipt["id"], required=True,
+                source_ref=receipt["id"], metadata={"source": "execution_guidance", "author": receipt.get("author")},
+            )
+            receipt["context_entry_id"] = receipt["id"]
+            receipt["status"] = "inserted"
+            await _emit_guidance(owner, "agent_execution.guidance.inserted", receipt)
+
+
 async def drain_pending_guidance_to_task(owner: "AgentExecution", task: Any) -> list[dict[str, Any]]:
     pending = [item for item in getattr(owner, "_pending_guidance", []) or [] if isinstance(item, dict)]
     if not pending:
