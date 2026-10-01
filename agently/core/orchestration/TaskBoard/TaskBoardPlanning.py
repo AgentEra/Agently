@@ -249,7 +249,7 @@ def task_board_planning_output_schema() -> dict[str, Any]:
                 ),
                 "final_task_workspace_deliverables": (
                     [str],
-                    "Exact TaskWorkspace-relative final paths explicitly required by the submitted task and owned by this card. Omit for intermediate artifacts or when no exact final path was requested.",
+                    "TaskWorkspace-relative final file paths required by the submitted task and owned by this card. Preserve an exact requested path; when a file is requested without a path, choose a suitable relative path. Omit for intermediate artifacts and for tasks requesting only a returned answer body.",
                     False,
                 ),
                 "focus_item_ids": (

@@ -42,8 +42,12 @@ class OpenAICompatible:
         return frozenset({"tts", "stt"})
 
     def _client(self) -> httpx.AsyncClient:
-        headers = {"Authorization": f"Bearer {self._connection.api_key}"} if self._connection.api_key else {}
+        headers = {**self._connection.headers, **({"Authorization": f"Bearer {self._connection.api_key}"} if self._connection.api_key else {})}
+        options: dict[str, Any] = dict(self._connection.client_options)
+        if {"base_url", "headers", "timeout", "follow_redirects"}.intersection(options):
+            raise ValueError("Audio client_options cannot override connection fields.")
         return httpx.AsyncClient(
+            **options,
             base_url=self._connection.base_url.rstrip("/") + "/",
             headers=headers, timeout=self._connection.timeout, follow_redirects=False,
         )
@@ -70,6 +74,8 @@ class OpenAICompatible:
 
     @staticmethod
     def _transcription(request: TranscriptionRequest, *, stream: bool = False) -> dict[str, str]:
+        if request.options.input_options is not None:
+            raise AudioCapabilityError("Input preprocessing requires AudioModelRequest; native drivers do not apply input_options.")
         payload: dict[str, object] = {"model": request.model, "response_format": "json"}
         for key, value in (("language", request.options.language), ("prompt", request.options.prompt)):
             if value is not None:

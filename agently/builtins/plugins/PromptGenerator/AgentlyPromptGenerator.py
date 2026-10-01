@@ -1255,7 +1255,9 @@ class AgentlyPromptGenerator(PromptGenerator):
                 else:
                     field_desc = str(field_type_schema)
                     field_required = strict_output
-                if field_required and field_type is not Any:
+                is_judgment = (isinstance(field_type_schema, tuple) and len(field_type_schema) > 3
+                               and isinstance(field_type_schema[3], Mapping) and field_type_schema[3].get("judgment") is True)
+                if field_required and field_type is not Any and not is_judgment:
                     field_annotation = cast(Any, field_type) | None
                 else:
                     field_annotation = field_type
@@ -1358,6 +1360,10 @@ class AgentlyPromptGenerator(PromptGenerator):
 
     def to_output_model(self, *args, strict_output: bool | None = None, **kwargs) -> type["BaseModel"]:
         declared_output = self.prompt.get("output")
+        from agently.types.data.judgment import OutputTemplate
+        if isinstance(declared_output, OutputTemplate):
+            from pydantic import RootModel
+            return RootModel[declared_output.to_schema()[0]]
         if self._is_pydantic_model_type(declared_output):
             return cast(type["BaseModel"], declared_output)
 

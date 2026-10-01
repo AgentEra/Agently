@@ -242,7 +242,7 @@ async def test_later_execution_reuses_stable_action_without_scope_or_permission_
             self.call_count = 0
 
         def input(self, value: Any) -> "PerRequestSelection":
-            self.task = str(value["task"])
+            self.task = str(value["input"])
             return self
 
         def info(self, value: Any) -> "PerRequestSelection":

@@ -2,6 +2,39 @@
 from agently.utils import DataFormatter
 
 
+def test_sanitize_frozen_context_content_keeps_nested_values_and_source_immutable():
+    import json
+    from types import MappingProxyType
+    from agently.types.data import ContextBlock
+
+    block = ContextBlock(
+        block_id="block", block_key="context", source_id="source",
+        source_revision="1", source_ref="state", binding_id="binding",
+        role="information", completeness="complete", content_chars=100,
+        content={"taskboard": "- [ ] finish", "observations": [
+            {"status": "success", "result": {"count": 3, "optional": None, "valid": True}}
+        ]},
+    )
+    assert isinstance(block.content, MappingProxyType)
+    result = DataFormatter.sanitize(block.content)
+    assert isinstance(result, dict)
+    assert json.loads(json.dumps(result)) == {
+        "taskboard": "- [ ] finish", "observations": [
+            {"status": "success", "result": {"count": 3, "optional": None, "valid": True}}
+        ]}
+    result["observations"][0]["result"]["count"] = 99
+    assert block.content["observations"][0]["result"]["count"] == 3
+
+
+def test_sanitize_mapping_preserves_declared_types_when_requested():
+    from collections import UserDict
+    from types import MappingProxyType
+
+    value = UserDict({1: MappingProxyType({"value": (int, "quantity")})})
+    assert DataFormatter.sanitize(value) == {"1": {"value": ("int", "quantity")}}
+    assert DataFormatter.sanitize(value, remain_type=True) == {"1": {"value": (int, "quantity")}}
+
+
 def test_sanitize():
     from pydantic import BaseModel, Field
 

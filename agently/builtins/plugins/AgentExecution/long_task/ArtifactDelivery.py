@@ -54,7 +54,6 @@ from .TaskShared import (
 )
 
 _WORKSPACE_ARTIFACT_LOCATOR_SCAN_BYTES = 5_000_000
-_AGENT_TASK_TERMINAL_FINAL_RESULT_CHARS = 1600
 _GROUNDING_WORKSPACE_REPLACE_OLD_KEYS = (
     "old_string",
     "old",
@@ -359,14 +358,11 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
         trusted_file_refs: Sequence[Mapping[str, Any]] = (),
         preserve_value: bool = False,
     ) -> Any:
-        """Keep one useful bounded result, or a pointer for file-backed output."""
+        """Keep the actual answer, or a pointer for file-backed output."""
 
         if trusted_file_refs and not preserve_value:
             return self._task_workspace_artifact_final_result_from_refs(trusted_file_refs)
-        return self._compact_value_for_meta(
-            DataFormatter.sanitize(value),
-            max_chars=_AGENT_TASK_TERMINAL_FINAL_RESULT_CHARS,
-        )
+        return DataFormatter.sanitize(value)
 
     async def _register_terminal_deliverables(
         self,
@@ -1110,14 +1106,27 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
             return body
         return ""
 
-    @classmethod
-    def _task_workspace_artifact_delivery_mode(cls, result: Any) -> str:
+    def _task_workspace_artifact_delivery_mode(self, result: Any, *, context: Any = None) -> str:
         if not isinstance(result, Mapping):
+            return ""
+        if context is not None and not (
+            self._taskboard_context_final_task_workspace_deliverables(context)
+            or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+        ):
             return ""
         manifest = result.get("artifact_manifest")
         if isinstance(manifest, Mapping) and manifest:
             return "sectioned_task_workspace_artifact"
-        for key in ("artifact_markdown", "artifact_html", "candidate_final_result", "final_result"):
+        keys = ["artifact_markdown", "artifact_html"]
+        if context is not None and (
+            self._taskboard_context_final_task_workspace_deliverables(context)
+            or (
+                self._required_task_workspace_deliverables()
+                and self._taskboard_context_card_is_leaf(context)
+            )
+        ):
+            keys.extend(("candidate_final_result", "final_result"))
+        for key in keys:
             value = result.get(key)
             if isinstance(value, str) and value.strip():
                 return "task_workspace_artifact"
@@ -1220,9 +1229,12 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
         elif (
             required_paths
             and leaf_can_stage_terminal_candidate
-            and requested_path in required_paths
+            and (requested_path in required_paths or not manifest_dict)
         ):
-            terminal_target = requested_path
+            terminal_target = (
+                requested_path if requested_path in required_paths
+                else self._required_task_workspace_deliverables()[0]
+            )
         if terminal_target:
             staging_path = self._taskboard_terminal_candidate_path(
                 context,
@@ -2276,6 +2288,20 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
             manifest_dict.pop("file_refs", None)
             result["artifact_manifest"] = DataFormatter.sanitize(manifest_dict)
 
+        if card_context is not None and not str((plan or {}).get("deliverable_mode") or "").strip():
+            # A text carrier does not authorize a file side effect. Retain old
+            # response bodies for replay without turning their field names into
+            # a new delivery contract.
+            if not result.get("candidate_final_result"):
+                for key in ("final_result", "artifact_markdown", "artifact_html"):
+                    body = result.get(key)
+                    if isinstance(body, str) and body.strip():
+                        result["candidate_final_result"] = body
+                        break
+            if diagnostics:
+                result["diagnostics"] = DataFormatter.sanitize(diagnostics)
+            return DataFormatter.sanitize(result)
+
         deliverable_mode = str((plan or {}).get("deliverable_mode") or "").strip()
         preserve_result_fields: tuple[str, ...] = (
             ("candidate_final_result", "final_result")
@@ -2302,7 +2328,14 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
             content = ""
             content_key = ""
         stream_draft_attempted = False
-        if not deliverable_mode and content_key == "answer":
+        if not deliverable_mode and (
+            content_key == "answer"
+            or (
+                card_context is not None
+                and content_key in {"candidate_final_result", "final_result"}
+                and not manifest_dict
+            )
+        ):
             if diagnostics:
                 result["diagnostics"] = DataFormatter.sanitize(diagnostics)
             return DataFormatter.sanitize(result)
@@ -3097,6 +3130,7 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
             "draft_execution_id": str(getattr(draft_execution, "id", "") or ""),
         }
         wrote_any = False
+        received_delta = False
         bytes_written = 0
         carrier_path = path
         draft_stream = draft_execution.get_async_generator(
@@ -3151,13 +3185,14 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
                 )
 
         async def write_chunk(chunk: str) -> None:
-            nonlocal wrote_any, bytes_written, carrier_path
+            nonlocal wrote_any, received_delta, bytes_written, carrier_path
             if not chunk:
                 return
             replay_marker = self._task_workspace_artifact_public_delta_replay_marker(chunk)
             if replay_marker is not None:
                 await handle_public_replay_marker(replay_marker)
                 return
+            received_delta = True
             write_result = await self.task_workspace.write_file(carrier_path, chunk, append=wrote_any)
             carrier_path = str(write_result.get("path") or carrier_path)
             wrote_any = True
@@ -3221,6 +3256,15 @@ class AgentTaskArtifactMixin(AgentTaskMixinBase):
                 "status": draft_meta.get("status"),
                 "route": DataFormatter.sanitize(draft_meta.get("route")),
             }
+            if not received_delta and draft_meta.get("status") in {"success", "completed"}:
+                # A non-streaming request delivers its body only at completion.
+                # Read this settled execution; do not replay partial delta attempts.
+                completed_body = await self._await_task_request(
+                    draft_execution.async_get_data(),
+                    stage="task_workspace_artifact_draft_result",
+                )
+                if isinstance(completed_body, str):
+                    await write_chunk(completed_body)
         except Exception as error:
             message = _compact_agent_task_error_message(error, fallback=error.__class__.__name__)
             delivery_record.update(

@@ -14,14 +14,15 @@
 
 from .base import print_, async_print, AgentlyMain, Agent
 from ._version import __version__
+from .types.data.judgment import OutputTemplate, Probability, Choice, Score
 from .core.model.AudioModelRequest import AudioModelRequest
 from .types.data.audio import (
-    AudioCapabilityError, AudioConnection, AudioFormat, AudioInput, AudioOperation, AudioProtocolError,
+    AudioCapabilityError, AudioConnection, AudioFormat, AudioInput, AudioInputOptions, AudioInputEvent, AudioInputHandler, AudioOperation, AudioProtocolError,
     PCMFormat, SpeechOptions, SpeechRequest, SpeechResult, TranscriptEvent, TranscriptResult,
     PCMStream, TextSource, TextSegmentOptions, TranscriptionStreamOptions, TranscriptBlock, TranscriptSegment,
     TranscriptionOptions, TranscriptionRequest,
 )
-from .types.plugins.AudioModelRequester import AudioCapability, AudioModelRequester, TextSegmenter
+from .types.plugins.AudioModelRequester import AudioCapability, AudioModelRequester, TextSegmenter, SpeechDetector, SpeechDetectionSession
 from .core import (
     AgentTask,
     TaskContext,
@@ -63,6 +64,10 @@ from .types.trigger_flow import (
 Agently = AgentlyMain()
 
 __all__ = [
+    "OutputTemplate",
+    "Probability",
+    "Choice",
+    "Score",
     "LongContent",
     "Agently",
     "__version__",
@@ -106,6 +111,11 @@ __all__ = [
     "AudioConnection",
     "AudioFormat",
     "AudioInput",
+    "AudioInputOptions",
+    "AudioInputEvent",
+    "AudioInputHandler",
+    "SpeechDetector",
+    "SpeechDetectionSession",
     "AudioOperation",
     "AudioProtocolError",
     "PCMFormat",

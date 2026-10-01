@@ -1,14 +1,106 @@
 {
   "schema_version": 1,
   "framework": "agently",
-  "target_version": "4.1.4.8",
+  "target_version": "4.1.4.9",
+  "model_capabilities": {
+    "status": "in_development",
+    "configuration": [
+      "llm",
+      "vlm",
+      "embeddings",
+      "stt",
+      "tts",
+      "ocr"
+    ],
+    "profile": "independent inline provider/model or model_key; provider defaults only; no cross-role credentials/options inheritance",
+    "image": "append groups; mode=vlm|llm|ocr; configuration selects single producer or VLM/OCR -> LLM",
+    "direct": "vlm_only(bool) before start; to_text selects direct image processing and respects output; max_retries controls the shared retry budget (default 3)",
+    "audio": "input(file=..., type=audio) -> STT -> Execution; say(scope=final|all); stream_say yields SpeechResult segments",
+    "embeddings": "embed/async_embed returns ordered finite equal-dimension vector rows",
+    "compatibility": "4.1 legacy provider settings remain fallback; 4.2 follows canonical APIs",
+    "observation": "existing Execution/TriggerFlow lineage; additive media stage metadata; no unified audio token billing"
+  },
+  "system_one": {
+    "status": "in_development",
+    "configuration": "system_one: inline model profile or model_key",
+    "activation": "configured by default; unconfigured off; explicit use_system_one(bool) overrides per execution",
+    "owner": "AgentExecution model selection; existing TriggerFlow composition",
+    "scope": "OutputTemplate producers; ordinary fields retain the ordinary ModelRequester",
+    "isolation": "dedicated provider defaults/profile; no ordinary credentials or generation-option inheritance",
+    "fallback": "disabled uses ordinary LLM; active provider failures do not switch models",
+    "evidence": "template description/JSON Schema and actual stage provider/model, role, latency, reasoning length",
+    "timing": "no universal latency or calibration guarantee",
+    "instant": "Structured LLM-backed stages forward provisional instant fields. Only actual SystemOne stages suppress replay after a complete field is observed; final validation may still fail. Ordinary ModelRequest, AgentExecution and ordinary LLM composition stages retain bounded validation retry and accepted replacement streams."
+  },
+  "jev_output": {
+    "status": "in_development",
+    "declarations": [
+      "OutputTemplate",
+      "Probability",
+      "Choice",
+      "Score"
+    ],
+    "binding": "from_output: string or path array",
+    "configuration": "system_one.provider=Jev; Jev / plugins.ModelRequester.Jev credentials",
+    "owner": "AgentExecution; atomic Jev ModelRequester",
+    "fallback": "unconfigured/disabled SystemOne or explicitly disabled Jev uses ordinary LLM; selected Jev requires valid credentials; provider failures do not fall back",
+    "retry": "shared composition max_retries; child provider retries and key failover disabled",
+    "details": "execution.get_meta().judgment",
+    "forward_line": "4.2 uses canonical interfaces without deprecated compatibility layers",
+    "prerequisite": "after_output"
+  },
+  "skill_applicability_input": {
+    "status": "in_development",
+    "since": "4.1.4.9",
+    "owner": "AgentExecution / SkillsExtension",
+    "task_fields": [
+      "all declared goals",
+      "success_criteria",
+      "input",
+      "system",
+      "info",
+      "instruct",
+      "output"
+    ],
+    "selection_output": "selected_keys: ordered unique subset of offered keys, including empty",
+    "additional_model_requests": false,
+    "scope_or_execution_authorization_changed": false
+  },
+  "context_supply": {
+    "immutable_content_projection": "Mapping content is recursively serialized as structured data without mutating ContextPackage; no Python mappingproxy repr in model input",
+    "status": "in_development",
+    "since": "4.1.4.9",
+    "owner": "TaskWorkspaceContextSource / ContextReader / SkillContextSource",
+    "source_reuse": "local-stat-validated per-file observations and bounded complete UTF-8 bodies; source revision digest composition changes; refresh pinned readers across upgrade",
+    "model_projection": "complete task at AgentExecution and long_task consumer reads, plus current intent/phase and relevant candidate facts; budgets and identity remain Host-owned",
+    "skill_catalog": "resource-index omitted from default descriptors; direct source exact read retained",
+    "taskboard_planning": "preparation hands its package to the initial planner; context/source revision changes trigger reread; attachments and successful-request consumption preserved",
+    "public_signatures_changed": false,
+    "runtime_event_protocol_changed": false
+  },
   "shell_capability": {
     "status": "in_development",
     "entry": "Agent.enable_shell",
-    "language": ["bash", "powershell"],
-    "environment": ["offline", "online", "host"],
-    "approval": ["all", "write", "delete", "none"],
-    "defaults": {"environment": "offline", "approval": "all", "action_id": "run_shell"},
+    "language": [
+      "bash",
+      "powershell"
+    ],
+    "environment": [
+      "offline",
+      "online",
+      "host"
+    ],
+    "approval": [
+      "all",
+      "write",
+      "delete",
+      "none"
+    ],
+    "defaults": {
+      "environment": "offline",
+      "approval": "all",
+      "action_id": "run_shell"
+    },
     "resource": "shell / ShellResource",
     "legacy": "Explicit commands or sandbox retain argv semantics; Cmd delegates to Shell, for removal in 4.2.",
     "soft_risk": "Isolated ModelRequest or Host risk_handler; unknown/failed analysis requires approval. Not a security proof.",
@@ -21,16 +113,35 @@
     "driver_protocol": "AudioModelRequester",
     "agent_binding": "explicit use_audio",
     "text_prompt_pipeline": false,
-    "builtin_drivers": ["OpenAICompatible", "OMLX"],
+    "builtin_drivers": [
+      "OpenAICompatible",
+      "OMLX"
+    ],
     "builtin_realtime_stt_input": false,
     "composed_continuous_input": "text to speech; PCM to transcript via bounded base requests",
-    "output_modes": ["continuous_pcm", "independent_speech_segments", "transcript_blocks", "punctuation_segments"],
+    "output_modes": [
+      "continuous_pcm",
+      "independent_speech_segments",
+      "transcript_blocks",
+      "punctuation_segments"
+    ],
     "native_stream_access": "AudioModelRequest.driver; no native realtime input adapter in builtins",
     "extra_agent_dependencies": "required_agent_capabilities; bound references; snapshots unsupported",
-    "observation_protocol_changed": false
+    "observation_protocol_changed": false,
+    "input_preprocessing": {
+      "since": "4.1.4.9",
+      "activation": "TranscriptionOptions.input_options / AudioInputOptions; default None",
+      "detector": "SpeechDetector.open per-stream session; optional explicit local SileroVAD ONNX adapter",
+      "formats": "declared PCM s16le async stream; single complete PCM s16le WAV; no implicit compressed decoding",
+      "timeline": "original PCM sample offsets; optional TranscriptBlock.speech_index and reason",
+      "events": "awaited AudioInputEvent callback; transcript before pause; no RuntimeEvent/ObservationEvent schema change",
+      "short_speech": "min_speech_seconds=0; speech probability and duration are separate controls",
+      "limits": "bounded segments, framing buffers, source packets and single files; no retries or cancellation flush",
+      "quality": "VAD is acoustic, not semantic; no universal cough/music/noise rejection or low-volume recall guarantee"
+    }
   },
-  "release_train": "2026-09-4.1.4.8-dev",
-  "notes": "4.1.4.8 development target; default ContextReader resource selection receives current-read instruction content and completeness without preloading optional bodies or changing selector signatures, budgets, Skill scope or permissions; complete resource roots also suppress already-read child delivery independent of selection order, without refunding read budgets; Cmd-backed local commands use non-blocking async subprocess waiting and settle owned processes on timeout/cancellation (POSIX process groups, Windows Job Objects), preserving argv, policy, result envelopes and full output artifacts; committed DeepSeek examples standardize their fallback on deepseek-v4-flash with thinking explicitly disabled, while environment overrides and intentional thinking-stream demonstrations remain supported; explicit model keys fail before provider dispatch when a configured non-empty model_pool does not contain the alias, while pool-free single-model inheritance remains compatible; resolve_model_profile provides a non-secret read-only preflight. It carries forward the 4.1.4.7 contract requiring Agently-Stage >=0.3.8,<0.4.0. Stage 0.3.7 supplies physically safe carrier routing across mixed sync/async boundaries and excludes every upstream carrier in a transitive synchronous wait chain; 0.3.8 preserves that contract while forwarding Python 3.14 task-factory keyword arguments. A synchronous TriggerFlow chunk may call a provider-owned sync wrapper that uses with Stage() for an async tool and may then re-enter TriggerFlow's synchronous state facade without knowing that the framework already uses Stage. The deprecated syncify/asyncify adapters retain their compatibility names and warnings but now delegate to Stage.as_sync/as_async; internal lightweight default_stage_call_bridge usage remains unchanged. Stage is the required-runtime companion and remains a private Agently mechanism dependency: TriggerFlowExecution remains the semantic lifecycle owner, and Stage types or carrier state do not enter public execution state. Built-in inactive gvisor, seatbelt, and landlock candidates use the existing provider-neutral code_execution contract and probe external mechanisms only when explicitly selected; they add no third-party Python dependency and fail closed without implicit fallback. Provider reasoning and explicit reasoning-token usage remain observation-only facts, and validation console output exposes bounded failure/retry diagnostics without changing validation authority. The 4.1.4.6 contracts remain intact: agently.__version__ and Agently.__version__ are the standard package version surfaces, provider reasoning and compatible SSE retry boundaries remain normalized, and live TriggerFlow sub-flow resources preserve identity. The 4.1.4.5 runtime line also remains intact: AgentExecution ensure_long_output() uses TriggerFlow-visible continuation and TaskWorkspace owns staged file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
+  "release_train": "2026-09-4.1.4.9-dev",
+  "notes": "4.1.4.9 development target; optional AudioInputOptions provides replaceable acoustic speech detection for PCM streams and complete PCM WAV, original sample timestamps and ordered application events; defaults preserve short detected answers, with no semantic cleanup or extra LLM calls. Released 4.1.4.8 remains the baseline; default ContextReader resource selection receives current-read instruction content and completeness without preloading optional bodies or changing selector signatures, budgets, Skill scope or permissions; complete resource roots also suppress already-read child delivery independent of selection order, without refunding read budgets; Cmd-backed local commands use non-blocking async subprocess waiting and settle owned processes on timeout/cancellation (POSIX process groups, Windows Job Objects), preserving argv, policy, result envelopes and full output artifacts; committed DeepSeek examples standardize their fallback on deepseek-v4-flash with thinking explicitly disabled, while environment overrides and intentional thinking-stream demonstrations remain supported; explicit model keys fail before provider dispatch when a configured non-empty model_pool does not contain the alias, while pool-free single-model inheritance remains compatible; resolve_model_profile provides a non-secret read-only preflight. It carries forward the 4.1.4.7 contract requiring Agently-Stage >=0.3.8,<0.4.0. Stage 0.3.7 supplies physically safe carrier routing across mixed sync/async boundaries and excludes every upstream carrier in a transitive synchronous wait chain; 0.3.8 preserves that contract while forwarding Python 3.14 task-factory keyword arguments. A synchronous TriggerFlow chunk may call a provider-owned sync wrapper that uses with Stage() for an async tool and may then re-enter TriggerFlow's synchronous state facade without knowing that the framework already uses Stage. The deprecated syncify/asyncify adapters retain their compatibility names and warnings but now delegate to Stage.as_sync/as_async; internal lightweight default_stage_call_bridge usage remains unchanged. Stage is the required-runtime companion and remains a private Agently mechanism dependency: TriggerFlowExecution remains the semantic lifecycle owner, and Stage types or carrier state do not enter public execution state. Built-in inactive gvisor, seatbelt, and landlock candidates use the existing provider-neutral code_execution contract and probe external mechanisms only when explicitly selected; they add no third-party Python dependency and fail closed without implicit fallback. Provider reasoning and explicit reasoning-token usage remain observation-only facts, and validation console output exposes bounded failure/retry diagnostics without changing validation authority. The 4.1.4.6 contracts remain intact: agently.__version__ and Agently.__version__ are the standard package version surfaces, provider reasoning and compatible SSE retry boundaries remain normalized, and live TriggerFlow sub-flow resources preserve identity. The 4.1.4.5 runtime line also remains intact: AgentExecution ensure_long_output() uses TriggerFlow-visible continuation and TaskWorkspace owns staged file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill revisions.",
   "runtime_support": {
     "agently_stage": {
       "repository": "Agently-Stage",
@@ -118,7 +229,7 @@
           "summary_marker": "meta.coalesced"
         }
       },
-      "recommended_version_specifier": ">=0.1.11,<0.2.0"
+      "recommended_version_specifier": ">=0.2.0,<0.3.0"
     },
     "skills": {
       "repository": "Agently-Skills",
@@ -263,7 +374,7 @@
       ],
       "default_root": "<entry-directory>/.agently/task_workspaces/<agent-id>",
       "ownership": "Task files, path policy, physical readback, digest, file refs, scoped execution grants, immutable bundle materialization, and declared-output collection",
-      "terminal_artifact_contract": "Required AgentTask deliverables remain digest-pinned staged candidates through verifier acceptance, then use atomic target promotion and complete post-promotion readback; failure blocks delivery without overwriting the prior accepted target. A sufficient completed control result with a draftable manifest but no body enters the dedicated artifact-draft stage with the same bounded canonical evidence ledger; framework-owned materialization is not semantic remaining work."
+      "terminal_artifact_contract": "Required AgentTask deliverables remain digest-pinned staged candidates through verifier acceptance, then use atomic target promotion and complete post-promotion readback; failure blocks delivery without overwriting the prior accepted target. A sufficient completed control result with a draftable manifest but no body enters the dedicated artifact-draft stage with the same bounded canonical evidence ledger; framework-owned materialization is not semantic remaining work. Initial TaskBoard cards with a final delivery path and no fixed Action commands preserve their declared execution shape; the delivery path alone does not select control execution."
     },
     "record_store": {
       "surface": [
@@ -318,7 +429,7 @@
       "producer_contract": "Built-ins share the once-only run lifecycle and specialize a typed production hook on the returned instance. request preserves direct request behavior; long_task owns existing task planning/evidence/execution; plan performs readiness, connected clarification and terminal plan generation; long_content plans ordered sections, writes sequentially with bounded continuity and host-assembles text without final model recopy. Incompatible explicit producer/strategy/policy or delivery combinations fail before dispatch. Plan rejects auto_continue mixing. Long_content uses request-local conditional continuation for chapter bodies and does not re-request the assembled root; the explicit whole-document plugin rejects a structured root contract, while the direct producer supports LongContent-marked string fields through the same long-form producer. Disconnected plan clarification fails closed.",
       "typing_contract": "Ordinary fluent calls retain AgentExecution without type imports. create_execution, effort and strategy expose built-in Literal choices while registered plugin names remain open strings. Public protocol methods have explicit readable signatures rather than __getattr__ -> Any. Specialized handlers and production option types remain available in their owning namespaces.",
       "flat_action_argument_readiness_contract": "Known required Action ids do not imply ready arguments. The existing narrow Flat command request returns a mandatory boolean requires_observation plus action_commands. Ready batches retain validated serial dispatch; new-result dependencies return an empty batch and use the existing bounded child ActionLoop before planning later inputs. Invalid or contradictory readiness fails before Action dispatch. Explicit preplanned commands remain fixed kwargs, not result substitution. Handoff preserves child scope, policy, deadlines and terminal verification, binds batch-required ids through child require_actions rather than visibility alone, and records its one narrow request under execution_meta.action_command_planning. Only this adaptive handoff removes the generic implicit two-round cap; explicit task round limits and parent budgets remain effective. Successful-call evidence does not prove argument semantics or repetition counts.",
-      "control_contract": "Explicit sync/async cancel and close settle owned work; timeout never proves cleanup. Pause/resume use TriggerFlow at before_production or candidate_ready boundaries, with AgentExecutionPaused for nonterminal readers. interrupt supplies future TaskContext information and reports consumption separately. JSON save/load at settled safe pauses requires matching draft, policy and resource rebinding, preserves model-call and elapsed budgets, and never dispatches on load. control_capabilities reports supported boundaries. Rework advances the same execution revision and preserves captured readers; Request, Plan, LongContent and LongTask own producer re-entry. Revision caps, model/time and task iteration/tick budgets remain cumulative. Dispatcher protection blocks unauthorized Action replay including uncertain effects and ancestor restrictions. Safe-pause snapshots retain revision history, settled producer resources and replay protection. Restored typed readers lazily validate each saved candidate against its rebound original schema, cache the result, and never rerun production or final policies. Annotated output declarations use JSON-schema fingerprints; load does not run output-model validators.",
+      "control_contract": "Explicit sync/async cancel and close settle owned work; timeout never proves cleanup. Pause/resume use TriggerFlow at before_production or candidate_ready boundaries, with AgentExecutionPaused for nonterminal readers. interrupt supplies future TaskContext information and reports consumption separately. JSON save/load at settled safe pauses requires matching draft, policy and resource rebinding, preserves model-call and elapsed budgets, and never dispatches on load. control_capabilities reports supported boundaries. Request rework retains original info/instruct and appends only the current feedback and previous candidate. Rework advances the same execution revision and preserves captured readers; Request, Plan, LongContent and LongTask own producer re-entry. Revision caps, model/time and task iteration/tick budgets remain cumulative. Dispatcher protection blocks unauthorized Action replay including uncertain effects and ancestor restrictions. Safe-pause snapshots retain revision history, settled producer resources and replay protection. Restored typed readers lazily validate each saved candidate against its rebound original schema, cache the result, and never rerun production or final policies. Annotated output declarations use JSON-schema fingerprints; load does not run output-model validators.",
       "pending_control_contract": "Active child or inner-task snapshots, disconnected plan clarification, and nested parent-budget restoration remain unsupported. Method presence or legacy task resume must not be advertised as these capabilities."
     },
     "structured_output": {
@@ -354,7 +465,8 @@
       "context_contract": "AgentExecution and AgentTask share one TaskContext and one execution-scoped TaskWorkspace view.",
       "durability_contract": "Process state stays in memory/logs by default; record_store_recovery is opt-in.",
       "evidence_replan_contract": "A material-evidence replan_segment without an unresolved mounted capability first uses a dedicated ModelRequest to choose bounded semantic queries from host-offered TaskContext source kinds, then creates one or more Context-owned evidence-reacquisition cards before a dependent artifact-repair card. The host requires evidence_use to bind the exact new body-bearing owner/locator/content_version/range identities added to EvidenceLedger, excludes final-artifact self-readback from progress, and permits another repair only when a newly acquired reference is consumed by the original failed criterion or stable exact material-claim subject.",
-      "taskboard_live_evidence_contract": "Dependency readback evidence is canonicalized before prompt construction; prompt projection, host binding validation, acceptance indexing, result persistence, and a dedicated manifest-to-body artifact draft share one live ledger identity domain. A control result with sufficient=false cannot become completed through next_board_action=finalize; a sufficient completed draftable manifest may hand framework-owned materialization to the artifact-draft stage without being blocked by semantic remaining_work."
+      "taskboard_live_evidence_contract": "Dependency readback evidence is canonicalized before prompt construction; prompt projection, host binding validation, acceptance indexing, result persistence, and a dedicated manifest-to-body artifact draft share one live ledger identity domain. A control result with sufficient=false cannot become completed through next_board_action=finalize; a sufficient completed draftable manifest may hand framework-owned materialization to the artifact-draft stage without being blocked by semantic remaining_work. Ordinary TaskBoard completion uses the loop finalization decision; a completed leaf-card candidate is not semantic proof by itself and candidate promotion is reserved for an explicit final TaskWorkspace delivery contract; terminal semantic verification is reserved for explicit delivery/capability contracts and deterministic integrity or lifecycle blocks. Ordinary finalizer replan_signal resumes existing repair/evidence cards without a second semantic verdict; blocked/clarify stop, invalid signals cannot accept or schedule work, and inline repairs preserve their output form. Public final answer bodies preserve their full value instead of applying metadata preview truncation. TaskBoard model/control requests expose one complete-body slot, candidate_final_result, and expose artifact_manifest only for a declared final file contract. Ordinary first-card text stays inline even when a legacy response repeats it in artifact_markdown/final_result; field names do not authorize materialization. A planner may choose a relative path when the task requests a file without an exact name; a declared target stages existing complete text without redrafting. Readback cards execute declared scoped Context retrieval and retain locator/body completeness in the existing evidence ledger. Artifact drafting consumes the same settled text result when a non-streaming response supplied no delta; it neither repeats the model request nor revives a discarded partial delta attempt. Shared evidence-binding repair skips model dispatch when its offered-reference projection is empty, preserving existing binding errors and terminal policy.",
+      "unified_loop_contract": "New long_task executions use one mutable Markdown checklist and real ActionRuntime observations, with no default shape planner, card judge or finalizer. Original output, final policies, cumulative limits, settled long_task_step pause/save/load, cancellation and retained-state rework remain execution-owned. Explicit required Actions and exact deliverable paths are checked by Host; failures return to the same decision. 4.1.x explicit Flat/TaskBoard and legacy task-id recovery remain compatibility-only; 4.2 removes these entrypoints."
     },
     "skills": {
       "surface": [

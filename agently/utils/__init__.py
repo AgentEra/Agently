@@ -16,7 +16,7 @@ from .Logger import create_logger
 from .RuntimeEmitter import create_runtime_emitter
 from .StateData import StateData, StateDataNamespace
 from .SerializableStateData import SerializableStateData, SerializableStateDataNamespace
-from .Settings import Settings, SettingsNamespace
+from .Settings import Settings as Settings, SettingsNamespace
 
 RuntimeData = StateData
 RuntimeDataNamespace = StateDataNamespace
@@ -25,8 +25,8 @@ SerializableRuntimeDataNamespace = SerializableStateDataNamespace
 
 # from .Storage import Storage, AsyncStorage
 from .FunctionShifter import FunctionShifter
-from .CallableUtils import filter_callable_options
-from .DataFormatter import DataFormatter
+from .CallableUtils import filter_callable_options as filter_callable_options
+from .DataFormatter import DataFormatter as DataFormatter
 from .DataPathBuilder import DataPathBuilder
 from .LazyImport import LazyImport as LazyImport, LazyImportDependencyError as LazyImportDependencyError
 from .DataLocator import DataLocator
@@ -46,7 +46,7 @@ from .LanguagePolicy import (
 )
 from .ModelPool import resolve_model_profile
 from .DeprecationWarnings import (
-    DeprecationWarnings,
+    DeprecationWarnings as DeprecationWarnings,
     warn_deprecated_once,
     log_deprecated_once,
     reset_deprecation_warning_registry,

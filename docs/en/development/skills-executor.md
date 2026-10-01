@@ -59,6 +59,13 @@ result = await execution.async_get_data()
 select from host-issued keys, validates the result, and binds the chosen
 revisions. Unknown or duplicate keys fail closed.
 
+In 4.1.4.9, applicability selection considers every declared goal and success
+criterion, the original input, and task constraints and delivery requirements
+from system/info/instruct/output. It still returns only offered Skill keys and
+may select none. Declare known requirements for later phases before preparing
+the execution so selection can account for them. This adds no selection request
+and grants no script execution permission.
+
 Skills use the same composition grammar as Actions; there is no separate public
 collection API. `agent.use_skills(..., always=True)` configures the Agent defaults,
 while `execution.use_skills(...)` adds declarations for one execution. Before

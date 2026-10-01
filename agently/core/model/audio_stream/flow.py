@@ -72,6 +72,11 @@ class _PullFlow(Generic[InputT, R, OutputT]):
                         finally:
                             self.flow.remove_execution(execution)
                             self.dispatch = None
+        except BaseException:
+            # Failed and cancelled streams cannot be resumed by catching the
+            # exception inside the context. In particular, never flush their tail.
+            await self.aclose("settled")
+            raise
         finally:
             self.busy = False
 

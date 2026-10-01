@@ -55,6 +55,11 @@ result = await execution.async_get_data()
 `mode="model_decision"` 下，AgentExecution 用结构化 `ModelRequest` 从宿主发放
 的 key 中选择，校验后绑定 revision；未知或重复 key 会 fail closed。
 
+4.1.4.9 的适用性请求会同时考虑全部已声明目标、验收条件、原始 input，以及
+system/info/instruct/output 中的任务约束和交付要求。可选 Skill 仍只返回候选 key；
+没有适用项时可以不选。把后续阶段的已知要求在准备前写入本次 execution，避免
+选择时缺少依据；这不会增加选择请求，也不会自动授予脚本执行权限。
+
 Skills 与 Actions 使用同一种组合表达，不新增另一套公开集合 API。
 `agent.use_skills(..., always=True)` 配置 Agent 默认可用集合，
 `execution.use_skills(...)` 增加本次 execution 的声明。选择前，AgentExecution

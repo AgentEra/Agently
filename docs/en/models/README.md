@@ -9,3 +9,5 @@ Suggested reading order:
 5. [Audio](audio.md): independent TTS/STT capability, Agent binding and streaming boundaries (4.1.4.8 development).
 
 Model ids change as providers update. Use provider docs and your account's available model list when configuring production systems.
+
+See [Independent model uses and multimodal tasks](capabilities.md) for the development API.

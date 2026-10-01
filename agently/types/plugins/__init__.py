@@ -35,7 +35,7 @@ from .ActionRuntime import (
     StandardActionExecutionHandler,
     StandardActionPlanningHandler,
 )
-from .EventHooker import EventHooker
+from .EventHooker import EventHooker as EventHooker
 from .ExecutionExchange import ExecutionExchangeProvider
 from .PromptGenerator import PromptGenerator
 from .ModelRequester import HandlerDrivenModelRequester, ModelProviderResponseGenerator, ModelRequestHandlers, ModelRequester

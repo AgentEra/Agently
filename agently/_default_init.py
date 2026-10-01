@@ -136,6 +136,12 @@ def _load_default_plugins(plugin_manager: "PluginManager"):
     from agently.builtins.plugins.ModelRequester.OpenAIResponsesCompatible import (
         OpenAIResponsesCompatible,
     )
+    from agently.builtins.plugins.ModelRequester.MistralOCR import MistralOCR
+
+    plugin_manager.register("ModelRequester", MistralOCR, activate=False)
+    from agently.builtins.plugins.ModelRequester.Jev import Jev
+
+    plugin_manager.register("ModelRequester", Jev, activate=False)
 
     plugin_manager.register(
         "ModelRequester",

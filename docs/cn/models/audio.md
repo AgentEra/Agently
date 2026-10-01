@@ -1,4 +1,4 @@
-# 音频请求（4.1.4.8 开发版）
+# 音频请求
 
 TTS/STT 使用独立的 `AudioModelRequest`，不走文本 `ModelRequest` 的 Prompt 链。
 显式配置音频模型和连接；Agent 文本模型、历史、输出结构和 auto_continue 不会混入音频请求。
@@ -133,3 +133,102 @@ Execution 插件声明 `required_agent_capabilities = ("audio",)`，工厂在构
 
 可运行示例：[四种持续输出](../../../examples/audio/continuous_audio.py)、
 [基础与原生流回环](../../../examples/audio/tts_stt_roundtrip.py)。
+
+## 可选入口语音检测（4.1.4.9 开发中）
+
+`TranscriptionOptions.input_options` 默认是 `None`，保持原有 STT 行为。
+显式开启后，检测器先判断语音概率，框架保留语音及前后保护采样，再提交原始 STT。
+**底噪是否属于语音，与语音持续多久是两项独立判断。** 默认最短语音时长为 0，
+保留被检测为语音的“对”“不”“嗯”等短回答；不会通过删除短回答来过滤话筒底噪。
+VAD 有误检/漏检，不保证识别所有咳嗽、音乐、噪声或很轻的语音，也不判断文字是否有意义。
+
+```python
+from agently import AudioInputEvent, AudioInputOptions, TranscriptionOptions, PCMFormat
+from agently.integrations.silero import SileroVAD
+
+# 显式安装可选依赖：pip install 'numpy>=1.24,<3' 'onnxruntime>=1.16,<2'
+# 从可信 Silero 上游获取 v5/v6 的 silero_vad.onnx，配置实际本机路径。
+# 构造时同步加载文件，建议在进入对延迟敏感的异步循环之前完成。
+detector = SileroVAD(os.environ["SILERO_VAD_MODEL_PATH"])
+
+async def on_audio(event: AudioInputEvent) -> None:
+    if event.kind == "pause":
+        print("声学停顿；此前原始转写已完成至块", event.last_block)
+    elif event.kind == "silence":
+        print("静默时间", event.start_seconds, event.end_seconds)
+
+options = TranscriptionOptions(input_options=AudioInputOptions(
+    detector=detector, threshold=0.5, min_speech_seconds=0,
+    end_silence_seconds=0.5, pre_speech_seconds=0.15,
+    post_speech_seconds=0.15, max_segment_seconds=15, on_event=on_audio,
+))
+# 在异步函数中；也可使用已绑定音频的 agent.stream_stt。
+async with audio.stream_stt(pcm_chunks, audio_format=PCMFormat(), options=options) as stream:
+    async for block in stream:
+        print(block.index, block.speech_index, block.start_seconds, block.end_seconds,
+              block.reason, block.text)
+
+# 单次 PCM s16le WAV 使用完全相同的配置：
+result = await audio.async_stt("recording.wav", options=options)
+# 同步脚本使用 audio.stt(..., options=options)，Agent 对应入口也支持。
+```
+
+普通 `import agently` 不加载 VAD 依赖。显式导入 Silero 适配器需要 NumPy/ONNX Runtime；
+缺依赖时给出安装错误，不自动安装。模型文件由开发者提供，框架不下载，不依赖 Torch。
+`SileroVAD` 支持单声道 8/16 kHz s16le，可共享检测器对象，每次调用的状态独立。
+通过 `SpeechDetector.open(audio_format)` 返回异步上下文中的 `SpeechDetectionSession`
+可替换实现；session 声明 `frame_samples`，`score(pcm)` 异步返回有限 `[0,1]` 概率。
+调用方传入完整采样帧；EOF 可短于一个检测帧。后端若补齐分析窗口，只能补分析副本。
+
+| 参数 | 默认值 | 含义与关系 |
+|---|---|---|
+| threshold | 0.5 | 概率大于等于此值视为语音；不另加音量硬门槛 |
+| min_speech_seconds | 0 | 累计语音概率帧的最短时长；调高可能误删真实短回答 |
+| end_silence_seconds | 0.5 | 连续非语音的采样时长，不是网络无包或墙钟超时 |
+| pre_speech_seconds / post_speech_seconds | 0.15 / 0.15 | 保留真实前后采样；后保护不得超过结束静默；不重复已提交采样 |
+| max_segment_seconds | 15 | 包含保护的单次 STT 上限；连续发言硬切，不伪造 pause |
+| max_buffer_bytes | 1048576 | 最大段加两个检测帧暂存必须装入此界限；不代表进程/驱动总内存上限 |
+| max_file_bytes | 33554432 | 仅开启处理的单次文件大小上限 |
+| on_event | None | 可选异步回调；等待完成，异常会终止流，不建后台事件队列 |
+
+时长按采样帧向上取整；检测分辨率由后端声明（Silero 为 32 ms）。最大段必须大于
+前保护、最短语音和结束静默之和，并容纳检测帧。未达到显式最短语音门槛的候选在
+pause/EOF/满段边界发 `rejected`，不无限等待。最大段含保护，边界处可能额外产生短保护块；
+调小它可能增加请求次数、延迟或截断词语。比较效果时同时记录提交秒数和请求数。
+
+开启检测时 `max_segment_seconds` 负责分块，`TranscriptionStreamOptions.window_seconds`
+不参与；`max_input_bytes` 仍限制每个源包，`max_transcript_chars` 限制每次转写结果，
+`max_pending_chars` 仍只限制输出文字断句。缓冲是有界 PCM，不默认保存录音。
+
+`TranscriptBlock` 的时间始终是原始采样时间，过滤后的静默间隙仍保留；保护采样也计入范围。
+新 `speech_index` 关联同一语音的多个块，`reason` 为 `pause`、`limit`、`input_end`；
+未开启的历史窗口仍为 `speech_index=None, reason="window"`。它们不是词级时间戳。
+
+事件顺序：`speech_start`（候选开始）→ 一个或多个 `transcript`（原始块就绪）→
+`pause`（已观察结束静默，且对应最终转写已完成）。`last_block` 指向完成的最后块。
+回调发生在拉取消费中：`transcript` 在原始块 yield 前通知，`pause` 随后续拉取推进。
+需要基于停顿处理文本时，可消费 `transcript` 回调中的 `event.transcript`，再处理 `pause`。
+停止拉取不会有后台任务继续推进。`silence` 合并通知静默范围，`input_end` 仅在正常 EOF
+及合法尾部处理完成后发送；EOF 不伪装为声学停顿。取消或任何错误不发完成、不冲刷尾部，
+失败流不可恢复；新调用需提供新输入。回调应及时返回，不重入同一个流。
+
+`stream_stt_with_auto_break` 仍按识别后的文字标点断句。其 `pause` 只保证原始块就绪，
+不保证无标点的 `TranscriptSegment` 已交付。音频分段与业务文字整理频次独立；
+框架不实现语气词清理、摘要、思想结束判断或业务触发调度。
+
+单次开启时只接受完整 PCM s16le WAV；MP3/AAC/Opus 等需调用方先解码为显式 PCM 流。
+多块单次结果以换行连接原始块文本，`duration=None`；全静默返回空文字并跳过 STT。
+需要各块原始文本及位置时使用流或事件。未开启时原驱动的单次格式能力保持不变。
+流中裸 bytes 必须遵守声明的固定格式；无法从任意裸字节可靠识别谎报格式或采样率切换。
+EOF 半采样帧报错，不补零；缺包不等于静默。拉取背压无法暂停真实讲话，采集适配器应
+自行报告 overflow。CPU 帧推理取消需等待已开始的本地推理收尾，不等于服务端取消确认。
+
+参考：[Silero VAD](https://github.com/snakers4/silero-vad)、
+[faster-whisper 的 VAD 实现](https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/vad.py)。
+可运行用法见 `examples/audio/stt_input.py`。
+
+输入预处理由 `AudioModelRequest` 负责。直接调用原生 driver 时，非空
+`input_options` 会被拒绝；第三方 `AudioCapability` 若接受此选项，需自行实现
+该合同。Agent 转发本身不会给自定义能力补上预处理。
+
+开发中 API 参见[独立模型用途与多模态串联](capabilities.md)。

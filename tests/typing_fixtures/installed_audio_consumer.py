@@ -5,7 +5,7 @@ from contextlib import AbstractAsyncContextManager
 from typing_extensions import assert_type
 
 from agently import (
-    Agent, AudioCapability, AudioModelRequest, PCMFormat, PCMStream, SpeechResult,
+    Agent, AudioCapability, AudioModelRequest, AudioInputEvent, AudioInputOptions, SpeechDetector, TranscriptionOptions, PCMFormat, PCMStream, SpeechResult,
     TextSegmenter, TextSegmentOptions, TranscriptBlock, TranscriptSegment,
 )
 
@@ -30,3 +30,13 @@ async def consume(audio: AudioCapability, text: AsyncIterable[str]) -> None:
         assert_type(stream.audio_format, PCMFormat | None)
         async for chunk in stream:
             assert_type(chunk, bytes)
+
+
+async def input_contract(audio: AudioModelRequest, detector: SpeechDetector, pcm: AsyncIterable[bytes]) -> None:
+    async def on_event(event: AudioInputEvent) -> None:
+        assert_type(event.transcript, TranscriptBlock | None)
+        assert_type(event.last_block, int | None)
+    options = TranscriptionOptions(input_options=AudioInputOptions(detector=detector, on_event=on_event))
+    async with audio.stream_stt(pcm, audio_format=PCMFormat(), options=options) as stream:
+        async for block in stream:
+            assert_type(block.speech_index, int | None)

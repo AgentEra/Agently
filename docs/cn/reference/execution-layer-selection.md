@@ -73,3 +73,22 @@ lifecycle evidence 时才显式 `compile_blocks(...)`。
 `context_read` 只接收调用方绑定的 ContextReader。文件操作使用 TaskWorkspace
 Actions，持久化使用 RecordStore ports。一个 owner 的 readback 不能被当作另一个
 owner 的 required capability 已执行的证据。
+
+TaskBoard 卡片的最终文件路径指定交付位置，不决定执行方式。需要 Actions 的卡片
+即使要等后续信息才能确定调用参数，也保留其执行方式；control 卡片仍可把文本交给
+Host 写入。指定最终路径时，Host 可以将已接受的候选制品复制到该位置，并核实复制
+内容后再报告完成，不必要求模型亲自执行复制。
+
+对于没有明确交付或能力合同的普通 TaskBoard 结果，由 loop 的最终判断驱动完成。
+终端语义校验只在明确硬合同、确定性完整性问题或生命周期阻断时保留，不再自动对
+每个文字结果追加第二轮审阅。
+已完成的叶卡候选本身不等于语义完成证明；候选提升仅用于明确的最终
+TaskWorkspace 交付合同。
+
+普通 finalizer 拒绝结果时，由同一次响应的 `replan_signal` 驱动既有 loop：
+`repair` 使用现有证据修复，`replan_segment` 先补充证据再修复，`blocked` 或
+`clarify` 等待缺失的外部条件。不追加 verifier 来选择下一步。Host 校验结构化信号，
+沿用无进展收敛；普通文字修复保留原来的内联输出形式。
+
+证据引用绑定失败时，只有实际可选引用集合非空才会请求模型修复绑定。空集合直接保留
+原有错误和未完成状态，不产生无可选项的模型请求，也不据此放宽完成条件。

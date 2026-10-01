@@ -1571,8 +1571,7 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "card-local decision; do not include raw chain-of-thought or hidden reasoning. "
                 "Use task_context_contract.current_time only when the card needs current/latest/as-of evidence; label older "
                 "or historical source material with its time boundary. Do not treat the runtime/current date as a "
-                "business fact, incident date, deployment date, publication date, approval date, or validation date "
-                "unless the goal or verifier-visible evidence explicitly provides it. "
+                "task fact unless task evidence explicitly connects them. "
                 "taskboard_evidence_view is the compact evidence summary; request full content only through available "
                 "TaskWorkspace or Action refs when needed. If previous_attempt_errors is non-empty, avoid repeating "
                 "the same failing source or method when a bounded fallback can satisfy the card. dependency_readbacks "
@@ -1603,20 +1602,14 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "card.evidence_contract.prior_final_evidence_use and change only bindings or claims implicated by the repair contract. "
                 "Only return failed or blocked when the card cannot produce the required outcome or the missing "
                 "evidence is truly critical. If this card produces the user-facing deliverable, provide the complete "
-                "bounded body in candidate_final_result, final_result, or artifact_markdown when it fits the bounded "
-                "response. Preserve task-provided facts exactly. Do not add concrete times, dates, publication states, "
-                "validation states, numbers, source headings, or status details unless they are visible in the goal, "
-                "dependency evidence, or evidence_ledger, or are explicitly derived from those facts and labeled as "
-                "derived. Preserve uncertainty and evidence strength exactly: statements such as 'no known data loss', "
-                "'audit still running', 'not yet published', or 'needs sign-off' must not be rewritten into confirmed "
-                "absence, completed validation, publication, approval, or resolution. When evidence says no data loss "
-                "is known and an audit is still running, do not state or imply that data is intact, complete, safe, "
-                "fully verified, or that no data was lost. Keep the response bounded. "
-                "Unless the user explicitly requests a fill-in template, do not leave unresolved placeholders such as "
-                "[date], [time], [name], [Your Name], [Title], TODO, or TBD in a final deliverable; omit unknown "
-                "details or write a role-generic sentence grounded in available facts. "
-                "For a long, sectioned, or file-backed deliverable that cannot fit the bounded response, "
-                "return artifact_manifest as a structured deliverable contract with path='final.md', section "
+                "bounded body in candidate_final_result when it fits the bounded "
+                "response. Preserve task-provided facts and ground factual claims in available evidence, including "
+                "additions beyond the success criteria. Distinguish evidence-derived analysis from reported facts; "
+                "preserve the evidence's scope, uncertainty, and pending states. Provide the content required by the "
+                "task; unresolved required content remains a gap. Templates or intentionally open fields are valid "
+                "when the task requests them. "
+                "Use artifact_manifest only for a file deliverable declared by this card's output contract "
+                "when the body is not yet supplied. Include its path, section "
                 "ids/titles, brief section intent, and source/evidence refs to use; artifact_manifest is not itself "
                 "the deliverable body or proof of completion. Do not include full section content in "
                 "artifact_manifest, and do not self-declare trusted file_refs for deliverables. Apply "
@@ -1634,6 +1627,10 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "These process fields are not evidence. Do not claim the whole task is complete; report only this "
                 "card's local status."
             )
+            file_delivery = bool(
+                self._taskboard_context_final_task_workspace_deliverables(context)
+                or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+            )
             card_output_schema = {
                 "card_intent": (
                     str,
@@ -1650,16 +1647,6 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "candidate_final_result": (
                     str,
                     "Complete user-facing deliverable body when this card directly produces one",
-                    False,
-                ),
-                "final_result": (
-                    str,
-                    "Complete final deliverable body when this card directly produces the final answer",
-                    False,
-                ),
-                "artifact_markdown": (
-                    str,
-                    "Bounded short markdown deliverable only; when this bounded JSON response is a compact control plane for a long, sectioned, or file-backed deliverable, return an artifact_manifest outline without full section content",
                     False,
                 ),
                 "artifact_manifest": (
@@ -1701,6 +1688,8 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 ),
                 "diagnostics": ([dict], "Optional card diagnostics", False),
             }
+            if not file_delivery:
+                card_output_schema.pop("artifact_manifest")
             action_requirements = self._taskboard_card_action_requirements(context.card)
             required_action_ids = self._taskboard_card_required_action_ids(context.card)
             work_unit = WorkUnitIntent(
@@ -1893,7 +1882,7 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             card_output, delivery_plan = self._prepare_taskboard_task_workspace_artifact_delivery(
                 card_output,
                 context,
-                deliverable_mode=self._task_workspace_artifact_delivery_mode(card_output),
+                deliverable_mode=self._task_workspace_artifact_delivery_mode(card_output, context=context),
             )
             card_output = await self._deliver_task_workspace_artifact(
                 card_output,
@@ -2252,8 +2241,7 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             "chain-of-thought or hidden reasoning. "
             "Use task_context_contract.current_time only when current/latest/as-of evidence matters, and label older "
             "or historical source material with its time boundary. Do not treat the runtime/current date as a "
-            "business fact, incident date, deployment date, publication date, approval date, or validation date "
-            "unless the goal or verifier-visible evidence explicitly provides it. "
+            "task fact unless task evidence explicitly connects them. "
             "do not plan or call tools from this request. taskboard_evidence_state is lifecycle-only; "
             "evidence_ledger is the one authoritative body-bearing evidence projection, while "
             "taskboard_scoped_evidence_state only identifies the dirty acceptance subset. Preserve cold refs as "
@@ -2274,9 +2262,9 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             "known content_version and use range={offset,max_bytes} only for an intentional bounded segment. Never "
             "return a bare target string or guess an owner from URI syntax; do not mention the target only in gaps prose. "
             "When the card can produce the user-facing deliverable, provide the complete bounded body in "
-            "artifact_markdown, candidate_final_result, or final_result when it fits the bounded output. For a long, "
-            "sectioned, or file-backed deliverable that cannot fit the bounded response, return artifact_manifest as "
-            "a structured deliverable contract with path='final.md', section ids/titles, brief section intent, and "
+            "candidate_final_result when it fits the bounded output. Use artifact_manifest only for a file deliverable "
+            "declared by this card's output contract when the body is not yet supplied. Include its path, "
+            "section ids/titles, brief section intent, and "
             "source/evidence refs to use; artifact_manifest is not itself the deliverable body or proof of completion. "
             "Do not include full section content in artifact_manifest, and do not self-declare trusted file_refs for "
             "deliverables. If the task is source-grounded, include "
@@ -2284,16 +2272,11 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
             "do not mention a source title without its verifier-visible URL/path when such a ref exists. "
             "Apply task_workspace_delivery_policy: when this card owns a required final deliverable, use its exact offered "
             "terminal candidate path for Action inputs and artifact_manifest.path; never write the protected target path. "
-            "Preserve task-provided facts exactly. Do not add concrete times, dates, publication states, validation "
-            "states, numbers, source headings, or status details unless they are visible in the goal, dependency "
-            "evidence, or evidence_ledger, or are explicitly derived from those facts and labeled as derived. "
-            "Preserve uncertainty and evidence strength exactly: no-known-loss, still-running audit, unpublished "
-            "manifest, missing sign-off, and unresolved warning states must not become confirmed absence, complete "
-            "validation, publication, approval, or fix. When evidence says no data loss is known and an audit is "
-            "still running, do not state or imply that data is intact, complete, safe, fully verified, or that no data was lost. "
-            "Unless the user explicitly requests a fill-in template, do not leave unresolved placeholders such as "
-            "[date], [time], [name], [Your Name], [Title], TODO, or TBD in a final deliverable; omit unknown "
-            "details or write a role-generic sentence grounded in available facts. "
+            "Preserve task-provided facts and ground factual claims in available evidence, including additions "
+            "beyond the success criteria. Distinguish evidence-derived analysis from reported facts; preserve the "
+            "evidence's scope, uncertainty, and pending states. Provide the content required by the task; "
+            "unresolved required content remains a gap. Templates or intentionally open fields are valid when the "
+            "task requests them. "
             "For file-backed deliverables, return acceptance_points with expected headings or exact anchors for "
             "critical verification points; do not invent line numbers or trusted file refs. "
             "After the main control result fields, include short self_check, short_summary, and progress_message for "
@@ -2365,6 +2348,10 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "artifact_quote, and new_string for its bounded replacement; "
                 "do not use write, append, insert, full-file replacement, or unrelated edits."
             )
+        file_delivery = bool(
+            self._taskboard_context_final_task_workspace_deliverables(context)
+            or (self._required_task_workspace_deliverables() and self._taskboard_context_card_is_leaf(context))
+        )
         control_output_schema = {
             "card_intent": (
                 str,
@@ -2383,16 +2370,6 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 "Complete user-facing deliverable body when this card directly produces one",
                 False,
             ),
-            "final_result": (
-                str,
-                "Complete final deliverable body when this card directly produces the final answer",
-                False,
-            ),
-                "artifact_markdown": (
-                    str,
-                    "Bounded short markdown deliverable only; when this bounded JSON response is a compact control plane for a long, sectioned, or file-backed deliverable, return an artifact_manifest outline without full section content",
-                    False,
-                ),
             "artifact_manifest": (
                 dict,
                 "Preferred TaskWorkspace artifact manifest proposal for sectioned or file-backed deliverables",
@@ -2486,6 +2463,8 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 False,
             ),
         }
+        if not file_delivery or grounding_patch_mode:
+            control_output_schema.pop("artifact_manifest")
         work_unit = WorkUnitIntent(
             id=f"taskboard:{context.card.id}:control",
             origin="taskboard_card",
@@ -2701,11 +2680,22 @@ class AgentTaskTaskBoardCardExecutionMixin(AgentTaskMixinBase):
                 execution_id=None,
             )
         required_deliverables = self._required_task_workspace_deliverables()
+        card_evidence_contract = getattr(context.card, "evidence_contract", None)
+        inline_repair = (
+            isinstance(card_evidence_contract, Mapping)
+            and card_evidence_contract.get("deliverable_mode") == "inline_final"
+            and not required_deliverables
+            and not self._taskboard_context_final_task_workspace_deliverables(context)
+        )
         allow_task_workspace_delivery = (
             not grounding_patch_mode
+            and not inline_repair
             and self._taskboard_control_output_allows_task_workspace_delivery(card_output)
         )
-        deliverable_mode = self._task_workspace_artifact_delivery_mode(card_output) if allow_task_workspace_delivery else None
+        deliverable_mode = (
+            self._task_workspace_artifact_delivery_mode(card_output, context=context)
+            if allow_task_workspace_delivery else None
+        )
         prefer_stream_draft = False
         if (
             allow_task_workspace_delivery

@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import mimetypes
 from pathlib import Path
@@ -261,14 +262,46 @@ def unsupported_export_result(
     }
 
 
-def inspect_task_workspace_file(path: Path, *, relative_path: str) -> TaskWorkspaceFileInfo:
+def inspect_task_workspace_file(
+    path: Path, *, relative_path: str, _raw: bytes | None = None,
+) -> TaskWorkspaceFileInfo:
     extension = path.suffix.lower()
     guessed_type = mimetypes.guess_type(str(path))[0]
     media_type = guessed_type
     exists = path.exists()
     raw = b""
+    size = 0
+    digest = hashlib.sha256()
+    text_valid = True
     if exists and path.is_file():
-        raw = path.read_bytes()
+        if _raw is not None:
+            raw = _raw
+            size = len(raw)
+            digest.update(raw)
+            try:
+                raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text_valid = False
+        else:
+            # Revision/metadata inspection must not materialize a large file.
+            # Keep only signatures while validating UTF-8 and hashing in chunks.
+            decoder = codecs.getincrementaldecoder("utf-8-sig")()
+            with path.open("rb") as carrier:
+                while chunk := carrier.read(1024 * 1024):
+                    if not raw:
+                        raw = chunk[:4096]
+                    size += len(chunk)
+                    digest.update(chunk)
+                    if text_valid:
+                        try:
+                            decoder.decode(chunk)
+                        except UnicodeDecodeError:
+                            text_valid = False
+                if text_valid:
+                    try:
+                        decoder.decode(b"", final=True)
+                    except UnicodeDecodeError:
+                        text_valid = False
     signatures: list[str] = []
     if raw.startswith(b"%PDF-"):
         signatures.append("pdf")
@@ -285,7 +318,7 @@ def inspect_task_workspace_file(path: Path, *, relative_path: str) -> TaskWorksp
         media_type = image_media_type
     if b"\x00" in raw[:4096]:
         signatures.append("nul_byte")
-    sha256 = hashlib.sha256(raw).hexdigest()
+    sha256 = digest.hexdigest()
 
     content_kind = "unknown"
     readable = False
@@ -303,10 +336,8 @@ def inspect_task_workspace_file(path: Path, *, relative_path: str) -> TaskWorksp
         content_kind = "text"
         writable = True
         readable = True
-    elif exists and raw:
-        try:
-            raw.decode("utf-8-sig")
-        except UnicodeDecodeError:
+    elif exists and size:
+        if not text_valid:
             content_kind = "binary" if "nul_byte" in signatures else "unknown"
             readable = False
         else:
@@ -321,7 +352,7 @@ def inspect_task_workspace_file(path: Path, *, relative_path: str) -> TaskWorksp
         "extension": extension,
         "media_type": media_type,
         "content_kind": content_kind,
-        "bytes": len(raw),
+        "bytes": size,
         "sha256": sha256,
         "signatures": signatures,
         "readable": readable,
@@ -360,8 +391,12 @@ class DefaultTextTaskWorkspaceFileIOHandler:
         offset: int = 0,
         options: dict[str, Any] | None = None,
     ) -> TaskWorkspaceReadResult:
-        _ = options
-        raw = path.read_bytes()
+        return self._read_bytes(path.read_bytes(), file_info, max_bytes=max_bytes, offset=offset)
+
+    def _read_bytes(
+        self, raw: bytes, file_info: TaskWorkspaceFileInfo, *, max_bytes: int, offset: int,
+    ) -> TaskWorkspaceReadResult:
+        """Decode bytes already observed by the registry in this read operation."""
         try:
             text = raw.decode("utf-8-sig")
             encoding = "utf-8-sig" if raw.startswith(b"\xef\xbb\xbf") else "utf-8"

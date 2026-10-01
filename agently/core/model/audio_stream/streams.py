@@ -91,14 +91,18 @@ async def pcm_stream(
             reader._first = None
 
 
-def validate_transcription_stream(fmt: PCMFormat, options: TranscriptionStreamOptions) -> int:
+def validate_transcription_stream(
+    fmt: PCMFormat, options: TranscriptionStreamOptions, *, windowed: bool = True,
+) -> int:
     frame_bytes = validate_pcm(fmt)
-    seconds = options.window_seconds
-    if isinstance(seconds, bool) or not math.isfinite(seconds) or seconds <= 0:
-        raise ValueError("window_seconds must be finite and positive.")
     positive_int(options.max_input_bytes, "max_input_bytes")
     positive_int(options.max_transcript_chars, "max_transcript_chars")
     positive_int(options.max_pending_chars, "max_pending_chars")
+    if not windowed:
+        return 0  # acoustic input options own the segment size
+    seconds = options.window_seconds
+    if isinstance(seconds, bool) or not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("window_seconds must be finite and positive.")
     frames = int(seconds * fmt.sample_rate)
     if frames < 1 or frames * frame_bytes > options.max_input_bytes:
         raise ValueError("STT window must contain at least one frame and fit max_input_bytes.")

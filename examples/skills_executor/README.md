@@ -45,6 +45,7 @@ python examples/skills_executor/08_architecture_diagram_skill.py
 python examples/skills_executor/09_skill_script_exec.py
 python examples/skills_executor/10_model_pool_key_pool_resolution.py
 python examples/skills_executor/11_conditional_resource_read.py
+python examples/skills_executor/12_complete_task_selection.py
 ```
 
 `09_skill_script_exec.py` uses two requests in one Session. The first does not
@@ -58,3 +59,8 @@ from the conditions in the already-read root Skill. Configure `AGENTLY_BASE_URL`
 `AGENTLY_API_KEY`, and `AGENTLY_MODEL` explicitly. It compares outline and handoff
 phases through the existing execution context reader, without mounting Actions
 or generating a final business answer.
+
+`12_complete_task_selection.py` uses a real model to select optional Skills from
+all declared goals, criteria and original task facts. Configure the same
+`AGENTLY_*` variables; `AGENTLY_REQUEST_OPTIONS` accepts provider-specific JSON
+options. It inspects preparation and binding reuse without executing scripts.

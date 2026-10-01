@@ -1,5 +1,7 @@
 # Agent Auto-Orchestration
 
+> New 4.1.4.9 long tasks use the [unified Loop](long-task-loop.md). Flat/TaskBoard card scheduling, goal preparation and legacy task recovery below apply only to explicit 4.1.x compatibility strategies.
+
 Agently 4.1.4 makes `agent.start()` the default user-layer entrypoint for an
 Agent turn. It keeps returning the business result, while the Agent can route
 through ordinary model response, Actions, or SkillLibrary-backed Skills
@@ -505,12 +507,13 @@ strategy context unless the child explicitly calls `.strategy(...)`.
 Auto may reuse a validated minimal board shape from task-shape analysis or fall
 back to Flat when the proposed board is only a small linear sequence with no
 real dependency, parallelism, readback, or recovery value. Explicit
-`execution="taskboard"` still preserves TaskBoard. TaskBoard may also promote a
-completed terminal candidate directly to verification instead of paying for a
-second final synthesis request. These optimizations only remove redundant model
-calls; final acceptance still requires the canonical evidence ledger, TaskWorkspace
-readback evidence, deterministic host guards, and model-owned terminal
-verification.
+`execution="taskboard"` still preserves TaskBoard. With an explicit final
+TaskWorkspace delivery contract, TaskBoard may promote a completed terminal
+candidate directly to verification, followed by Host delivery and readback.
+Ordinary candidates go through the loop finalizer for their semantic completion
+decision; a completed leaf card alone does not establish task completion.
+Explicit delivery, capability and required-context contracts, and deterministic
+integrity or lifecycle blocks still trigger terminal verification.
 
 ```python
 agent.language("en")
@@ -907,8 +910,12 @@ duplicate verifier claim keys and unknown evidence ids fail closed. Exact
 carrier identity and quote scope are reconstructed from the immutable host
 claim map before a structured material-claim repair contract is created.
 
-When a bounded step or TaskBoard card returns a short `artifact_markdown` body
-or a sectioned `artifact_manifest`, AgentTask writes the deliverable through the
+Public answer delivery preserves the complete value; metadata and log preview limits do not truncate `final_result`.
+
+TaskBoard model/control cards use `candidate_final_result` as their single complete-body slot. Ordinary text stays inline. Only a declared task/card final file-delivery contract authorizes automatic Host materialization and exposes the `artifact_manifest` content plan. Legacy `final_result` / `artifact_markdown` bodies remain readable, but their field names alone do not authorize file creation. When the task requests a file without naming it, the planner chooses a relative path through the existing delivery field. If a final card supplies complete text without a manifest path, the Host stages that text for the declared target; it does not ask the model to rewrite it just to move it. A readback card also executes its declared `scoped_retrieval` through the existing ContextReader. Locator-only results remain references, while returned source bodies retain their actual completeness in the shared evidence ledger.
+
+When a bounded step returns an explicit artifact, or a TaskBoard card with a
+file-delivery contract returns a complete body or sectioned `artifact_manifest`, AgentTask writes the deliverable through the
 bound TaskWorkspace and immediately reads it back. The cold evidence records
 `path`, `bytes`, `sha256`, bounded preview, and `file_refs`; model-hot verifier
 input uses path/ref handles, bounded content or preview, and truncation status.
@@ -918,7 +925,9 @@ document can draft as natural Markdown/plain text with no `.output()` contract.
 AgentTask's TaskWorkspace artifact writer consumes AgentExecution stream facts:
 natural body text comes from raw delta items, and retry boundaries come from
 `$status` when the provider reports it. This natural-text path does not require
-the draft request to use `.output()`. If the public `type="delta"` replay marker
+the draft request to use `.output()`. A non-streaming draft uses the completed
+text from that same execution when no delta was delivered, without another
+model request or duplicating an already streamed body. If the public `type="delta"` replay marker
 `"<$retry>...</$retry>"` reaches the artifact consumer, it is treated as a
 public replay delimiter and is never written or transported as deliverable text.
 It is not promoted into retry metadata; structured `$status` remains the retry
@@ -1726,6 +1735,8 @@ assert await execution.get_result(revision=0).async_get_full_data() == first
 Rework produces a new candidate and returns its full result. New readers select
 its revision; captured readers retain their original result, metadata and stream.
 The original task and acceptance contract remain available alongside the feedback.
+Request rework preserves the original `info` and `instruct` slots and appends the
+current feedback and previous candidate; repeated revisions do not accumulate obsolete feedback.
 Request producers revise the previous candidate; Plan keeps accepted clarification;
 LongContent reuses an unchanged prefix and rewrites affected dependent sections.
 LongTask asks the model to select retained work, then validates the IDs and

@@ -710,3 +710,68 @@ def resolve_model_pool_settings(model_key: str, settings: "Settings") -> None:
             settings.set(f"{ ns }.{ key }", value)
     if api_key is not None:
         settings.set(f"{ns}.api_key", api_key)
+
+
+def resolve_role_profile(role: str, settings: "Settings", *, select_credentials: bool = True) -> tuple[str, dict[str, Any]] | None:
+    """Resolve an independent use profile through the existing model/key pools.
+
+    Provider namespaces are deliberately not inherited: two uses of the same
+    provider must not share credentials or request options accidentally.
+    """
+    from copy import deepcopy
+
+    from agently.types.settings import ModelUseSettings
+    from agently.utils.Settings import Settings
+
+    raw = settings.get(role, None)
+    if raw is None or raw == {}:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"{role} must be a model configuration object.")
+    config = ModelUseSettings.model_validate(dict(raw), strict=True).to_dict()
+    key = config.pop("model_key", None)
+    selected = Settings()
+    for name in ("model_pool", "model_profiles", "api_key_pools", "key_pool", "key_pool_strategy"):
+        selected.set(name, deepcopy(settings.get(name, {})))
+    if key:
+        if config:
+            raise ValueError(f"{role}.model_key cannot be combined with an inline model profile.")
+        pool = selected.get("model_pool", {})
+        if not isinstance(pool, Mapping) or key not in pool:
+            raise ValueError(f"{role}.model_key {key!r} must exist in model_pool.")
+    else:
+        if not config.get("provider") or not config.get("model"):
+            raise ValueError(f"Configure {role}.provider and {role}.model, or {role}.model_key.")
+        key = "__agently_model_use__"
+        selected.set("model_pool", {key: config})
+    if not select_credentials:
+        route = _resolve_model_route(key, selected)
+        if not route.model_name:
+            raise ValueError(f"{role} did not resolve a valid model profile.")
+        return route.provider, {**deepcopy(route.profile), "model": route.model_name}
+    resolve_model_pool_settings(key, selected)
+    provider = selected.get("plugins.ModelRequester.activate", "OpenAICompatible")
+    profile = selected.get(f"plugins.ModelRequester.{provider}", {})
+    if not isinstance(provider, str) or not provider.strip() or not isinstance(profile, Mapping) or not profile.get("model"):
+        raise ValueError(f"{role} did not resolve a valid model profile.")
+    return provider, deepcopy(dict(profile))
+
+
+def apply_role_profile(request: Any, role: str) -> bool:
+    """Select one role on a request-local snapshot; return False when absent."""
+    from copy import deepcopy
+
+    selected = resolve_role_profile(role, request.settings)
+    if selected is None:
+        return False
+    provider, profile = selected
+    plugin = request.plugin_manager.get_plugin("ModelRequester", provider)
+    defaults = {key: deepcopy(value) for key, value in getattr(plugin, "DEFAULT_SETTINGS", {}).items() if key != "$mappings"}
+    snapshot = deepcopy(request.settings.get())
+    request.settings.parent = None
+    request.settings.update(snapshot)
+    request.settings.set(f"plugins.ModelRequester.{provider}", {**defaults, **profile})
+    request.settings.set("plugins.ModelRequester.activate", provider)
+    request._model_key = None
+    request._model_role = None
+    return True

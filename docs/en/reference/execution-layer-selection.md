@@ -76,3 +76,28 @@ Use `context_read` only with a caller-bound ContextReader. Use TaskWorkspace
 Actions for file operations and RecordStore ports for persistence. Never use a
 readback from one owner as proof that a required capability owned by another
 owner executed.
+
+For TaskBoard cards, a final file path specifies delivery, not an execution
+method. A card that needs Actions keeps its execution shape even when its
+arguments must be decided later. A control card can still hand text to the Host
+for writing. When a final path is required, the Host can promote the accepted
+staged artifact to that path and verify the copied content before reporting
+completion; the model does not need to perform the copy itself.
+
+For ordinary TaskBoard results without an explicit delivery or capability
+contract, the loop's finalization decision drives completion. Terminal semantic
+verification remains for explicit hard contracts and deterministic integrity or
+lifecycle blocks; it is not an automatic second review of every text result.
+A completed leaf-card candidate is not semantic proof by itself; candidate
+promotion is reserved for an explicit final TaskWorkspace delivery contract.
+
+When an ordinary finalizer rejects the result, its `replan_signal` directs the
+existing loop: `repair` corrects the result with current evidence;
+`replan_segment` obtains missing evidence before repair; `blocked` or `clarify`
+stops for an unavailable external condition. No second verifier is added to
+choose that transition. Host validates the signal and retains no-progress
+convergence; inline repairs preserve the inline output form.
+
+Evidence-binding repair requests a model only when the offered reference set has
+at least one candidate. With no candidates, existing errors and incomplete state
+remain unchanged; skipping the request does not authorize completion.

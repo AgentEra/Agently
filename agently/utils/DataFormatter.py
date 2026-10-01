@@ -107,7 +107,7 @@ class DataFormatter:
                 return value.__name__
             return str(value)
 
-        if isinstance(value, dict):
+        if isinstance(value, Mapping):
             return {str(k): DataFormatter.sanitize(v, remain_type=remain_type) for k, v in value.items()}
         if isinstance(value, list):
             return [DataFormatter.sanitize(v, remain_type=remain_type) for v in value]

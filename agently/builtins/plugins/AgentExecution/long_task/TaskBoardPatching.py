@@ -22,6 +22,7 @@ from agently.types.data import TaskBoardPatch
 
 from .TaskShared import (
     AgentTaskMixinBase,
+    build_task_board_evidence_view,
     Any,
     cast,
     collect_evidence_use,
@@ -2374,6 +2375,19 @@ class AgentTaskTaskBoardPatchingMixin(AgentTaskMixinBase):
                 else " Produce a complete corrected deliverable; preserve verifier-visible source refs; remove, "
                 "qualify, or replace unsupported facts instead of inventing evidence."
             )
+        inline_repair = (
+            final_verification.get("decision_source") == "taskboard_finalizer"
+            and not repair_deliverables
+            and not self._taskboard_final_refs_from_evidence_view(
+                build_task_board_evidence_view(effective_revision).to_dict()
+            )
+        )
+        if inline_repair:
+            repair_completion_instruction += (
+                " Preserve the current inline answer format. Return the complete corrected body in "
+                "candidate_final_result; leave artifact_markdown, artifact_manifest, file_refs, and "
+                "artifact acceptance_points empty because this repair has no file delivery contract."
+            )
         evidence_contract = {
             "kind": "taskboard_final_verification_repair",
             "missing_criteria": self._normalize_string_list(final_verification.get("missing_criteria")),
@@ -2381,6 +2395,8 @@ class AgentTaskTaskBoardPatchingMixin(AgentTaskMixinBase):
             "acceptance_delta": self._normalize_string_list(final_verification.get("acceptance_delta")),
             "reason": str(final_verification.get("reason") or ""),
         }
+        if inline_repair:
+            evidence_contract["deliverable_mode"] = "inline_final"
         prior_final_evidence_use = []
         for item in collect_evidence_use(final)[:24]:
             if not isinstance(item, Mapping):

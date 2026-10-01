@@ -70,6 +70,16 @@ class Settings(SerializableStateData):
         self._path_mappings.set(simplify_path, actual_path)
         return self
 
+    def _mapped_path(self, key: str) -> str | None:
+        """Resolve a registered namespace and its dotted child paths."""
+        parts = key.split(".")
+        for size in range(len(parts), 0, -1):
+            prefix = ".".join(parts[:size])
+            mapped = self._path_mappings.get(prefix)
+            if isinstance(mapped, str):
+                return ".".join([mapped, *parts[size:]])
+        return None
+
     def register_kv_mappings(
         self,
         simplify_path: str,
@@ -182,12 +192,15 @@ class Settings(SerializableStateData):
         mapped_data: dict[str, Any] = {}
         for key, item_value in data.items():
             mapped_data[key] = item_value
+            mapped_path = self._mapped_path(key)
             if key in self._path_mappings:
                 mapped_data[str(self._path_mappings[key])] = item_value
-            elif key in self._kv_mappings:
+            elif self._kv_mappings.get(key) is not None:
                 actual_settings = self._kv_mappings.get(f"{ key }.{ item_value }")
                 if actual_settings:
                     mapped_data.update(cast(dict[str, Any], actual_settings))
+            elif mapped_path is not None:
+                mapped_data[mapped_path] = item_value
         self.update(mapped_data)
         return self
 
@@ -211,11 +224,15 @@ class Settings(SerializableStateData):
         if key in self._path_mappings:
             self.update({str(self._path_mappings[key]): value})
             return self
-        elif key in self._kv_mappings:
+        elif self._kv_mappings.get(key) is not None:
             actual_settings = self._kv_mappings.get(f"{ key }.{ value }")
             if actual_settings:
                 self.update(cast("SerializableMapping", actual_settings))
                 return self
+        mapped_path = self._mapped_path(key)
+        if mapped_path is not None:
+            self.update({mapped_path: value})
+            return self
         self.set(key, value)
         return self
 

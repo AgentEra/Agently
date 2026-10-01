@@ -1580,6 +1580,7 @@ def _is_taskboard_final_request(text: str) -> bool:
     return (
         "Synthesize the final result for this TaskBoard task" in text
         or "Assemble a verifier-ready final result for this TaskBoard task" in text
+        or "Assemble the final result for this task from completed card evidence" in text
     )
 
 
@@ -1760,6 +1761,7 @@ class MockTaskBoardSectionedArtifactRequester(MockAgentExecutionRequester):
                         "evidence_to_use": [],
                         "done_when": "The complete sectioned report is available in TaskWorkspace.",
                         "allowed_execution_shape": "control",
+                        "final_task_workspace_deliverables": ["final.md"],
                     }
                 ],
                 "reflection_points": ["Ensure the artifact is complete and backed by TaskWorkspace readback."],
@@ -5267,7 +5269,8 @@ async def test_taskboard_intermediate_card_relocates_required_final_deliverable_
 
 
 def test_empty_artifact_manifest_does_not_request_task_workspace_delivery():
-    assert AgentTask._task_workspace_artifact_delivery_mode({"artifact_manifest": {}}) == ""
+    task = AgentTask(_create_agent("empty-artifact"), goal="Answer", success_criteria=["Answer supplied"])
+    assert task._task_workspace_artifact_delivery_mode({"artifact_manifest": {}}) == ""
 
 
 @pytest.mark.asyncio
@@ -6163,7 +6166,7 @@ def test_taskboard_completion_notes_do_not_degrade_resolved_repair_history():
 
 
 @pytest.mark.asyncio
-async def test_taskboard_finalizer_rejection_still_runs_terminal_verifier(tmp_path, monkeypatch):
+async def test_taskboard_finalizer_rejection_stops_without_redundant_terminal_verifier(tmp_path, monkeypatch):
     agent = _create_agent("execution-taskboard-finalizer-rejection-verifier").use_task_workspace(
         tmp_path / "task_workspace"
     )
@@ -6241,16 +6244,14 @@ async def test_taskboard_finalizer_rejection_still_runs_terminal_verifier(tmp_pa
 
     terminal = await task._finalize_taskboard(completed_revision, context_pack=cast(dict[str, Any], {}))
 
-    assert verification_calls
-    assert verification_calls[0]["execution_result"]["final_result"] == "Complete candidate final answer."
-    assert terminal == {"terminal": True, "status": "completed"}
-    assert task.result["status"] == "completed"
-    assert task.result["accepted"] is True
-    assert task.result["final_result"] == "Verified final answer."
+    assert verification_calls == []
+    assert terminal == {"terminal": True, "status": "blocked"}
+    assert task.result["status"] == "blocked"
+    assert task.result["accepted"] is False
     terminal_state = cast(dict[str, Any], task._terminal_taskboard_state)
-    assert terminal_state["final_verification"]["is_complete"] is True
-    assert terminal_state["taskboard_acceptance_index"]["metadata"]["green_count"] == 1
-    assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is True
+    assert terminal_state["final_verification"] is None
+    assert terminal_state["taskboard_acceptance_index"]["metadata"]["green_count"] == 0
+    assert terminal_state["acceptance_verification_plan"]["all_satisfied"] is False
     assert "taskboard" not in task.result
 
 
@@ -7926,10 +7927,7 @@ async def test_flat_promotes_report_like_evidence_to_candidate_final_result(tmp_
 
     assert result["status"] == "completed"
     assert result["accepted"] is True
-    assert result["final_result"]["preview"].startswith("# Weekly Report")
-    assert result["final_result"]["chars"] == len(MockFlatEvidenceCandidateRequester.report.strip())
-    assert result["final_result"]["truncated"] is True
-    assert MockFlatEvidenceCandidateRequester.report not in str(result["final_result"])
+    assert result["final_result"] == MockFlatEvidenceCandidateRequester.report.strip()
     assert verify_requests
     assert "candidate_final_result" in verify_requests[-1]
     assert "Weekly Report" in verify_requests[-1]
@@ -8213,7 +8211,8 @@ async def test_taskboard_resume_blocked_snapshot_retries_finalization_without_re
     assert resumed_result.get("resumed") is not True
     assert not _is_taskboard_plan_request(request_text)
     assert "Execute exactly one TaskBoard card" not in request_text
-    assert not _is_taskboard_final_request(request_text)
+    assert _is_taskboard_final_request(request_text)
+    assert "Verify the task against every success criterion" not in request_text
 
 
 @pytest.mark.asyncio
@@ -8235,12 +8234,12 @@ async def test_taskboard_control_card_runs_single_model_request_through_block_ca
     assert result["status"] == "completed"
     assert result["accepted"] is True
     assert result["final_result"] == (
-        "TaskWorkspace artifact delivered at final.md; full content is available through file_refs/readback."
+        "# Control Result\n\nComplete deliverable body."
     )
-    assert taskboard["finalization_source"] == "candidate_promotion"
+    assert taskboard["finalization_source"] == "model_finalizer"
     assert card_result["status"] == "completed"
-    assert card_result["preview"]["task_workspace_artifact_delivery"]["status"] == "delivered"
-    assert "Complete deliverable body." in card_result["preview"]["task_workspace_artifact_delivery"]["file_refs"][0]["preview"]
+    assert not card_result["file_refs"]
+    assert not (tmp_path / "task_workspace" / "final.md").exists()
     assert card_result["metadata"]["execution_kind"] == "taskboard_control_request"
     block_carrier = card_result["metadata"]["block_carrier"]
     assert block_carrier["work_unit"]["origin"] == "taskboard_card"
@@ -8623,7 +8622,12 @@ async def test_taskboard_agent_card_prefetches_dependency_action_artifact_refs(t
     assert dependency_carrier["block_graph"]["execution_block_kinds"] == ["action_call"]
     assert MockTaskBoardDependencyReadbackRequester.dependency_readback_seen is True
     assert MockTaskBoardDependencyReadbackRequester.source_refs_seen is True
-    request_text = "\n".join(MockTaskBoardDependencyReadbackRequester.requests)
+    # Inspect content independently of JSON escaping and YAML line wrapping.
+    request_text = " ".join(
+        " ".join(message["content"].split())
+        for request in MockTaskBoardDependencyReadbackRequester.requests
+        for message in json.loads(request).get("messages", [])
+    )
     assert "Action success or a selection_key proves only execution/ref availability" in request_text
     assert "do not read a recall Action''s output as a new artifact" in request_text
     assert any(item.path == "agent_task.taskboard.card.synthesize.dependency_readback.started" for item in stream_items)
@@ -8671,9 +8675,10 @@ async def test_taskboard_control_card_prefetches_dependency_action_artifact_refs
     assert result["status"] == "completed"
     assert result["accepted"] is True
     assert result["final_result"] == (
-        "TaskWorkspace artifact delivered at final.md; full content is available through file_refs/readback."
+        "taskboard control dependency readback accepted result"
     )
-    assert taskboard["finalization_source"] == "candidate_promotion"
+    assert taskboard["finalization_source"] == "model_finalizer"
+    assert not synthesize_result["file_refs"]
     assert synthesize_result["status"] == "completed"
     assert dependency_carrier["work_unit"]["runtime_preferences"]["handler"] == (
         "agent_task_dependency_artifact_readback"
@@ -8891,7 +8896,7 @@ async def test_taskboard_card_transient_timeout_retries_and_completes(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_taskboard_action_card_stops_planning_after_one_successful_action_round(tmp_path):
+async def test_taskboard_action_card_stops_after_stall_without_semantic_override(tmp_path):
     agent = _create_taskboard_action_post_execution_planning_stall_agent(
         "execution-taskboard-card-partial-evidence-stall"
     ).use_task_workspace(tmp_path / "task_workspace")
@@ -8918,7 +8923,7 @@ async def test_taskboard_action_card_stops_planning_after_one_successful_action_
         item.get("evidence_summary") for item in diagnostics if isinstance(item, dict) and item.get("evidence_summary")
     ]
 
-    assert result["status"] == "completed", json.dumps(result, ensure_ascii=False, default=str)
+    assert result["status"] == "blocked", json.dumps(result, ensure_ascii=False, default=str)
     assert partial_result["status"] == "completed"
     assert MockTaskBoardActionPostExecutionPlanningStallRequester.action_planning_calls == 1
     assert evidence_summaries
@@ -8950,6 +8955,8 @@ async def test_execution_first_chain_from_goal_accepts_skills_input_and_stream(t
         .input("Use the supplied product facts.")
         .effort("low")
     )
+
+    execution.strategy("flat")  # Legacy producer fixture.
 
     stream_items = [item async for item in execution.get_async_generator(type="instant")]
     meta = await execution.async_get_meta()
@@ -9042,6 +9049,8 @@ async def test_goal_pursuit_effort_iteration_limit_is_soft_strategy_metadata(tmp
     execution = agent.goal("Build the site.", success_criteria=["The runnable page exists."]).effort(
         "low", budget={"iteration_limit": 2}
     )
+
+    execution.strategy("flat")  # Legacy producer fixture.
 
     await execution.async_start()
     meta = await execution.async_get_meta()
@@ -9277,6 +9286,8 @@ async def test_execution_first_chain_allows_goal_after_prompt_output(tmp_path):
         .output({"summary": (str, "summary", True)}, format="json")
         .goal("Write the final summary.", success_criteria=["The final summary is returned."])
     )
+
+    execution.strategy("flat")  # Legacy producer fixture.
 
     data = await execution.async_get_full_data()
     meta = await execution.async_get_meta()

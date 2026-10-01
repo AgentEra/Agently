@@ -15,16 +15,21 @@
 from __future__ import annotations
 
 import hashlib
+from collections import OrderedDict
 from collections.abc import Mapping
-from typing import Any
+from dataclasses import replace
+from typing import Any, cast
 
 from agently.types.data import (
     ContextSourceDescriptor,
     ContextSourceDescriptorPage,
     ContextSourceRead,
+    TaskWorkspaceFileRead,
+    TaskWorkspaceFileInfo,
 )
 
 from .TaskWorkspace import TaskWorkspace
+from .FileIO import DefaultTextTaskWorkspaceFileIOHandler
 
 
 class TaskWorkspaceContextSource:
@@ -36,6 +41,70 @@ class TaskWorkspaceContextSource:
         self.task_workspace = task_workspace
         root_digest = hashlib.sha256(str(task_workspace.root).encode("utf-8")).hexdigest()[:16]
         self.source_id = f"task-workspace:{root_digest}:{task_workspace.execution_id}"
+        self._observations: dict[str, tuple[tuple[object, ...], dict[str, object]]] = {}
+        self._reads: OrderedDict[str, TaskWorkspaceFileRead] = OrderedDict()
+        self._read_bytes = 0
+        self._handlers: tuple[tuple[str, int], ...] = ()
+
+    def _stamp(self, relative: str) -> tuple[object, ...]:
+        # Resolve again even on cache hits: a changed symlink cannot reuse an
+        # observation from a previously contained file.
+        path = self.task_workspace.resolve_file_path(relative)
+        stat = path.stat()
+        return (str(path), stat.st_dev, stat.st_ino, stat.st_size,
+                stat.st_mtime_ns, stat.st_ctime_ns, stat.st_mode)
+
+    def _discard_read(self, relative: str) -> None:
+        previous = self._reads.pop(relative, None)
+        if previous is not None:
+            self._read_bytes -= len(previous.data)
+
+    def _observe(self, relative: str) -> dict[str, object]:
+        stamp = self._stamp(relative)
+        previous = self._observations.get(relative)
+        if previous is not None and previous[0] == stamp:
+            return previous[1]
+        self._discard_read(relative)
+        info = self.task_workspace.inspect_file(relative)
+        if self._stamp(relative) != stamp:
+            raise ValueError("TaskWorkspace file changed during inspection.")
+        self._observations[relative] = (stamp, info)
+        return info
+
+    async def _read(self, relative: str, *, max_bytes: int, offset: int = 0) -> TaskWorkspaceFileRead:
+        if max_bytes <= 0 or offset < 0:
+            raise ValueError("Read size must be positive and offset non-negative.")
+        info = self._observe(relative)
+        registry = self.task_workspace._file_io_registry
+        handlers = tuple((key, id(value)) for key, value in registry._handlers.items())
+        if handlers != self._handlers:
+            self._reads.clear()
+            self._read_bytes = 0
+            self._handlers = handlers
+        selected = registry._select(operation="read", file_info=cast(TaskWorkspaceFileInfo, info))
+        if type(selected) is not DefaultTextTaskWorkspaceFileIOHandler:
+            self._discard_read(relative)
+        cached = self._reads.get(relative)
+        if cached is not None:
+            self._reads.move_to_end(relative)
+            segment = cached.data[offset:offset + max_bytes]
+            content = segment.decode("utf-8", errors="ignore")
+            return replace(cached, content=content, data=content.encode("utf-8"),
+                           offset=offset, truncated=len(cached.data) > offset + max_bytes)
+        stamp = self._observations[relative][0]
+        readback = await self.task_workspace.read_file(relative, max_bytes=max_bytes, offset=offset)
+        if self._stamp(relative) != stamp or readback.sha256 != info.get("sha256"):
+            self._observations.pop(relative, None)
+            raise ValueError("TaskWorkspace file changed during read.")
+        if (type(selected) is DefaultTextTaskWorkspaceFileIOHandler
+                and readback.readable and not readback.truncated and offset == 0
+                and readback.encoding == "utf-8" and len(readback.data) <= 20_000):
+            self._discard_read(relative)
+            self._reads[relative] = readback
+            self._read_bytes += len(readback.data)
+            while len(self._reads) > 1024 or self._read_bytes > 1_048_576:
+                self._discard_read(next(iter(self._reads)))
+        return readback
 
     def _logical_paths(self) -> tuple[str, ...]:
         logical: set[str] = set()
@@ -49,13 +118,16 @@ class TaskWorkspaceContextSource:
     @property
     def source_revision(self) -> str:
         digest = hashlib.sha256()
-        for relative in self._logical_paths():
-            path = self.task_workspace.resolve_file_path(relative)
+        paths = self._logical_paths()
+        for removed in self._observations.keys() - set(paths):
+            del self._observations[removed]
+            self._discard_read(removed)
+        for relative in paths:
+            info = self._observe(relative)
             digest.update(relative.encode("utf-8"))
             digest.update(b"\0")
-            with path.open("rb") as file:
-                while chunk := file.read(1024 * 1024):
-                    digest.update(chunk)
+            digest.update(str(info["sha256"]).encode("ascii"))
+            digest.update(b"\0")
         return f"sha256:{digest.hexdigest()}"
 
     async def async_enumerate_descriptors(
@@ -82,12 +154,12 @@ class TaskWorkspaceContextSource:
         page_paths = paths[offset : offset + page_size]
         descriptors: list[ContextSourceDescriptor] = []
         for relative in page_paths:
-            info = self.task_workspace.inspect_file(relative)
+            info = self._observe(relative)
             content_kind = str(info.get("content_kind") or "unknown")
             projection = ""
             readback = None
             if content_kind in {"text", "pdf", "office"}:
-                readback = await self.task_workspace.read_file(
+                readback = await self._read(
                     relative,
                     max_bytes=projection_max_chars,
                 )
@@ -159,14 +231,18 @@ class TaskWorkspaceContextSource:
         representation: str | None = None,
         range_start: int = 0,
     ) -> ContextSourceRead:
-        info = self.task_workspace.inspect_file(source_ref)
+        revision = self.source_revision
+        previous = self._observations.get(source_ref)
+        info = self._observe(source_ref)
+        if previous is not None and previous[0] != self._observations[source_ref][0]:
+            raise ValueError("TaskWorkspace source changed before exact read.")
         content_kind = str(info.get("content_kind") or "unknown")
         if content_kind in {"binary", "unknown"} or (
             content_kind == "image" and representation != "image_attachment"
         ):
             return ContextSourceRead(
                 source_id=self.source_id,
-                source_revision=self.source_revision,
+                source_revision=revision,
                 source_ref=source_ref,
                 content=None,
                 completeness="ref_only",
@@ -181,7 +257,7 @@ class TaskWorkspaceContextSource:
                     "context_representation": "metadata_only",
                 },
             )
-        readback = await self.task_workspace.read_file(
+        readback = await self._read(
             source_ref,
             max_bytes=max_chars,
             offset=range_start,
@@ -198,7 +274,7 @@ class TaskWorkspaceContextSource:
         next_range_start = range_start + len(readback.data)
         return ContextSourceRead(
             source_id=self.source_id,
-            source_revision=self.source_revision,
+            source_revision=revision,
             source_ref=source_ref,
             content=content,
             completeness="truncated" if readback.truncated else "complete",
