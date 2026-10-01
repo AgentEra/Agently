@@ -227,3 +227,10 @@ def test_explicit_system_one_batch_size_retains_precedence(tmp_path):
     execution = agent.input("E").output({"p": Probability("P?")})
     runtime = _JudgmentOutput(execution, ProductionOptions())
     assert runtime.batch_size == 64
+
+
+def test_system_one_can_retry_before_any_complete_instant_field(tmp_path):
+    agent = agent_with_models(tmp_path, [], [{"field_0": 2.0}, {"field_0": 0.5}])
+    execution = agent.input("Evidence").output({"p": Probability("P?")})
+    assert execution.get_data(max_retries=1) == {"p": 0.5}
+    assert SmallRequester.model_dispatches == 2

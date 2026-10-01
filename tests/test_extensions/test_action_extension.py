@@ -422,7 +422,7 @@ async def test_action_response_direct_delivery_finalizes_session_once():
 
 
 @pytest.mark.asyncio
-async def test_action_response_validation_retry_resets_provisional_stream():
+async def test_action_response_validation_failure_preserves_observed_stream_without_replay():
     agent = _create_scripted_action_agent(
         [
             json.dumps(
@@ -448,13 +448,15 @@ async def test_action_response_validation_retry_resets_provisional_stream():
         return "unused"
 
     response = agent.input("Answer directly.").use_action(available_action).get_response()
-    delta_text = "".join([chunk async for chunk in response.get_async_generator(type="delta")])
-
+    chunks = []
+    with pytest.raises(ValueError):
+        async for chunk in response.get_async_generator(type="delta"):
+            chunks.append(chunk)
+    delta_text = "".join(chunks)
     assert "provisional" in delta_text
-    assert "<$retry>action_or_response_validation</$retry>" in delta_text
-    assert delta_text.endswith("accepted")
-    assert await response.async_get_text() == "accepted"
-    assert ScriptedActionResponseRequester.request_count == 2
+    assert "<$retry>" not in delta_text
+    assert "accepted" not in delta_text
+    assert ScriptedActionResponseRequester.request_count == 1
 
 
 @pytest.mark.asyncio
@@ -484,12 +486,14 @@ async def test_action_response_never_scrapes_schema_external_trailing_prose():
         return "unused"
 
     response = agent.input("Answer directly.").use_action(available_action).get_response()
-    delta_text = "".join([chunk async for chunk in response.get_async_generator(type="delta")])
-
+    chunks = []
+    with pytest.raises(ValueError):
+        async for chunk in response.get_async_generator(type="delta"):
+            chunks.append(chunk)
+    delta_text = "".join(chunks)
     assert "THIS TRAILING TEXT" not in delta_text
-    assert delta_text.endswith("Accepted field value.")
-    assert await response.async_get_text() == "Accepted field value."
-    assert ScriptedActionResponseRequester.request_count == 2
+    assert "Accepted field value." not in delta_text
+    assert ScriptedActionResponseRequester.request_count == 1
 
 
 def test_action_extension_set_tool_loop_config():

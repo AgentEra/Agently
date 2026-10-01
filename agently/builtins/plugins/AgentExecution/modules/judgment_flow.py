@@ -250,7 +250,7 @@ class _JudgmentOutput:
                 target_paths=(
                     {f"field_{index}" for index in range(len(schema))}
                     if batch is not None
-                    else set(schema)
+                    else set(schema) if isinstance(schema, Mapping) else None
                 ),
             )
         )
@@ -332,7 +332,7 @@ class _JudgmentOutput:
         record: dict[str, Any],
         *,
         started: float,
-        target_paths: set[str],
+        target_paths: set[str] | None,
     ) -> None:
         """Project LLM structured fields into Execution while the request runs.
 
@@ -345,11 +345,12 @@ class _JudgmentOutput:
         completed_paths: list[str] = []
         instant_values: dict[str, Any] = {}
         event_count = 0
+        record.update(instant_completed_paths=completed_paths, instant_values=instant_values)
         async for item in result.get_async_generator(type="instant"):
             event_count += 1
             path = str(getattr(item, "path", "") or "")
             is_complete = bool(getattr(item, "is_complete", False))
-            if is_complete and path in target_paths:
+            if is_complete and path and not path.startswith("$") and (target_paths is None or path in target_paths):
                 instant_values[path] = deepcopy(getattr(item, "value", None))
                 if path not in completed_paths:
                     completed_paths.append(path)
@@ -421,6 +422,9 @@ async def _request(data: TriggerFlowRuntimeData) -> None:
         value = await runtime.dispatch(stage, batch, output, data.get_state("feedback"))
     except Exception as error:
         retries = data.get_state("retries", 0)
+        if runtime.meta["stages"] and runtime.meta["stages"][-1].get("status") == "failed_after_instant":
+            runtime.meta["stages"][-1]["instant_retry_suppressed"] = True
+            raise
         retryable = isinstance(error, (ValueError, httpx.RequestError, TimeoutError))
         if isinstance(error, httpx.HTTPStatusError):
             retryable = error.response.status_code in {408, 429} or error.response.status_code >= 500

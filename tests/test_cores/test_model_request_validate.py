@@ -778,3 +778,21 @@ async def test_tuple_ensure_accepts_false_and_zero_values():
 
     assert MockValidateJSONRequester.attempts == 1
     assert data == {"ready": False, "count": 0}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_final_reader_does_not_replay_observed_instant_fields():
+    import asyncio
+
+    MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
+    request = _create_request(MockValidateJSONRequester, "concurrent-instant-validation")
+    request.output({"status": (str,)}, format="json")
+    response = request.validate(lambda result, context: result["status"] == "ready").get_response()
+
+    async def consume():
+        return [item async for item in response.get_async_generator(type="instant")]
+
+    final, observed = await asyncio.gather(response.async_get_data(max_retries=1), consume(), return_exceptions=True)
+    assert isinstance(final, ValueError)
+    assert not isinstance(observed, BaseException)
+    assert MockValidateJSONRequester.attempts == 1

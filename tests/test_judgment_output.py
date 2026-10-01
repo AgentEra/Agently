@@ -251,15 +251,15 @@ def test_failures_share_budget_across_stages(tmp_path, wire):
     assert ScriptedExecutionRequester.model_dispatches == 0
 
 
-def test_llm_output_validation_retries_same_stage(tmp_path):
+def test_llm_output_validation_keeps_failure_after_observed_field(tmp_path):
     execution = (
         create_execution_agent(tmp_path, "llm-retry", [{"p": None}, {"p": 0.5}])
         .input("Evidence")
         .output({"p": Probability("P?")})
     )
-    assert execution.get_data(max_retries=1) == {"p": 0.5}
-    assert ScriptedExecutionRequester.model_dispatches == 2
-    assert execution.get_meta().get("judgment", {})["retries_used"] == 1
+    with pytest.raises(ValueError):
+        execution.get_data(max_retries=1)
+    assert ScriptedExecutionRequester.model_dispatches == 1
 
 
 @pytest.mark.parametrize("value", [None, True, -0.1, 1.1, float("nan")])
@@ -347,7 +347,7 @@ def test_fixed_cross_list_index_is_unambiguous():
     assert plan.bind(field, ("a", 0, "p"), {"b": [{"name": "B"}]}) == "B"
 
 
-def test_invalid_dependency_repairs_llm_before_jev(tmp_path, wire):
+def test_invalid_observed_dependency_stops_before_jev(tmp_path, wire):
     calls, replies = wire
     replies.append(native(0.5))
     execution = (
@@ -355,9 +355,10 @@ def test_invalid_dependency_repairs_llm_before_jev(tmp_path, wire):
         .input("Evidence")
         .output({"name": str, "p": Probability("P?", from_output="name")})
     )
-    assert execution.get_data(max_retries=1) == {"name": "Valid", "p": 0.5}
-    assert len(calls) == 1
-    assert ScriptedExecutionRequester.model_dispatches == 2
+    with pytest.raises(ValueError):
+        execution.get_data(max_retries=1)
+    assert calls == []
+    assert ScriptedExecutionRequester.model_dispatches == 1
 
 
 def test_mixed_missing_llm_config_fails_before_jev(wire):

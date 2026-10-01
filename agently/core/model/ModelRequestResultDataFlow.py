@@ -760,12 +760,17 @@ class ModelRequestResultDataFlow:
         retry_count: int = 0,
     ) -> Any:
         result = self._result
-        instant_retry_suppressed = bool(result._instant_complete_paths)
-        if instant_retry_suppressed:
+        def instant_retry_suppressed() -> bool:
+            # An instant consumer may advance while the final reader awaits
+            # parsing or validation. Check the current observation at replay.
+            if not result._instant_complete_paths:
+                return False
             result._response_parser.full_result_data["meta"]["instant_retry_suppressed"] = True
             result._response_parser.full_result_data["meta"]["instant_complete_paths"] = sorted(
                 result._instant_complete_paths
             )
+            return True
+
         if result._accepted_retry_result is not None:
             return await result._accepted_retry_result.async_get_data(
                 type=type,
@@ -799,7 +804,7 @@ class ModelRequestResultDataFlow:
                     stage="response_materialization",
                 )
                 await result._drain_response_parser_observations()
-                if type in ("parsed", "all") and retry_count < max_retries and not instant_retry_suppressed:
+                if type in ("parsed", "all") and retry_count < max_retries and not instant_retry_suppressed():
                     degraded_data = await self.try_auto_degradation(
                         type=type,
                         data=data,
@@ -824,7 +829,7 @@ class ModelRequestResultDataFlow:
             )
             await result._drain_response_parser_observations()
 
-            if type in ("parsed", "all") and retry_count < max_retries and not instant_retry_suppressed:
+            if type in ("parsed", "all") and retry_count < max_retries and not instant_retry_suppressed():
                 degraded_data = await self.try_auto_degradation(
                     type=type,
                     data=data,
@@ -885,7 +890,7 @@ class ModelRequestResultDataFlow:
                     retry_reason="output_constraints",
                 )
 
-                if retry_count < max_retries and not instant_retry_suppressed:
+                if retry_count < max_retries and not instant_retry_suppressed():
                     return await self.retry_get_data(
                         type=type,
                         ensure_keys=active_ensure_keys,
@@ -919,7 +924,7 @@ class ModelRequestResultDataFlow:
                 max_retries=max_retries,
             )
             if validation_outcome is not None and not validation_outcome["ok"]:
-                if validation_outcome.get("retryable", True) and retry_count < max_retries and not instant_retry_suppressed:
+                if validation_outcome.get("retryable", True) and retry_count < max_retries and not instant_retry_suppressed():
                     await self.emit_retrying_event(
                         retry_count=retry_count,
                         response_text=await result._response_parser.async_get_text(),

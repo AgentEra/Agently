@@ -280,7 +280,10 @@ async def probe(case: str, root: Path) -> dict[str, Any]:
                       second_prompt=second.prompt_snapshot, distinct_identity=first.id != second.id)
 
     if case in {"validation_repair", "validation_exhaustion"}:
-        agent = create_agent(root, [{"count": 1}, {"count": 2}])
+        responses = [{"count": 1}, {"count": 2}] if ARGS.api == "baseline" else [{"count": 1}]
+        # Execution observes complete structured fields before final validation;
+        # accepted instant semantics prohibit a provider replay after that point.
+        agent = create_agent(root, responses)
         calls = []
 
         def validate(value: Any, context: Any) -> bool:
@@ -476,6 +479,10 @@ async def probe(case: str, root: Path) -> dict[str, Any]:
                  "missing_criteria": []},
                 verdict,
             ]
+            if ARGS.api != "baseline":
+                # Ordinary TaskBoard answers finish at the existing finalizer;
+                # a second verifier is reserved for explicit delivery contracts.
+                responses = responses[:-1]
         agent = create_agent(root, responses)
         execution = agent.create_task(goal="Return the supplied fact.", success_criteria=["Return the fact."],
                                       execution="flat" if case == "flat_task" else "taskboard", max_iterations=1,

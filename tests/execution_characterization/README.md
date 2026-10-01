@@ -142,3 +142,23 @@ it refuses to overwrite an existing fixture. A probe or normalization-helper
 change requires another old/current run and explicit evidence/provenance
 reconciliation; pytest checks both source hashes. An intentional
 runtime change requires review of its exact delta, not blanket snapshot updates.
+
+4.1.4.9 reconciles the approved context-supply and legacy TaskBoard changes.
+The flat route keeps four requests and its file bytes; the ordinary TaskBoard
+route uses three requests (plan, card, finalizer), preserves its business result,
+and reports the finalizer's reason. A second verifier remains for explicit
+contracts. The current-side synthetic script therefore omits its unused fourth
+reply; the immutable old source retains the original four replies. Both old
+Python 3.10 and 3.14 runs were repeated and matched every frozen observation;
+only probe-hash provenance and exact approved deltas changed. New deltas also
+cover effective task context instead of Host budgets, generic grounding guidance,
+and the single candidate body slot. They do not waive result, file, lifecycle or
+comparator negative-control assertions and are not model-quality evidence.
+
+The accepted SystemOne instant integration additionally changes validation_repair
+and validation_exhaustion on AgentExecution: its internal structured stream has
+already observed a complete field, so failed final validation stays failed after
+one provider call. It is not silently retried, even for a final-data-only caller.
+Direct ModelRequest validation without observed complete fields retains retries.
+Both immutable baseline environments were replayed twice again after the
+current-only reply change; exact failure, reader and event deltas are recorded.

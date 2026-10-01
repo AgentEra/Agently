@@ -5,8 +5,8 @@ from typing import Any
 
 
 CURRENT_COMPATIBILITY_SCHEMA_VERSION = 1
-CURRENT_FRAMEWORK_VERSION = "4.1.4.8"
-CURRENT_RELEASE_TRAIN = "2026-09-4.1.4.8"
+CURRENT_FRAMEWORK_VERSION = "4.1.4.9"
+CURRENT_RELEASE_TRAIN = "2026-10-4.1.4.9"
 
 DEVTOOLS_RUNTIME_PROTOCOL = "agently-devtools.observation-runtime.v1"
 SKILLS_AUTHORING_PROTOCOL = "agently-skills.authoring.v3"
@@ -15,53 +15,94 @@ DOCS_PUBLIC_SURFACE_PROTOCOL = "agently-docs.public-surface.v2"
 
 _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
  'framework': 'agently',
- 'framework_version': '4.1.4.8',
- 'release_train': '2026-09-4.1.4.8',
- 'released_at': '2026-09-13',
- 'notes': 'Agently 4.1.4.8 release; default ContextReader '
-          'resource selection receives current-read instruction content and completeness without preloading optional '
-          'bodies or changing selector signatures, budgets, Skill scope or permissions; complete resource roots also '
-          'suppress already-read child delivery independent of selection order, without refunding read budgets; '
-          'Cmd-backed local commands use non-blocking async subprocess waiting and settle owned processes on '
-          'timeout/cancellation (POSIX process groups, Windows Job Objects), preserving argv, policy, result '
-          'envelopes and full output artifacts; committed DeepSeek examples standardize their fallback on '
-          'deepseek-v4-flash with thinking explicitly disabled, while environment overrides and intentional '
-          'thinking-stream demonstrations remain supported; explicit model keys fail before provider dispatch when a '
-          'configured non-empty model_pool does not contain the alias, while pool-free single-model inheritance '
-          'remains compatible; resolve_model_profile provides a non-secret read-only preflight. It carries forward the '
-          '4.1.4.7 contract requiring Agently-Stage >=0.3.8,<0.4.0. Stage 0.3.7 supplies physically safe carrier '
-          'routing across mixed sync/async boundaries and excludes every upstream carrier in a transitive synchronous '
-          'wait chain; 0.3.8 preserves that contract while forwarding Python 3.14 task-factory keyword arguments. A '
-          'synchronous TriggerFlow chunk may call a provider-owned sync wrapper that uses with Stage() for an async '
-          "tool and may then re-enter TriggerFlow's synchronous state facade without knowing that the framework "
-          'already uses Stage. The deprecated syncify/asyncify adapters retain their compatibility names and warnings '
-          'but now delegate to Stage.as_sync/as_async; internal lightweight default_stage_call_bridge usage remains '
-          'unchanged. Stage is the required-runtime companion and remains a private Agently mechanism dependency: '
-          'TriggerFlowExecution remains the semantic lifecycle owner, and Stage types or carrier state do not enter '
-          'public execution state. Built-in inactive gvisor, seatbelt, and landlock candidates use the existing '
-          'provider-neutral code_execution contract and probe external mechanisms only when explicitly selected; they '
-          'add no third-party Python dependency and fail closed without implicit fallback. Provider reasoning and '
-          'explicit reasoning-token usage remain observation-only facts, and validation console output exposes bounded '
-          'failure/retry diagnostics without changing validation authority. The 4.1.4.6 contracts remain intact: '
-          'agently.__version__ and Agently.__version__ are the standard package version surfaces, provider reasoning '
-          'and compatible SSE retry boundaries remain normalized, and live TriggerFlow sub-flow resources preserve '
-          'identity. The 4.1.4.5 runtime line also remains intact: AgentExecution ensure_long_output() uses '
-          'TriggerFlow-visible continuation and TaskWorkspace owns staged file truth. The 4.1.4.2 owner split remains '
-          'intact: TaskContext owns bounded disclosure, TaskWorkspace owns files and artifacts, RecordStore owns '
-          'durable runtime state including opt-in record_store_recovery, and SkillLibrary owns immutable Skill '
-          'revisions.',
- 'shell_capability': {
-     'status': 'in_development',
-     'entry': 'Agent.enable_shell',
-     'language': ['bash', 'powershell'],
-     'environment': ['offline', 'online', 'host'],
-     'approval': ['all', 'write', 'delete', 'none'],
-     'defaults': {'environment': 'offline', 'approval': 'all', 'action_id': 'run_shell'},
-     'resource': 'shell / ShellResource',
-     'legacy': 'Explicit commands or sandbox retain argv semantics; Cmd delegates to Shell, for removal in 4.2.',
-     'soft_risk': 'Isolated ModelRequest or Host risk_handler; unknown/failed analysis requires approval. Not a security proof.',
-     'windows_evidence': 'CrossOver with Windows Python 3.14.7 and PowerShell 7.6.6; native Windows users should test and report issues.',
-     'native_windows_isolation': 'Windows Sandbox CLI backend; native VM isolation unverified, CrossOver controller tested. Missing capability fails closed without host fallback.'},
+ 'model_capabilities': {'status': 'in_development',
+                        'configuration': ['llm', 'vlm', 'embeddings', 'stt', 'tts', 'ocr'],
+                        'profile': 'independent inline provider/model or model_key; provider defaults only; no '
+                                   'cross-role credentials/options inheritance',
+                        'image': 'append groups; mode=vlm|llm|ocr; configuration selects single producer or VLM/OCR -> '
+                                 'LLM',
+                        'direct': 'vlm_only(bool) before start; to_text selects direct image processing and respects '
+                                  'output; max_retries controls the shared retry budget (default 3)',
+                        'audio': 'input(file=..., type=audio) -> STT -> Execution; say(scope=final|all); stream_say '
+                                 'yields SpeechResult segments',
+                        'embeddings': 'embed/async_embed returns ordered finite equal-dimension vector rows',
+                        'compatibility': '4.1 legacy provider settings remain fallback; 4.2 follows canonical APIs',
+                        'observation': 'existing Execution/TriggerFlow lineage; additive media stage metadata; no '
+                                       'unified audio token billing'},
+ 'system_one': {'status': 'in_development',
+                'configuration': 'system_one: inline model profile or model_key',
+                'activation': 'configured by default; unconfigured off; explicit use_system_one(bool) overrides per '
+                              'execution',
+                'owner': 'AgentExecution model selection; existing TriggerFlow composition',
+                'scope': 'OutputTemplate producers; ordinary fields retain the ordinary ModelRequester',
+                'isolation': 'dedicated provider defaults/profile; no ordinary credentials or generation-option '
+                             'inheritance',
+                'fallback': 'disabled uses ordinary LLM; active provider failures do not switch models',
+                'evidence': 'template description/JSON Schema and actual stage provider/model, role, latency, '
+                            'reasoning length',
+                'timing': 'no universal latency or calibration guarantee',
+                'instant': 'Structured LLM-backed stages forward provisional instant fields; after a complete field is '
+                           'observed, output validation does not replay the provider. Final validation may still fail; '
+                           'direct requests without an observed complete field retain bounded validation retry.'},
+ 'jev_output': {'status': 'in_development',
+                'declarations': ['OutputTemplate', 'Probability', 'Choice', 'Score'],
+                'binding': 'from_output: string or path array',
+                'configuration': 'system_one.provider=Jev; Jev / plugins.ModelRequester.Jev credentials',
+                'owner': 'AgentExecution; atomic Jev ModelRequester',
+                'fallback': 'unconfigured/disabled SystemOne or explicitly disabled Jev uses ordinary LLM; selected '
+                            'Jev requires valid credentials; provider failures do not fall back',
+                'retry': 'shared composition max_retries; child provider retries and key failover disabled',
+                'details': 'execution.get_meta().judgment',
+                'forward_line': '4.2 uses canonical interfaces without deprecated compatibility layers',
+                'prerequisite': 'after_output'},
+ 'skill_applicability_input': {'status': 'in_development',
+                               'since': '4.1.4.9',
+                               'owner': 'AgentExecution / SkillsExtension',
+                               'task_fields': ['all declared goals',
+                                               'success_criteria',
+                                               'input',
+                                               'system',
+                                               'info',
+                                               'instruct',
+                                               'output'],
+                               'selection_output': 'selected_keys: ordered unique subset of offered keys, including '
+                                                   'empty',
+                               'additional_model_requests': False,
+                               'scope_or_execution_authorization_changed': False},
+ 'context_supply': {'immutable_content_projection': 'Mapping content is recursively serialized as structured data '
+                                                    'without mutating ContextPackage; no Python mappingproxy repr in '
+                                                    'model input',
+                    'status': 'in_development',
+                    'since': '4.1.4.9',
+                    'owner': 'TaskWorkspaceContextSource / ContextReader / SkillContextSource',
+                    'source_reuse': 'local-stat-validated per-file observations and bounded complete UTF-8 bodies; '
+                                    'source revision digest composition changes; refresh pinned readers across upgrade',
+                    'model_projection': 'complete task at AgentExecution and long_task consumer reads, plus current '
+                                        'intent/phase and relevant candidate facts; budgets and identity remain '
+                                        'Host-owned',
+                    'skill_catalog': 'resource-index omitted from default descriptors; direct source exact read '
+                                     'retained',
+                    'taskboard_planning': 'preparation hands its package to the initial planner; context/source '
+                                          'revision changes trigger reread; attachments and successful-request '
+                                          'consumption preserved',
+                    'public_signatures_changed': False,
+                    'runtime_event_protocol_changed': False},
+ 'shell_capability': {'status': 'in_development',
+                      'entry': 'Agent.enable_shell',
+                      'language': ['bash', 'powershell'],
+                      'environment': ['offline', 'online', 'host'],
+                      'approval': ['all', 'write', 'delete', 'none'],
+                      'defaults': {'environment': 'offline', 'approval': 'all', 'action_id': 'run_shell'},
+                      'resource': 'shell / ShellResource',
+                      'legacy': 'Explicit commands or sandbox retain argv semantics; Cmd delegates to Shell, for '
+                                'removal in 4.2.',
+                      'soft_risk': 'Isolated ModelRequest or Host risk_handler; unknown/failed analysis requires '
+                                   'approval. Not a security proof.',
+                      'windows_evidence': 'CrossOver with Windows Python 3.14.7 and PowerShell 7.6.6; native Windows '
+                                          'users should test and report issues.',
+                      'native_windows_isolation': 'Windows Sandbox CLI backend; native VM isolation unverified, '
+                                                  'CrossOver controller tested. Missing capability fails closed '
+                                                  'without host fallback.'},
  'audio_capability': {'status': 'in_development',
                       'owner': 'AudioModelRequest',
                       'driver_protocol': 'AudioModelRequester',
@@ -77,7 +118,30 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                       'native_stream_access': 'AudioModelRequest.driver; no native realtime input adapter in builtins',
                       'extra_agent_dependencies': 'required_agent_capabilities; bound references; snapshots '
                                                   'unsupported',
-                      'observation_protocol_changed': False},
+                      'observation_protocol_changed': False,
+                      'input_preprocessing': {'since': '4.1.4.9',
+                                              'activation': 'TranscriptionOptions.input_options / AudioInputOptions; '
+                                                            'default None',
+                                              'detector': 'SpeechDetector.open per-stream session; optional explicit '
+                                                          'local SileroVAD ONNX adapter',
+                                              'formats': 'declared PCM s16le async stream; single complete PCM s16le '
+                                                         'WAV; no implicit compressed decoding',
+                                              'timeline': 'original PCM sample offsets; optional '
+                                                          'TranscriptBlock.speech_index and reason',
+                                              'events': 'awaited AudioInputEvent callback; transcript before pause; no '
+                                                        'RuntimeEvent/ObservationEvent schema change',
+                                              'short_speech': 'min_speech_seconds=0; speech probability and duration '
+                                                              'are separate controls',
+                                              'limits': 'bounded segments, framing buffers, source packets and single '
+                                                        'files; no retries or cancellation flush',
+                                              'quality': 'VAD is acoustic, not semantic; no universal '
+                                                         'cough/music/noise rejection or low-volume recall guarantee'}},
+ 'release_train': '2026-10-4.1.4.9',
+ 'notes': 'Agently 4.1.4.9 candidate: unified editable-checklist long tasks, effective context supply, complete Skill '
+          'selection input, independent model roles, SystemOne/Jev output templates and optional acoustic input '
+          'preprocessing. 4.1.x legacy task strategies and task-id recovery remain supported; removals belong to 4.2. '
+          'Model completion and output quality remain model-dependent; see the release notes for limits. Stage '
+          '>=0.3.8,<0.4.0; optional DevTools >=0.2.0,<0.3.0.',
  'runtime_support': {'agently_stage': {'repository': 'Agently-Stage',
                                        'package': 'agently-stage',
                                        'role': 'required_runtime_dependency',
@@ -405,7 +469,7 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                                   'background_reclaim': 'idle_flush_and_explicit_flush',
                                                                                   'default_delivery': 'raw',
                                                                                   'summary_marker': 'meta.coalesced'}},
-                             'recommended_version_specifier': '>=0.1.11,<0.2.0'},
+                             'recommended_version_specifier': '>=0.2.0,<0.3.0'},
                 'skills': {'repository': 'Agently-Skills',
                            'authoring_protocol': 'agently-skills.authoring.v3',
                            'authoring_format': 'standard SKILL.md only',
@@ -439,8 +503,8 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                         'configure/install/list/inspect/read/context-pack '
                                                                         'projection. Its legacy TaskDAG skill resolver '
                                                                         'helper is not executor-ready until host code '
-                                                                        'adapts the real TaskDAGContext into the helper\'s '
-                                                                        'mapping input.',
+                                                                        'adapts the real TaskDAGContext into the '
+                                                                        "helper's mapping input.",
                                                 'execution_policy': 'No Skills route, Skill-local strategy, stage '
                                                                     'engine, implicit script actionization, per-script '
                                                                     'Action discovery, capability inference, or '
@@ -792,7 +856,11 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                  'manifest but no body enters the dedicated '
                                                                  'artifact-draft stage with the same bounded canonical '
                                                                  'evidence ledger; framework-owned materialization is '
-                                                                 'not semantic remaining work.'},
+                                                                 'not semantic remaining work. Initial TaskBoard cards '
+                                                                 'with a final delivery path and no fixed Action '
+                                                                 'commands preserve their declared execution shape; '
+                                                                 'the delivery path alone does not select control '
+                                                                 'execution.'},
                 'record_store': {'surface': ['RecordStore',
                                              'RecordStoreRegistry',
                                              'Agent.use_record_store',
@@ -1132,14 +1200,18 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                                          'budgets, and never '
                                                                                          'dispatches on load. '
                                                                                          'control_capabilities reports '
-                                                                                         'supported boundaries. Rework '
-                                                                                         'advances the same execution '
-                                                                                         'revision and preserves '
-                                                                                         'captured readers; Request, '
-                                                                                         'Plan, LongContent and '
-                                                                                         'LongTask own producer '
-                                                                                         're-entry. Revision caps, '
-                                                                                         'model/time and task '
+                                                                                         'supported boundaries. '
+                                                                                         'Request rework retains '
+                                                                                         'original info/instruct and '
+                                                                                         'appends only the current '
+                                                                                         'feedback and previous '
+                                                                                         'candidate. Rework advances '
+                                                                                         'the same execution revision '
+                                                                                         'and preserves captured '
+                                                                                         'readers; Request, Plan, '
+                                                                                         'LongContent and LongTask own '
+                                                                                         'producer re-entry. Revision '
+                                                                                         'caps, model/time and task '
                                                                                          'iteration/tick budgets '
                                                                                          'remain cumulative. '
                                                                                          'Dispatcher protection blocks '
@@ -1333,7 +1405,77 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                                      'framework-owned materialization '
                                                                                      'to the artifact-draft stage '
                                                                                      'without being blocked by '
-                                                                                     'semantic remaining_work.'},
+                                                                                     'semantic remaining_work. '
+                                                                                     'Ordinary TaskBoard completion '
+                                                                                     'uses the loop finalization '
+                                                                                     'decision; a completed leaf-card '
+                                                                                     'candidate is not semantic proof '
+                                                                                     'by itself and candidate '
+                                                                                     'promotion is reserved for an '
+                                                                                     'explicit final TaskWorkspace '
+                                                                                     'delivery contract; terminal '
+                                                                                     'semantic verification is '
+                                                                                     'reserved for explicit '
+                                                                                     'delivery/capability contracts '
+                                                                                     'and deterministic integrity or '
+                                                                                     'lifecycle blocks. Ordinary '
+                                                                                     'finalizer replan_signal resumes '
+                                                                                     'existing repair/evidence cards '
+                                                                                     'without a second semantic '
+                                                                                     'verdict; blocked/clarify stop, '
+                                                                                     'invalid signals cannot accept or '
+                                                                                     'schedule work, and inline '
+                                                                                     'repairs preserve their output '
+                                                                                     'form. Public final answer bodies '
+                                                                                     'preserve their full value '
+                                                                                     'instead of applying metadata '
+                                                                                     'preview truncation. TaskBoard '
+                                                                                     'model/control requests expose '
+                                                                                     'one complete-body slot, '
+                                                                                     'candidate_final_result, and '
+                                                                                     'expose artifact_manifest only '
+                                                                                     'for a declared final file '
+                                                                                     'contract. Ordinary first-card '
+                                                                                     'text stays inline even when a '
+                                                                                     'legacy response repeats it in '
+                                                                                     'artifact_markdown/final_result; '
+                                                                                     'field names do not authorize '
+                                                                                     'materialization. A planner may '
+                                                                                     'choose a relative path when the '
+                                                                                     'task requests a file without an '
+                                                                                     'exact name; a declared target '
+                                                                                     'stages existing complete text '
+                                                                                     'without redrafting. Readback '
+                                                                                     'cards execute declared scoped '
+                                                                                     'Context retrieval and retain '
+                                                                                     'locator/body completeness in the '
+                                                                                     'existing evidence ledger. '
+                                                                                     'Artifact drafting consumes the '
+                                                                                     'same settled text result when a '
+                                                                                     'non-streaming response supplied '
+                                                                                     'no delta; it neither repeats the '
+                                                                                     'model request nor revives a '
+                                                                                     'discarded partial delta attempt. '
+                                                                                     'Shared evidence-binding repair '
+                                                                                     'skips model dispatch when its '
+                                                                                     'offered-reference projection is '
+                                                                                     'empty, preserving existing '
+                                                                                     'binding errors and terminal '
+                                                                                     'policy.',
+                                                 'unified_loop_contract': 'New long_task executions use one mutable '
+                                                                          'Markdown checklist and real ActionRuntime '
+                                                                          'observations, with no default shape '
+                                                                          'planner, card judge or finalizer. Original '
+                                                                          'output, final policies, cumulative limits, '
+                                                                          'settled long_task_step pause/save/load, '
+                                                                          'cancellation and retained-state rework '
+                                                                          'remain execution-owned. Explicit required '
+                                                                          'Actions and exact deliverable paths are '
+                                                                          'checked by Host; failures return to the '
+                                                                          'same decision. 4.1.x explicit '
+                                                                          'Flat/TaskBoard and legacy task-id recovery '
+                                                                          'remain compatibility-only; 4.2 removes '
+                                                                          'these entrypoints.'},
                    'skills': {'surface': ['AgentExecution.use_skills',
                                           'AgentExecution.require_skills',
                                           'AgentExecution.use_skills_packs',
@@ -1355,8 +1497,9 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                    'contract': 'New public methods default to typed parameters and returns; Any boundaries require '
                                'explicit allowlist reasons.',
                    'compatibility_policy': 'The allowlist records deliberate Any boundaries; it is not a public-method '
-                                           'allowlist.'}}
-
+                                           'allowlist.'},
+ 'framework_version': '4.1.4.9',
+ 'released_at': '2026-10-01'}
 
 def get_current_release_manifest() -> dict[str, Any]:
     return deepcopy(_CURRENT_RELEASE_MANIFEST)
