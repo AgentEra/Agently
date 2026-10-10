@@ -40,3 +40,5 @@ execution.artifact("deliverables/report.pdf", handler=lambda result, context:
 ```
 
 不提供 handler 时，artifact(path) 序列化业务结果，不会复制 pdf_path 指向的 PDF。文件格式和来源读取完整性应在 validate(handler) 中核验；get_data() 返回后再检查无法阻止错误接受。read_file 成功也要检查 readable、截断与完整性。文件身份不证明内容质量。快照恢复要求工作区内容未变，取消原执行可能清理恢复所需的私有文件。完整示例见 examples/agent_task/unified_loop_file.py。
+
+隐式继承 Agent 工作区的原生文件 Actions 使用当前执行的工作区视图，确保回读与代码运行时具有相同执行身份。显式 root/workspace 绑定仍保持自身边界。

@@ -40,3 +40,5 @@ execution.artifact("deliverables/report.pdf", handler=lambda result, context:
 ```
 
 Without a handler, artifact(path) serializes the business result rather than copying a referenced PDF. Put file-format and source-read completeness checks in validate(handler); checking after get_data() cannot prevent acceptance. Readability and truncation matter even when read_file succeeded. File identity is not semantic-quality evidence. A saved snapshot requires unchanged workspace content; cancelling the original owner may invalidate private files needed for recovery. See examples/agent_task/unified_loop_file.py.
+
+Implicit Agent-bound file Actions use the current execution workspace view, so readback and code execution share the same execution identity. Explicit root/workspace bindings keep their own boundary.

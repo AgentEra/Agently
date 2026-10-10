@@ -365,3 +365,50 @@ async def test_required_binary_delivery_needs_identity_not_text_parser(tmp_path)
     run.task_options["options"] = {"agent_task": {"required_deliverables": ["output.bin"]}}
     assert (await run.async_get_full_data())["accepted"]
     assert path.read_bytes() == b"\x00\xff\x01"
+
+
+@pytest.mark.asyncio
+async def test_native_file_actions_use_execution_identity_and_preserve_code_product(tmp_path):
+    agent = create_execution_agent(tmp_path, "loop-native-readback", [])
+    agent.enable_task_workspace_file_actions()
+    product = None
+
+    @agent.action_func
+    async def make_file() -> dict:
+        nonlocal product
+        written = await run.task_workspace.write_file("result.txt", "code product")
+        product = run.task_workspace.resolve_file_path(written.path)
+        ref = await run.task_workspace._promote_file_identity(written.path)
+        ScriptedExecutionRequester.responses.extend([
+            decision("continue", None, [{"action_id": "read_file", "action_input": {"path": ref["path"]}}]),
+            decision(result={"path": ref["path"]}),
+        ])
+        return {"status": "success", "result": "written", "artifacts": [{**ref, "artifact_type": "file"}]}
+
+    run = agent.create_execution("long_task").input("Generate and read file").use_actions(["make_file", "read_file"]).output({"path": str})
+    run.options["context_budget"] = {"optional_selection": "none"}
+    run.task_options["max_iterations"] = 3
+    ScriptedExecutionRequester.responses.append(decision("continue", None, [{"action_id": "make_file", "action_input": {}}]))
+    result = await run.async_get_data()
+    assert product is not None and product.read_text() == "code product"
+    state = cast(AgentExecution, run)._producer_state["content"]
+    assert state["files"][result["path"]]["execution_id"] == run.id
+    observed = state["observations"][1]
+    refs = observed.get("file_refs", observed.get("result", {}).get("file_refs", []))
+    assert refs and refs[0]["path"] == result["path"]
+    assert not any(item.get("source") == "selected_delivery" for item in state["observations"])
+
+
+@pytest.mark.asyncio
+async def test_native_write_uses_current_execution_private_area(tmp_path):
+    agent = create_execution_agent(tmp_path, "loop-native-write", [])
+    agent.enable_task_workspace_file_actions()
+    run = agent.create_execution("long_task").input("Write note").use_actions("write_file").output({"path": str})
+    path = f".agently/files/{run.id}/note.txt"
+    ScriptedExecutionRequester.responses.extend([
+        decision("continue", None, [{"action_id": "write_file", "action_input": {"path": "note.txt", "content": "actual note"}}]),
+        decision(result={"path": path}),
+    ])
+    run.options["context_budget"] = {"optional_selection": "none"}
+    assert (await run.async_get_data())["path"] == path
+    assert run.task_workspace.resolve_file_path(path).read_text() == "actual note"

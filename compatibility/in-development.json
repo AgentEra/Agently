@@ -495,6 +495,7 @@
     "public_signatures_changed": false,
     "contract": "Action file observations bind physical TaskWorkspace identities; exact final result values select unchanged files for terminal retention. Missing or changed selected files return to the same Loop; unselected private intermediates are cleaned. Native bounded model observations and explicit artifact recall are reused.",
     "observation_event_protocol_changed": false,
-    "forward_line": "4.2 canonical long_task APIs"
+    "forward_line": "4.2 canonical long_task APIs",
+    "implicit_file_actions": "Resolve current execution TaskWorkspace at call time; preserve explicit root/workspace and isolated bindings."
   }
 }
