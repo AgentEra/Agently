@@ -27,3 +27,16 @@ async_pause() 在下一决策前的已结算边界暂停，包括操作批次结
 4.1.x 中显式 strategy("flat") / strategy("taskboard")、create_task(execution=...) 和旧 RecordStore task_id 恢复保留原实现。旧快照继续在旧路径恢复，不自动转换为新 Loop 或重放操作；新任务直接选 long_task，不再为任务复杂度选择 Flat/TaskBoard。旧卡片、验证和调度选项仅用于上述兼容路径。
 
 4.2 使用 create_execution("long_task") 和 execution 的 save/load/resume；移除旧策略名、Agent.create_task/create_task_loop、按旧 task_id 的 Agent.resume 别名。旧状态应在 4.1.x 完成或导出任务成果后开始新任务，不声称无损转换。独立 TaskDAG 和 TriggerFlow 的用途保持不变。
+
+## 文件交付
+
+产物交付修复位于开发分支，尚未包含在 4.1.4.9 发布版中。Loop 保留 Action 文件观察，并由 Host 核验 TaskWorkspace 文件身份。最终输出应将实际观察到的完整路径作为独立字段，例如 `.output({"pdf_path": str, "summary": str})`。选中的、内容未变化的文件在终态清理后保留；阻塞结果也可保留有用产物。未选中的私有临时文件仍会清理。选中文件丢失或变化时，交付失败反馈回同一个 Loop。嵌在叙述中的路径不构成选择，未知字符串也不会产生可信文件身份。
+
+使用已发布的 4.1.4.9 时，可在清理前通过 handler 显式发布二进制产物：
+
+```python
+execution.artifact("deliverables/report.pdf", handler=lambda result, context:
+    context.task_workspace.resolve_file_path(result["pdf_path"]).read_bytes())
+```
+
+不提供 handler 时，artifact(path) 序列化业务结果，不会复制 pdf_path 指向的 PDF。文件格式和来源读取完整性应在 validate(handler) 中核验；get_data() 返回后再检查无法阻止错误接受。read_file 成功也要检查 readable、截断与完整性。文件身份不证明内容质量。快照恢复要求工作区内容未变，取消原执行可能清理恢复所需的私有文件。完整示例见 examples/agent_task/unified_loop_file.py。

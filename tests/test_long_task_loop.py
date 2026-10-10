@@ -220,3 +220,148 @@ async def test_stream_progress_and_explicit_validation_use_final_business_value(
     assert any(event.path == "long_task.progress" and event.value["taskboard"] == "- [x] Count" for event in events)
     assert seen == [{"count": 2}]
     assert await run.async_get_data() == {"count": 2}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("terminal", ["completed", "blocked"])
+@pytest.mark.parametrize("pause", [False, True])
+async def test_selected_action_file_survives_cleanup_and_restore(tmp_path, terminal, pause):
+    agent = create_execution_agent(tmp_path, "loop-file-selection", [])
+    run = None
+    produced = []
+
+    @agent.action_func
+    async def make_file() -> dict:
+        assert run is not None
+        workspace = run.task_workspace
+        for name in ("result.pdf", "scratch.pdf"):
+            path = workspace.fallback_root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"%PDF-1.4\n\x00\xffbinary")
+            produced.append(path)
+        ref = await workspace._promote_file_identity(produced[0].relative_to(workspace.root).as_posix())
+        ScriptedExecutionRequester.responses.append(decision(terminal, {"pdf_path": ref["path"]}))
+        if pause:
+            await run.async_pause()
+        return {"status": "success", "result": {"stdout": "generated"},
+                "artifacts": [{**ref, "artifact_type": "file"}]}
+
+    def draft():
+        return agent.create_execution("long_task").input("Generate a PDF").use_actions("make_file").output({"pdf_path": str})
+
+    run = draft()
+    run.options["context_budget"] = {"optional_selection": "none"}
+    ScriptedExecutionRequester.responses.append(decision("continue", None, [{"action_id": "make_file", "action_input": {}}]))
+    if pause:
+        with pytest.raises(AgentExecutionPaused):
+            await run.async_get_data()
+        snapshot = json.loads(json.dumps(run.save()))
+        paused_run = run
+        run = draft()
+        run.options["context_budget"] = {"optional_selection": "none"}
+        run.load(snapshot)
+        await run.async_resume()
+    result = await run.async_get_data()
+    assert produced[0].exists()
+    assert not produced[1].exists()
+    assert produced[0].read_bytes() == b"%PDF-1.4\n\x00\xffbinary"
+    assert result["pdf_path"] in json.dumps(ScriptedExecutionRequester.requests[-1], default=str)
+    assert len(cast(AgentExecution, run)._terminal_task_handoff_refs) == 1
+    assert (await run.async_get_full_data())["accepted"] == (terminal == "completed")
+    if pause:
+        # Cancellation ends ownership and may invalidate saved workspace files.
+        # Close only after the restored execution has consumed the snapshot.
+        await paused_run.async_close(pending="cancel")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mutation", ["changed", "deleted", "unknown"])
+async def test_file_selection_rejects_stale_files_and_ignores_unknown_paths(tmp_path, mutation):
+    agent = create_execution_agent(tmp_path, "loop-file-invalid", [])
+    produced = []
+
+    @agent.action_func
+    async def make_file() -> dict:
+        path = run.task_workspace.fallback_root / "result.pdf"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"original")
+        produced.append(path)
+        ref = await run.task_workspace._promote_file_identity(path.relative_to(run.task_workspace.root).as_posix())
+        selected = ref["path"] if mutation != "unknown" else "unobserved.pdf"
+        ScriptedExecutionRequester.responses.append(decision(result={"pdf_path": selected}))
+        if mutation != "unknown":
+            ScriptedExecutionRequester.responses.append(decision("blocked", {"pdf_path": ""}))
+        return {"status": "success", "result": "made", "artifacts": [{**ref, "artifact_type": "file"}]}
+
+    @agent.action_func
+    def change_file() -> str:
+        if mutation == "changed":
+            produced[0].write_bytes(b"different")
+        else:
+            produced[0].unlink()
+        return mutation
+
+    run = agent.create_execution("long_task").input("Generate PDF").use_actions(["make_file", "change_file"]).output({"pdf_path": str})
+    run.options["context_budget"] = {"optional_selection": "none"}
+    ScriptedExecutionRequester.responses.append(decision("continue", None, [{"action_id": "make_file", "action_input": {}}]))
+    if mutation != "unknown":
+        # The mutation is a later Action, after the original artifact was observed.
+        ScriptedExecutionRequester.responses.append(decision("continue", None, [{"action_id": "change_file", "action_input": {}}]))
+    full = await run.async_get_full_data()
+    assert not produced[0].exists()
+    assert not cast(AgentExecution, run)._terminal_task_handoff_refs
+    if mutation != "unknown":
+        assert not full["accepted"]
+        assert "selected_delivery" in json.dumps(ScriptedExecutionRequester.requests[-1], default=str)
+
+
+@pytest.mark.asyncio
+async def test_file_selection_survives_rework_without_replaying_action(tmp_path):
+    agent = create_execution_agent(tmp_path, "loop-file-rework", [])
+    calls = []
+
+    @agent.action_func
+    async def make_file() -> dict:
+        calls.append(1)
+        written = await run.task_workspace.write_file("result.txt", "retained body")
+        ref = await run.task_workspace._promote_file_identity(written.path)
+        ScriptedExecutionRequester.responses.extend([decision(result={"path": ref["path"]}),
+                                                     decision(result={"path": ref["path"]})])
+        return {"status": "success", "result": {"body": "written", "file_refs": [ref]}}
+
+    run = agent.create_execution("long_task").input("Write file").use_actions("make_file").output({"path": str})
+    run.options["context_budget"] = {"optional_selection": "none"}
+    ScriptedExecutionRequester.responses.append(decision("continue", None, [{"action_id": "make_file", "action_input": {}}]))
+    first = await run.async_get_data()
+    await run.async_rework("Keep the useful file")
+    assert await run.async_get_data() == first
+    assert run.task_workspace.resolve_file_path(first["path"]).read_text() == "retained body"
+    assert calls == [1]
+
+
+@pytest.mark.asyncio
+async def test_observation_preserves_small_complete_source_body(tmp_path):
+    body = "a" * 4000 + "END_OF_SOURCE"
+    agent = create_execution_agent(tmp_path, "loop-full-source", [
+        decision("continue", None, [{"action_id": "read_source", "action_input": {}}]), decision()])
+
+    @agent.action_func
+    def read_source() -> str:
+        return body
+
+    run = agent.create_execution("long_task").input("Read source").use_actions("read_source")
+    assert await run.async_get_data() == "done"
+    assert body in json.dumps(ScriptedExecutionRequester.requests[-1], default=str)
+
+
+@pytest.mark.asyncio
+async def test_required_binary_delivery_needs_identity_not_text_parser(tmp_path):
+    agent = create_execution_agent(tmp_path, "loop-binary", [decision()])
+    agent.use_task_workspace(tmp_path / "loop-binary", mode="read_write")
+    run = agent.create_execution("long_task").input("Deliver binary")
+    run.options["context_budget"] = {"optional_selection": "none"}
+    path = run.task_workspace.resolve_path("output.bin")
+    path.write_bytes(b"\x00\xff\x01")
+    run.task_options["options"] = {"agent_task": {"required_deliverables": ["output.bin"]}}
+    assert (await run.async_get_full_data())["accepted"]
+    assert path.read_bytes() == b"\x00\xff\x01"

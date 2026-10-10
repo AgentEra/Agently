@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from agently.core.application.AgentExecution import AgentExecutionLimitExceeded
 from agently.core.orchestration import TriggerFlow
+from agently.core.TaskWorkspace.Errors import TaskWorkspaceError
+from agently.core.operation.Action.ActionArtifactManager import ActionArtifactManager
 from agently.types.trigger_flow import TriggerFlowRuntimeData
 from agently.utils import DataFormatter
 
@@ -24,7 +26,7 @@ The taskboard is an editable Markdown checklist. Add, remove, split, merge, reor
 One action may advance several items; one item may require several rounds. Select only offered actions with their declared arguments. Calls within a batch must be independent; await actual results before deciding dependent calls. Plans and checkmarks are not evidence that actions succeeded.
 Return continue when more work is possible, completed when the original task and required deliverables are fulfilled, or blocked when required information or available capabilities prevent further progress. Disclosing a missing requirement does not fulfill it; permitted template blanks do not imply failure.
 Keep taskboard null to retain it. Return the current useful result or null while continuing, and the full useful result at termination. When applicable, explain unfinished work, uncertainties to check, actual consequences and information needed. Do not invent completion percentages or causes of failure.
-Terminal decisions must have no action_calls: an operation cannot be declared complete before execution. Preserve usable work when blocked. Return result in the caller's declared output shape."""
+Terminal decisions must have no action_calls: an operation cannot be declared complete before execution. Preserve usable work when blocked. Return result in the caller's declared output shape. For file deliveries, include the exact observed TaskWorkspace path as a result value; do not invent or shorten paths. Only selected observed files are retained after execution."""
 
 
 def _store(owner: AgentExecution, state: dict[str, Any]) -> None:
@@ -36,13 +38,69 @@ def _state(owner: AgentExecution) -> dict[str, Any]:
     if retained.get("kind") != "task_loop":
         state: dict[str, Any] = {
             "taskboard": "", "rounds": 0, "observations": [], "result": None,
-            "status": "continue", "succeeded_actions": [], "revision": owner.revision,
+            "status": "continue", "succeeded_actions": [], "revision": owner.revision, "files": {},
         }
         _store(owner, state)
         return state
     if retained.get("digest") != content_digest(retained.get("content")):
         raise ValueError("Retained long-task state changed outside its execution owner.")
-    return deepcopy(retained["content"])
+    state = deepcopy(retained["content"])
+    state.setdefault("files", {})
+    return state
+
+
+async def _observe_files(owner: AgentExecution, state: dict[str, Any], record: Any, action: Action) -> list[dict[str, Any]]:
+    """Bind declared Action file products to physical workspace identities."""
+    refs = [*ActionArtifactManager._collect_file_refs(record),
+            *record.get("artifact_refs", []), *record.get("artifacts", [])]
+    observed = []
+    for ref in refs:
+        if isinstance(ref, Mapping) and ref.get("selection_key"):
+            transfer = action._artifact_manager.read_selection_transfer(
+                str(ref["selection_key"]), expected_scope=action._artifact_scope_from_run_context(owner.agent_execution_run_context))
+            if transfer is not None and isinstance(transfer[1], Mapping):
+                ref = transfer[1]
+        if not isinstance(ref, Mapping) or not isinstance(ref.get("path"), str):
+            continue
+        if ref.get("type") != "file" and ref.get("artifact_type") != "file":
+            continue
+        path = ref["path"]
+        try:
+            identity = await owner.task_workspace._promote_file_identity(path, role="deliverable")
+            for key in ("sha256", "size", "task_workspace_id", "execution_id"):
+                if ref.get(key) is not None and ref[key] != identity[key]:
+                    raise ValueError("Action file identity mismatch: " + key)
+            state["files"][path] = identity
+            observed.append({key: identity[key] for key in ("path", "size", "sha256", "media_type")})
+        except (OSError, ValueError, TaskWorkspaceError) as failure:
+            state["files"][path] = {"error": str(failure)}
+    return observed
+
+
+def _selected_paths(value: Any, files: dict[str, Any]) -> set[str]:
+    if isinstance(value, str):
+        return {value} if value in files else set()
+    children = value.values() if isinstance(value, Mapping) else value if isinstance(value, (list, tuple)) else ()
+    selected: set[str] = set()
+    for child in children:
+        selected.update(_selected_paths(child, files))
+    return selected
+
+
+async def _selected_files(owner: AgentExecution, state: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    refs, failures = [], []
+    for path in sorted(_selected_paths(state["result"], state["files"])):
+        try:
+            previous = state["files"][path]
+            if previous.get("error"):
+                raise ValueError(previous["error"])
+            current = await owner.task_workspace._promote_file_identity(path, role="deliverable")
+            if any(current[key] != previous[key] for key in ("sha256", "size", "task_workspace_id", "execution_id")):
+                raise ValueError("Selected file changed since its Action observation.")
+            refs.append(current)
+        except (OSError, ValueError, TaskWorkspaceError) as failure:
+            failures.append({"path": path, "error": str(failure)})
+    return refs, failures
 
 
 async def prepare_rework(owner: AgentExecution) -> None:
@@ -97,9 +155,7 @@ async def run_task_loop(owner: AgentExecution) -> dict[str, Any]:
     if not isinstance(paths, list) or any(not isinstance(path, str) or not path for path in paths):
         raise ValueError("required_deliverables must contain non-empty paths.")
     candidates = owner.action_candidates()
-    offered = {str(spec.get("action_id") or spec.get("name")) for spec in candidates}
     action = cast("Action", getattr(owner.agent, "action"))
-    actions = action._to_model_planning_action_list(candidates)
     output = owner.request.prompt.get("output") or str
     schema = {
         "taskboard": (str, "Complete revised Markdown checklist, or null to keep it.", False),
@@ -127,39 +183,42 @@ async def run_task_loop(owner: AgentExecution) -> dict[str, Any]:
             for reader in owner.context_readers.values():
                 if not reader.is_current:
                     reader.refresh()
+            available = action._with_action_artifact_recall_action(candidates, state["observations"])
+            current_offered = {str(spec.get("action_id") or spec.get("name")) for spec in available}
             stage = await run_model_stage(
                 owner, producer="long_task", stage="decide",
                 stage_input={"goals": owner.goal_items, "success_criteria": owner.success_criteria_items},
                 stage_info={"taskboard": state["taskboard"], "observations": state["observations"],
-                    "current_result": state["result"], "available_actions": actions,
+                    "current_result": state["result"], "available_actions": action._to_model_planning_action_list(available),
                     "required_actions": sorted(required), "required_deliverables": paths,
                     "feedback": owner._rework_feedback if owner.revision else None},
                 stage_instructions=[_INSTRUCTION], output=schema, inherit_extension_handlers=False,
             )
-            decision = _decision(stage.value, offered)
+            decision = _decision(stage.value, current_offered)
             if decision.get("taskboard") is not None:
                 state["taskboard"] = decision["taskboard"]
             if decision.get("result") is not None:
                 state["result"] = decision["result"]
             state["status"] = decision["status"]
+            refs: list[dict[str, Any]] = []
+            if state["status"] in {"completed", "blocked"}:
+                refs, delivery_failures = await _selected_files(owner, state)
+                owner._terminal_task_handoff_refs = refs
+                if delivery_failures:
+                    state["status"] = "continue"
+                    state["observations"].append({"source": "selected_delivery", "status": "error", "result": delivery_failures})
             if state["status"] == "completed":
                 failures: list[dict[str, Any]] = []
                 missing = required - set(state["succeeded_actions"])
                 if missing:
                     failures.append({"required_actions_not_succeeded": sorted(missing)})
-                refs: list[dict[str, Any]] = []
                 for path in paths:
                     try:
                         workspace = owner.task_workspace
                         if workspace.resolve_file_path(path) != workspace.resolve_path(path):
                             raise ValueError("File exists only at a fallback path, not the required destination.")
-                        read = await workspace.read_file(path)
-                        if not read.readable:
-                            raise ValueError("Required file cannot be read with the configured file handler.")
-                        refs.append({"type": "file", "path": read.path, "sha256": read.sha256,
-                            "size": read.total_bytes, "task_workspace_id": read.task_workspace_id,
-                            "execution_id": read.execution_id, "role": "deliverable"})
-                    except (OSError, ValueError) as failure:
+                        refs.append(await workspace._promote_file_identity(path, role="deliverable"))
+                    except (OSError, ValueError, TaskWorkspaceError) as failure:
                         failures.append({"path": path, "error": str(failure)})
                 owner._terminal_task_handoff_refs = refs
                 if failures:
@@ -183,8 +242,14 @@ async def run_task_loop(owner: AgentExecution) -> dict[str, Any]:
             )
             for record in records:
                 await owner.record_action_log(record, route="agent_task")
-                state["observations"].append(DataFormatter.sanitize({key: record.get(key)
-                    for key in ("action_id", "kwargs", "status", "result", "error") if key in record}))
+                projected = action.to_model_visible_records([record])
+                for observation in projected:
+                    observation.pop("kwargs", None)
+                state["observations"].extend(DataFormatter.sanitize(projected))
+                if record.get("status") == "success":
+                    files = await _observe_files(owner, state, record, action)
+                    if files:
+                        state["observations"][-1]["file_refs"] = files
                 if record.get("status") == "success":
                     state["succeeded_actions"] = sorted(set(state["succeeded_actions"]) | {str(record.get("action_id"))})
             _store(owner, state)

@@ -488,5 +488,13 @@
     "surface": "compatibility/public-typing-allowlist.json",
     "contract": "New public methods default to typed parameters and returns; Any boundaries require explicit allowlist reasons.",
     "compatibility_policy": "The allowlist records deliberate Any boundaries; it is not a public-method allowlist."
+  },
+  "long_task_artifact_delivery": {
+    "status": "in_development",
+    "release_baseline": "4.1.4.9",
+    "public_signatures_changed": false,
+    "contract": "Action file observations bind physical TaskWorkspace identities; exact final result values select unchanged files for terminal retention. Missing or changed selected files return to the same Loop; unselected private intermediates are cleaned. Native bounded model observations and explicit artifact recall are reused.",
+    "observation_event_protocol_changed": false,
+    "forward_line": "4.2 canonical long_task APIs"
   }
 }
