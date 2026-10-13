@@ -18,6 +18,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING, Any, cast
 
 from agently.utils import LazyImport
+from agently.utils.MCP import normalize_mcp_transport
 
 from ._base import BuiltinExecutionResourceProvider
 
@@ -52,7 +53,7 @@ class MCPExecutionResourceProvider(BuiltinExecutionResourceProvider):
     ) -> "ExecutionResourceHandle":
         _ = (policy, existing_handle)
         config = requirement.get("config", {})
-        transport = cast(Any, config.get("transport"))
+        transport = normalize_mcp_transport(config.get("transport"))
         LazyImport.import_package("fastmcp", version_constraint=">=3", auto_install=False)
         from fastmcp import Client
 

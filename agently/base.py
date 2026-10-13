@@ -71,8 +71,8 @@ emit_runtime: Any = event_center.emit
 logger: Any = create_logger()
 httpx_level_name = settings.get("runtime.httpx_log_level", "WARNING")
 httpx_level = getattr(logging, str(httpx_level_name).upper(), logging.WARNING)
-logging.getLogger("httpx").setLevel(httpx_level)
-logging.getLogger("httpcore").setLevel(httpx_level)
+for http_logger_name in ("httpx", "httpcore", "httpx2", "httpcore2"):
+    logging.getLogger(http_logger_name).setLevel(httpx_level)
 action: Action = Action(plugin_manager, settings)
 tool: Action = action
 execution_resource: ExecutionResourceManager = ExecutionResourceManager(
@@ -288,8 +288,8 @@ class AgentlyMain(Generic[A]):
         def refresh_httpx_log_level() -> None:
             level_name = self.settings.get("runtime.httpx_log_level", "WARNING")
             level = getattr(logging, str(level_name).upper(), logging.WARNING)
-            logging.getLogger("httpx").setLevel(level)
-            logging.getLogger("httpcore").setLevel(level)
+            for http_logger_name in ("httpx", "httpcore", "httpx2", "httpcore2"):
+                logging.getLogger(http_logger_name).setLevel(level)
 
         def set_settings(
             key: Any,

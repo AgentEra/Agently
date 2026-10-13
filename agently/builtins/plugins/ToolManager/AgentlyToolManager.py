@@ -24,7 +24,7 @@ from agently.core.operation.Action import ActionDispatcher, ActionRegistry
 from agently.core.operation.Action.ActionMetadata import sanitize_action_spec_for_metadata, summarize_action_records
 from agently.types.plugins import ToolManager
 from agently.utils import DataFormatter, DeprecationWarnings, LazyImport, SettingsNamespace
-from agently.utils.MCP import normalize_mcp_transport
+from agently.utils.MCP import mcp_tool_schema, mcp_tool_tags, normalize_mcp_transport
 from agently.types.data import ActionSpec
 
 if TYPE_CHECKING:
@@ -409,15 +409,13 @@ class AgentlyToolManager(ToolManager):
         async with Client(transport) as client:  # type: ignore[arg-type]
             tool_list = await client.list_tools()
             for tool in tool_list:
-                tool_tags = []
-                if hasattr(tool, "_meta") and tool._meta:  # type: ignore[attr-defined]
-                    tool_tags = tool._meta.get("_fastmcp", {}).get("tags", [])  # type: ignore[index]
+                tool_tags = mcp_tool_tags(tool)
                 tool_tags.extend(normalized_tags)
                 self.register_action(
                     action_id=tool.name,
                     desc=tool.description,
-                    kwargs=DataFormatter.from_schema_to_kwargs_format(tool.inputSchema),
-                    returns=DataFormatter.from_schema_to_kwargs_format(tool.outputSchema),
+                    kwargs=DataFormatter.from_schema_to_kwargs_format(mcp_tool_schema(tool, "input")),
+                    returns=DataFormatter.from_schema_to_kwargs_format(mcp_tool_schema(tool, "output")),
                     executor=self._create_executor(
                         "MCPActionExecutor",
                         action_id=tool.name,

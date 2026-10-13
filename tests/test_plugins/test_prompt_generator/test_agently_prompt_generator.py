@@ -728,6 +728,14 @@ def test_hybrid_prompt_marks_sanitized_scalar_fields_as_text():
     ) in text
 
 
+@pytest.mark.parametrize("payload,expected", [("hello", "hello"), (12, "12"), (None, "None")])
+def test_text_history_preserves_open_attachment_payload(payload, expected):
+    prompt = Prompt(Agently.plugin_manager, Agently.settings)
+    prompt.set("input", "Continue.")
+    prompt.set("chat_history", [{"role": "user", "content": [{"type": "text", "text": payload}]}])
+    assert f"[user]:{expected}" in prompt.to_text()
+
+
 def test_rich_prompt():
     Agently.set_settings("plugins.PromptGenerator.name", "AgentlyPromptGenerator")
     prompt = Prompt(Agently.plugin_manager, Agently.settings)

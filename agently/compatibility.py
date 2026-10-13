@@ -5,8 +5,8 @@ from typing import Any
 
 
 CURRENT_COMPATIBILITY_SCHEMA_VERSION = 1
-CURRENT_FRAMEWORK_VERSION = "4.1.4.9"
-CURRENT_RELEASE_TRAIN = "2026-10-4.1.4.9"
+CURRENT_FRAMEWORK_VERSION = "4.1.4.10"
+CURRENT_RELEASE_TRAIN = "2026-10-4.1.4.10"
 
 DEVTOOLS_RUNTIME_PROTOCOL = "agently-devtools.observation-runtime.v1"
 SKILLS_AUTHORING_PROTOCOL = "agently-skills.authoring.v3"
@@ -41,7 +41,10 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                 'evidence': 'template description/JSON Schema and actual stage provider/model, role, latency, '
                             'reasoning length',
                 'timing': 'no universal latency or calibration guarantee',
-                'instant': 'Structured LLM-backed stages forward provisional instant fields. Only actual SystemOne stages suppress replay after a complete field is observed; final validation may still fail. Ordinary ModelRequest, AgentExecution and ordinary LLM composition stages retain bounded validation retry and accepted replacement streams.'},
+                'instant': 'Structured LLM-backed stages forward provisional instant fields. Only actual SystemOne '
+                           'stages suppress replay after a complete field is observed; final validation may still '
+                           'fail. Ordinary ModelRequest, AgentExecution and ordinary LLM composition stages retain '
+                           'bounded validation retry and accepted replacement streams.'},
  'jev_output': {'status': 'in_development',
                 'declarations': ['OutputTemplate', 'Probability', 'Choice', 'Score'],
                 'binding': 'from_output: string or path array',
@@ -134,12 +137,45 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                         'files; no retries or cancellation flush',
                                               'quality': 'VAD is acoustic, not semantic; no universal '
                                                          'cough/music/noise rejection or low-volume recall guarantee'}},
- 'release_train': '2026-10-4.1.4.9',
- 'notes': 'Agently 4.1.4.9 candidate: unified editable-checklist long tasks, effective context supply, complete Skill '
-          'selection input, independent model roles, SystemOne/Jev output templates and optional acoustic input '
-          'preprocessing. 4.1.x legacy task strategies and task-id recovery remain supported; removals belong to 4.2. '
-          'Model completion and output quality remain model-dependent; see the release notes for limits. Stage '
-          '>=0.3.8,<0.4.0; optional DevTools >=0.2.0,<0.3.0.',
+ 'release_train': '2026-10-4.1.4.10',
+ 'notes': '4.1.4.10 candidate: repair long_task file observation, exact selection, terminal retention and implicit '
+          'native file Action execution identity. Preserve published 4.1 compatibility; do not include 4.2 removals. '
+          'File lifecycle verification is separate from model semantic quality. FastMCP 4.1.0 / MCP SDK v2 field, '
+          'metadata and content adapters are covered while FastMCP 3.x remains compatible. Carries forward the '
+          'published baseline: 4.1.4.9 development target; optional AudioInputOptions provides replaceable acoustic '
+          'speech detection for PCM streams and complete PCM WAV, original sample timestamps and ordered application '
+          'events; defaults preserve short detected answers, with no semantic cleanup or extra LLM calls. Released '
+          '4.1.4.8 remains the baseline; default ContextReader resource selection receives current-read instruction '
+          'content and completeness without preloading optional bodies or changing selector signatures, budgets, Skill '
+          'scope or permissions; complete resource roots also suppress already-read child delivery independent of '
+          'selection order, without refunding read budgets; Cmd-backed local commands use non-blocking async '
+          'subprocess waiting and settle owned processes on timeout/cancellation (POSIX process groups, Windows Job '
+          'Objects), preserving argv, policy, result envelopes and full output artifacts; committed DeepSeek examples '
+          'standardize their fallback on deepseek-v4-flash with thinking explicitly disabled, while environment '
+          'overrides and intentional thinking-stream demonstrations remain supported; explicit model keys fail before '
+          'provider dispatch when a configured non-empty model_pool does not contain the alias, while pool-free '
+          'single-model inheritance remains compatible; resolve_model_profile provides a non-secret read-only '
+          'preflight. It carries forward the 4.1.4.7 contract requiring Agently-Stage >=0.3.8,<0.4.0. Stage 0.3.7 '
+          'supplies physically safe carrier routing across mixed sync/async boundaries and excludes every upstream '
+          'carrier in a transitive synchronous wait chain; 0.3.8 preserves that contract while forwarding Python 3.14 '
+          'task-factory keyword arguments. A synchronous TriggerFlow chunk may call a provider-owned sync wrapper that '
+          "uses with Stage() for an async tool and may then re-enter TriggerFlow's synchronous state facade without "
+          'knowing that the framework already uses Stage. The deprecated syncify/asyncify adapters retain their '
+          'compatibility names and warnings but now delegate to Stage.as_sync/as_async; internal lightweight '
+          'default_stage_call_bridge usage remains unchanged. Stage is the required-runtime companion and remains a '
+          'private Agently mechanism dependency: TriggerFlowExecution remains the semantic lifecycle owner, and Stage '
+          'types or carrier state do not enter public execution state. Built-in inactive gvisor, seatbelt, and '
+          'landlock candidates use the existing provider-neutral code_execution contract and probe external mechanisms '
+          'only when explicitly selected; they add no third-party Python dependency and fail closed without implicit '
+          'fallback. Provider reasoning and explicit reasoning-token usage remain observation-only facts, and '
+          'validation console output exposes bounded failure/retry diagnostics without changing validation authority. '
+          'The 4.1.4.6 contracts remain intact: agently.__version__ and Agently.__version__ are the standard package '
+          'version surfaces, provider reasoning and compatible SSE retry boundaries remain normalized, and live '
+          'TriggerFlow sub-flow resources preserve identity. The 4.1.4.5 runtime line also remains intact: '
+          'AgentExecution ensure_long_output() uses TriggerFlow-visible continuation and TaskWorkspace owns staged '
+          'file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns '
+          'files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and '
+          'SkillLibrary owns immutable Skill revisions.',
  'runtime_support': {'agently_stage': {'repository': 'Agently-Stage',
                                        'package': 'agently-stage',
                                        'role': 'required_runtime_dependency',
@@ -1496,8 +1532,33 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                'explicit allowlist reasons.',
                    'compatibility_policy': 'The allowlist records deliberate Any boundaries; it is not a public-method '
                                            'allowlist.'},
- 'framework_version': '4.1.4.9',
- 'released_at': '2026-10-01'}
+ 'long_task_artifact_delivery': {'status': 'implemented',
+                                 'release_baseline': '4.1.4.9',
+                                 'public_signatures_changed': False,
+                                 'contract': 'Action file observations bind physical TaskWorkspace identities; exact '
+                                             'final result values select unchanged files for terminal retention. '
+                                             'Missing or changed selected files return to the same Loop; unselected '
+                                             'private intermediates are cleaned. Native bounded model observations and '
+                                             'explicit artifact recall are reused.',
+                                 'observation_event_protocol_changed': False,
+                                 'forward_line': '4.2 canonical long_task APIs',
+                                 'implicit_file_actions': 'Resolve current execution TaskWorkspace at call time; '
+                                                          'preserve explicit root/workspace and isolated bindings.',
+                                 'quality_boundary': 'File reachability, identity and retention are Host-checked. '
+                                                     'Semantic completion, factual quality and visual quality remain '
+                                                     'model-dependent; no new automatic semantic judge or guaranteed '
+                                                     'quality improvement.'},
+ 'framework_version': '4.1.4.10',
+ 'released_at': '2026-10-13',
+ 'mcp_compatibility': {'fastmcp_optional': True,
+                       'verified_fastmcp_versions': ['3.4.7', '4.1.0'],
+                       'schema_fields': 'SDK v2 snake_case with SDK v1 fallback; no camelCase bridge required',
+                       'tags': 'Preserve server fastmcp/_fastmcp metadata tags and host tags',
+                       'results': 'Preserve empty structured objects, MCP errors and content wire aliases',
+                       'managed_client': 'ExecutionResource owns agent-scoped client health and release',
+                       'new_interactive_or_background_workflows': False,
+                       'public_signatures_changed': False,
+                       'observation_event_protocol_changed': False}}
 
 def get_current_release_manifest() -> dict[str, Any]:
     return deepcopy(_CURRENT_RELEASE_MANIFEST)

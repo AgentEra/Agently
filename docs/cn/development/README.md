@@ -1,8 +1,8 @@
 # Development
 
-当前发布候选：`4.1.4.8`。该版本要求 Agently-Stage 0.3.8，并加入 fluent
-AgentExecution typing、稳定的 interaction/review/artifact 交付、beta whole-request
-Patterns、execution-scoped Skills，以及 Action/runtime 交付改进。
+当前发布候选：`4.1.4.10`。修复长任务文件交付并适配 FastMCP 3/4，保留现有 4.1 接口及 Agently-Stage 0.3.8 支持。
+
+[Agently 4.1.4.10 发布说明](release-notes-4.1.4.10.md)：长任务文件交付修复及 FastMCP 3/4 适配。
 
 建议按这个顺序读：
 

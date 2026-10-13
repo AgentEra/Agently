@@ -26,6 +26,7 @@ from .revisions import _HISTORY_FIELDS, export_history, restore_history
 from .route_execution import finish_production, prepare_production
 
 if TYPE_CHECKING:
+    from typing_extensions import TypeForm
     from .execution import AgentExecution
 
 
@@ -42,7 +43,8 @@ def _hash(value: object) -> str:
 
 def _contract_value(value: object) -> object:
     if get_origin(value) is Annotated:
-        return {"annotation_schema": TypeAdapter(value).json_schema()}
+        # get_origin proves this is an evaluated annotation, not a live value.
+        return {"annotation_schema": TypeAdapter(cast("TypeForm[object]", value)).json_schema()}
     if isinstance(value, type):
         if issubclass(value, BaseModel):
             return {"model_schema": value.model_json_schema()}

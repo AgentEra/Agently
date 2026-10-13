@@ -271,9 +271,11 @@ Desktop installers 不属于当前主仓库 release 流程。
 
 ## PyPI 发布
 
-当前主要 PyPI 自动化是 `Publish on version change`。它在 push 到 `main` 且改动
-`pyproject.toml` 时运行。校验矩阵会从 PyPI 安装 lock 中的依赖（包括
-Agently-Stage），先运行 typing 与测试；随后 publish job 检测 Agently package version
+当前主要 PyPI 自动化是 `Publish on version change`。发往 `dev`、`main` 的 PR 会验证
+Python 3.10/3.14 × FastMCP 3/4，但不会发布；push 到 `main` 且改动
+`pyproject.toml` 时运行同一矩阵。校验会从 PyPI 安装 lock 中的依赖（包括
+Agently-Stage），先运行 typing 与测试；publish job 仅接受 `main` 的 push 或手动执行，
+随后检测 Agently package version
 是否变化，并只在 version 变化时使用 Poetry 发布。
 
 如果该版本变更 push 之后 validation 失败，应通过新 PR 修复，再手动运行同一 workflow

@@ -49,6 +49,8 @@ Agently 是一个面向 AI 应用开发的框架，服务于团队从模型原�
    - [Event Center](observability/event-center.md)
    - [DevTools](observability/devtools.md)
    - [Coding Agents](development/coding-agents.md)
+   - [Agently 4.1.4.10 发布说明](development/release-notes-4.1.4.10.md)
+   - [Agently 4.1.4.9 发布说明](development/release-notes-4.1.4.9.md)
    - [Agently 4.1.4.8 发布说明](development/release-notes-4.1.4.8.md)
    - [Agently 4.1.4.7 发布说明](development/release-notes-4.1.4.7.md)
    - [Agently 4.1.4.6 发布说明](development/release-notes-4.1.4.6.md)

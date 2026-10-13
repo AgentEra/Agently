@@ -16,6 +16,7 @@ import json
 from typing import Any
 
 from agently.utils import LazyImport
+from agently.utils.MCP import normalize_mcp_transport
 
 
 class MCPActionExecutor:
@@ -41,7 +42,7 @@ class MCPActionExecutor:
     @staticmethod
     def _dump_content_block(block: Any) -> dict[str, Any]:
         if hasattr(block, "model_dump"):
-            dumped = block.model_dump()
+            dumped = block.model_dump(by_alias=True)
             return dumped if isinstance(dumped, dict) else {"value": dumped}
         if isinstance(block, dict):
             return dict(block)
@@ -136,7 +137,7 @@ class MCPActionExecutor:
                 raise_on_error=False,
             )
         else:
-            transport = managed_client if managed_client is not None else self.transport
+            transport = normalize_mcp_transport(managed_client if managed_client is not None else self.transport)
             async with Client(transport) as client:  # type: ignore[arg-type]
                 mcp_result = await client.call_tool(
                     name=self.action_id,
@@ -145,7 +146,11 @@ class MCPActionExecutor:
                 )
 
         if mcp_result.is_error:
-            return {"error": mcp_result.content[0].text}  # type: ignore[index]
+            messages = [
+                block.text for block in list(mcp_result.content or [])
+                if isinstance(block, TextContent)
+            ]
+            return {"error": "\n".join(messages) or f"MCP tool '{self.action_id}' reported an error."}
         artifacts = [
             artifact
             for artifact in (
@@ -154,7 +159,7 @@ class MCPActionExecutor:
             )
             if artifact is not None
         ]
-        if mcp_result.structured_content:
+        if mcp_result.structured_content is not None:
             return self._result_with_artifacts(mcp_result.structured_content, artifacts)
         try:
             content = list(mcp_result.content or [])
@@ -168,7 +173,7 @@ class MCPActionExecutor:
                 except json.JSONDecodeError:
                     return self._result_with_artifacts(result.text, artifacts)
             if isinstance(result, (ImageContent, AudioContent, ResourceLink, EmbeddedResource)):
-                data = result.model_dump()
+                data = self._dump_content_block(result)
                 return self._result_with_artifacts(data, artifacts)
         except Exception:
             return None
