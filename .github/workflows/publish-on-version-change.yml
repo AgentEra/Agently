@@ -74,9 +74,25 @@ jobs:
       - name: Run full test suite
         run: poetry run pytest -q
 
+  minimum-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install declared minimum typing dependencies
+        run: python -m pip install . "pydantic==2.11.7" "typing_extensions==4.12.2" "anyio==4.8.0" "pytest==8.4.2" "pytest-asyncio==1.4.0"
+      - name: Verify startup and annotated snapshot contracts
+        run: |
+          cd "${RUNNER_TEMP}"
+          python -c 'from typing import Annotated; from pydantic import Field; from agently import Agently; from agently.builtins.plugins.AgentExecution.modules.snapshot import _contract_value; Agently.create_agent(); assert _contract_value(Annotated[str, Field(min_length=2)])["annotation_schema"]["minLength"] == 2'
+          cd "${GITHUB_WORKSPACE}"
+          python -m pytest -q tests/test_agent_execution_snapshot_typed.py
+
   publish:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: validate
+    needs: [validate, minimum-dependencies]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

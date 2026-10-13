@@ -15,7 +15,10 @@ def test_release_workflow_validates_both_mcp_lines_before_publication() -> None:
     install = next(step for step in workflow["jobs"]["validate"]["steps"]
                    if step["name"] == "Install release validation tools")
     assert "matrix.fastmcp-version" in install["run"]
-    assert workflow["jobs"]["publish"]["needs"] == "validate"
+    assert workflow["jobs"]["publish"]["needs"] == ["validate", "minimum-dependencies"]
+    minimum_steps = workflow["jobs"]["minimum-dependencies"]["steps"]
+    assert "pydantic==2.11.7" in minimum_steps[2]["run"]
+    assert "typing_extensions==4.12.2" in minimum_steps[2]["run"]
 
 
 def test_release_workflow_never_publishes_from_pull_requests_or_other_branches() -> None:
