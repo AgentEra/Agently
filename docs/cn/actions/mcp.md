@@ -17,6 +17,20 @@ server 使用 stdio command config。SSE endpoint 只作为 legacy 兼容路径�
 
 ## 最小例子
 
+FastMCP 是可选依赖。4.1.4.10 候选的新版适配可安装 `fastmcp==4.1.0`，使用 MCP SDK v2；
+FastMCP 3.x 与其解析器选择的 SDK v1 仍兼容。不要单独把 `mcp` 升级到 FastMCP 要求的
+范围之外。适配器直接读取 SDK v2 snake_case 字段，不依赖上游弃用的 camelCase 兼容桥，
+保留服务端与 host 标签，并在内容值中保留 `mimeType` 等 MCP wire 别名。
+空结构化对象保持 `{}`；服务端错误即使没有文本块也保持失败。这些是协议适配保证，
+模型选择与回答质量仍需另外评估。
+
+不调用模型的[协议冒烟](../../../examples/action_runtime/2_5_mcp_protocol_compat.py)
+通过真实本地 MCP 服务检查 Schema、两次有状态调用与资源释放。一次注册共享一个
+agent-scope 托管 client；是否存在服务端 session 取决于上游协议。FastMCP 4 的交互式
+工具和后台任务扩展需要各自的 host 集成，本次适配不新增这些业务流程。
+既有 `runtime.httpx_log_level` 同时控制 FastMCP 4 的 `httpx2` / `httpcore2` logger，
+不改变工具权限或重试政策。
+
 ```python
 import os
 import asyncio

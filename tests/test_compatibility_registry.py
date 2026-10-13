@@ -58,8 +58,8 @@ def test_4_1_4_8_skills_catalog_is_v3_without_rewriting_archives() -> None:
 def test_current_release_manifest_pins_stage_native_runtime_contract() -> None:
     manifest = get_current_release_manifest()
 
-    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.9"
-    assert CURRENT_RELEASE_TRAIN == "2026-10-4.1.4.9"
+    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.10"
+    assert CURRENT_RELEASE_TRAIN == "2026-10-4.1.4.10"
     stage_support = manifest["runtime_support"]["agently_stage"]
     assert stage_support["version_specifier"] == ">=0.3.8,<0.4.0"
     assert stage_support["role"] == "required_runtime_dependency"
@@ -84,8 +84,8 @@ def test_companion_views_still_derive_from_released_manifest() -> None:
 def test_in_development_manifest_retains_released_owner_boundaries() -> None:
     manifest = _development_manifest()
 
-    assert manifest["target_version"] == "4.1.4.9"
-    assert manifest["release_train"] == "2026-09-4.1.4.9-dev"
+    assert manifest["target_version"] == CURRENT_FRAMEWORK_VERSION
+    assert manifest["release_train"] == CURRENT_RELEASE_TRAIN
     assert "carries forward the 4.1.4.7 contract" in manifest["notes"]
     assert "Agently-Stage >=0.3.8,<0.4.0" in manifest["notes"]
     assert "Python 3.14 task-factory keyword arguments" in manifest["notes"]
