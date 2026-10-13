@@ -244,11 +244,11 @@ class AnthropicCompatibleRequestBuilderMixin:
                 f"Error: Anthropic input_image content currently requires 'image_url'.\n"
                 f"Content: { part }"
             )
-        if part_type == "image":
+        if part_type in ("image", "video"):
             source = part.get("source")
             if isinstance(source, dict):
                 return {
-                    "type": "image",
+                    "type": part_type,
                     "source": source,
                 }
         if part_type == "tool_result":
