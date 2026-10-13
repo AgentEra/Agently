@@ -1,6 +1,6 @@
-# Agently 4.1.4.10 candidate notes
+# Agently 4.1.4.10 release notes
 
-This candidate repairs long-task file delivery while preserving the existing
+This patch repairs long-task file delivery while preserving the existing
 4.1 interfaces and compatibility entrypoints. It does not publish 4.2.0 or
 include the compatibility removals planned for that line.
 
@@ -40,5 +40,4 @@ and test bounded improvements. Adopt only demonstrated gains. If the declared
 minimum remains unmet, propose an authorized stronger-model comparison. Passing
 one layer does not establish the others.
 
-These are candidate notes. Integration, package publication and final release
-acceptance remain separate checks.
+Released on 2026-10-13 after the Python 3.10/3.14 × FastMCP 3/4 matrix and declared-minimum dependency checks passed. The model-quality limits above remain applicable.

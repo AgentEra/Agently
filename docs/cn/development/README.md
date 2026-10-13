@@ -1,6 +1,6 @@
 # Development
 
-当前发布候选：`4.1.4.10`。修复长任务文件交付并适配 FastMCP 3/4，保留现有 4.1 接口及 Agently-Stage 0.3.8 支持。
+当前发布：`4.1.4.10`。修复长任务文件交付并适配 FastMCP 3/4，保留现有 4.1 接口及 Agently-Stage 0.3.8 支持。
 
 [Agently 4.1.4.10 发布说明](release-notes-4.1.4.10.md)：长任务文件交付修复及 FastMCP 3/4 适配。
 

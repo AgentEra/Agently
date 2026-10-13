@@ -1,6 +1,6 @@
 # Development
 
-Current release candidate: `4.1.4.10`. It fixes long-task file delivery and adds FastMCP 3/4 compatibility while preserving the existing 4.1 APIs and Agently-Stage 0.3.8 support.
+Current release: `4.1.4.10`. It fixes long-task file delivery and adds FastMCP 3/4 compatibility while preserving the existing 4.1 APIs and Agently-Stage 0.3.8 support.
 
 [Agently 4.1.4.10 Release Notes](release-notes-4.1.4.10.md): long-task file delivery and FastMCP 3/4 compatibility.
 
