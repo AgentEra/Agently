@@ -27,7 +27,7 @@ from agently.types.data import (
 )
 from agently.types.data.code_execution import required_code_execution_isolation
 from agently.utils import DataFormatter, LazyImport
-from agently.utils.MCP import normalize_mcp_transport
+from agently.utils.MCP import mcp_tool_schema, mcp_tool_tags, normalize_mcp_transport
 
 if TYPE_CHECKING:
     from agently.types.data import MCPConfigs
@@ -252,20 +252,20 @@ class ActionResourceRegistrar:
                 action_ids = [str(tool.name) for tool in tool_list]
                 registration_snapshot = action._snapshot_action_registration_batch(action_ids)
                 for tool in tool_list:
-                    tool_tags = []
-                    if hasattr(tool, "_meta") and tool._meta:  # type: ignore[attr-defined]
-                        tool_tags = tool._meta.get("_fastmcp", {}).get("tags", [])  # type: ignore[index]
+                    input_schema = mcp_tool_schema(tool, "input")
+                    output_schema = mcp_tool_schema(tool, "output")
+                    tool_tags = mcp_tool_tags(tool)
                     tool_tags.extend(normalized_tags)
                     action.register_action(
                         action_id=tool.name,
                         desc=tool.description,
-                        kwargs=DataFormatter.from_schema_to_kwargs_format(tool.inputSchema),
+                        kwargs=DataFormatter.from_schema_to_kwargs_format(input_schema),
                         required_input_keys=(
-                            list(tool.inputSchema.get("required", []))
-                            if isinstance(tool.inputSchema, dict)
+                            list(input_schema.get("required", []))
+                            if isinstance(input_schema, dict)
                             else []
                         ),
-                        returns=DataFormatter.from_schema_to_kwargs_format(tool.outputSchema),
+                        returns=DataFormatter.from_schema_to_kwargs_format(output_schema),
                         executor=action._create_executor(
                             "MCPActionExecutor",
                             action_id=tool.name,
