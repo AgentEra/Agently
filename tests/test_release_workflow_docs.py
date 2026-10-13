@@ -7,6 +7,26 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_release_workflow_validates_both_mcp_lines_before_publication() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/publish-on-version-change.yml").read_text())
+    matrix = workflow["jobs"]["validate"]["strategy"]["matrix"]
+    assert matrix["python-version"] == ["3.10", "3.14"]
+    assert matrix["fastmcp-version"] == ["3", "4"]
+    install = next(step for step in workflow["jobs"]["validate"]["steps"]
+                   if step["name"] == "Install release validation tools")
+    assert "matrix.fastmcp-version" in install["run"]
+    assert workflow["jobs"]["publish"]["needs"] == "validate"
+
+
+def test_release_workflow_never_publishes_from_pull_requests_or_other_branches() -> None:
+    workflow = yaml.load((ROOT / ".github/workflows/publish-on-version-change.yml").read_text(), Loader=yaml.BaseLoader)
+    assert workflow["on"]["pull_request"]["branches"] == ["dev", "main"]
+    assert workflow["jobs"]["publish"]["if"] == (
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+    )
+    assert all("POETRY_PYPI_TOKEN_PYPI" not in str(step) for step in workflow["jobs"]["validate"]["steps"])
+
+
 def test_publish_workflow_installs_optional_typing_dependencies_before_pyright() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github/workflows/publish-on-version-change.yml").read_text(encoding="utf-8")

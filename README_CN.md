@@ -1,6 +1,6 @@
 <img width="640" alt="Agently" src="https://github.com/user-attachments/assets/c645d031-c8b0-4dba-a515-9d7a4b0a6881" />
 
-# Agently 4.1.4.8 - AI 应用运行时框架
+# Agently 4.1.4.10 - AI 应用运行时框架
 
 > 构建具备结构化输出、可观测 Actions、运行时 Skills、MCP 能力、过程流和可恢复工作流的 AI 服务后端。
 
@@ -32,12 +32,16 @@ Agently 面向的是正在从“模型偶尔能做对”走向“应用必须稳
 
 核心设计问题是：怎样保留模型能力，同时让应用代码拥有稳定契约、可观测执行和可重启的工作流边界？
 
-Agently 4.1.4.8 让单次 Agent 执行的组合方式更容易在 IDE 中发现和校验：Action 与
+Agently 4.1.4.10 修复长任务文件交付并支持 FastMCP 3/4，保留现有 4.1 接口。内容准确性和业务完成判断仍需应用按其验收标准审阅。
+
+现有单次 Agent 执行的组合方式继续可用：Action 与
 Skill fluent chain 会持续推断为 `AgentExecution`，Execution、effort、strategy、Action
 planning protocol 和 concurrency 的内置选项可直接补全；稳定的交互、review、最终 validate
 与 artifact 交付 API 也有了完整 examples。本版还加入 accepted retry stream 重放、
 model alias fail-closed、execution-scoped Skills、programmatic Action calling 和更清晰的
 并发 debug 输出。阅读
+[4.1.4.10 发布说明](docs/cn/development/release-notes-4.1.4.10.md)、
+[4.1.4.9 发布说明](docs/cn/development/release-notes-4.1.4.9.md)、
 [4.1.4.8 发布说明](docs/cn/development/release-notes-4.1.4.8.md)、
 [4.1.4.7 发布说明](docs/cn/development/release-notes-4.1.4.7.md)、
 [4.1.4.6 发布说明](docs/cn/development/release-notes-4.1.4.6.md)、
