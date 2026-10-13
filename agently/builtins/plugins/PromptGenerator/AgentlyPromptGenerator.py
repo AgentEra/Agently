@@ -843,8 +843,10 @@ class AgentlyPromptGenerator(PromptGenerator):
                     content = [content_adapter.validate_python(message_content) for message_content in content]
                     for one_content in content:
                         if one_content.type == "text":
+                            # The open attachment variant also accepts dynamic text payloads.
+                            text_content = getattr(one_content, "text")
                             chat_history_lines.append(
-                                f"[{ role }]:{ self._replace_slot_references(str(one_content.text), prompt_title_mapping) }"
+                                f"[{ role }]:{ self._replace_slot_references(str(text_content), prompt_title_mapping) }"
                             )
                         else:
                             warnings.warn(
