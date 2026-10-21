@@ -1,7 +1,7 @@
 ---
 title: Provider Recipes
 description: Configuration recipes per model provider — base URLs, env vars, and model-name placeholders.
-keywords: Agently, providers, OpenAI, DeepSeek, Qwen, Claude, Ollama, recipes
+keywords: Agently, providers, OpenAI, DeepSeek, Qwen, Claude, Ollama, OrcaRouter, recipes
 ---
 
 # Provider Recipes
@@ -178,6 +178,18 @@ Agently.set_settings("OpenAICompatible", {
     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
     "api_key": "${ENV.GEMINI_API_KEY}",
     "model": "${ENV.GEMINI_MODEL}",
+})
+```
+
+## OrcaRouter
+
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible meta-router that routes each request to a model of your choice across many providers. The auto-routing `orcarouter/auto` model works out of the box; you can also pin a namespaced id such as `openai/gpt-5.5`:
+
+```python
+Agently.set_settings("OpenAICompatible", {
+    "base_url": "https://api.orcarouter.ai/v1",
+    "api_key": "${ENV.ORCAROUTER_API_KEY}",
+    "model": "orcarouter/auto",   # auto-routing, or pin e.g. "openai/gpt-5.5"
 })
 ```
 
