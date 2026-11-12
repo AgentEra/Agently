@@ -38,6 +38,48 @@ cannot be replaced through extra. Default timeout is 120 seconds of HTTP
 operation inactivity, not a whole workflow deadline. There is no automatic retry
 or fallback model.
 
+## Rapid-MLX
+
+| Area | What changed | Recommended usage | Compatibility / risk | Evidence |
+|---|---|---|---|---|
+| Audio driver | Registered complete-file TTS/STT profile | `driver="RapidMLX"` | Additive; requires an audio model and audio extra | Audio transport and registration tests |
+
+[Rapid-MLX](https://github.com/raullenchai/Rapid-MLX) is an open-source local
+LLM inference server for Apple Silicon, built on MLX. Its optional audio extra
+provides OpenAI-compatible complete-file TTS and STT endpoints.
+
+Install the audio extra with `pip install 'rapid-mlx[audio]'` (Python 3.12+),
+then serve an audio model, for example `rapid-mlx serve whisper-large-v3-turbo`.
+Configure each request with the audio model served by its endpoint:
+
+```python
+audio = Agently.create_audio_request(
+    driver="RapidMLX",
+    base_url="http://localhost:8000/v1",
+    api_key=os.getenv("AUDIO_API_KEY", ""),
+    stt_model=os.environ["AUDIO_STT_MODEL"],
+)
+agent = Agently.create_agent().use_audio(audio)
+# Inside an async function:
+transcript = await agent.async_stt("recording.wav")
+print(transcript.text)
+```
+
+For TTS, configure `tts_model` with the served speech model and call
+`agent.async_tts("Welcome.")`. No API key is required by default; set `AUDIO_API_KEY`
+if server authentication is enabled. The URL assumes port 8000; when it is busy,
+Rapid-MLX selects the first free port through 8009 unless `--port` is explicit.
+
+`RapidMLX` reuses the `OpenAICompatible` complete-file transport and declares only
+native `tts` and `stt`. Agently's composed continuous methods remain available;
+native audio output streaming, transcription SSE and realtime audio input are
+not declared by this driver. STT uses JSON responses; `TranscriptionOptions.prompt`
+is not consumed by Rapid-MLX's transcription route.
+
+For text inference, use the existing `OpenAICompatible` ModelRequester with
+`base_url="http://localhost:8000/v1"` and the served model id from `/v1/models`.
+See the [Rapid-MLX documentation](https://rapidmlx.com/docs/) for server setup.
+
 ## Continuous consumption and output auto break
 
 The basic tts/stt calls are unchanged. All four methods are available on the

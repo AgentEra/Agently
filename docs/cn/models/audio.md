@@ -32,6 +32,43 @@ print(transcript.text)
 参数是否有效仍取决于驱动和模型。默认 120 秒是 HTTP 操作空闲超时，不是整个任务墙钟；
 无自动重试、备用模型或音频补全行为。
 
+## Rapid-MLX
+
+| 范围 | 变更 | 推荐用法 | 兼容性 / 风险 | 证据 |
+|---|---|---|---|---|
+| 音频驱动 | 注册完整文件 TTS/STT 配置 | `driver="RapidMLX"` | 增量添加；需要音频模型与 audio 扩展 | 音频传输与注册测试 |
+
+[Rapid-MLX](https://github.com/raullenchai/Rapid-MLX) 是基于 MLX、面向 Apple Silicon
+的开源本地 LLM 推理服务器。可选 audio 扩展提供 OpenAI 兼容的完整文件 TTS/STT 端点。
+
+使用 `pip install 'rapid-mlx[audio]'` 安装（Python 3.12+），再启动音频模型，
+例如 `rapid-mlx serve whisper-large-v3-turbo`。每个请求应配置其端点实际提供的音频模型：
+
+```python
+audio = Agently.create_audio_request(
+    driver="RapidMLX",
+    base_url="http://localhost:8000/v1",
+    api_key=os.getenv("AUDIO_API_KEY", ""),
+    stt_model=os.environ["AUDIO_STT_MODEL"],
+)
+agent = Agently.create_agent().use_audio(audio)
+# 在异步函数中：
+transcript = await agent.async_stt("recording.wav")
+print(transcript.text)
+```
+
+TTS 则配置 `tts_model` 为服务中的语音模型，并调用 `agent.async_tts("欢迎。")`。
+默认不需要 API key；启用服务器认证时设置 `AUDIO_API_KEY`。以上 URL 假设端口为 8000；
+未显式指定 `--port` 时，如端口占用，Rapid-MLX 会选择 8000–8009 中首个空闲端口。
+
+`RapidMLX` 复用 `OpenAICompatible` 完整文件传输，仅声明原生 `tts` 和 `stt`。
+Agently 组合式持续消费方法仍可用；该驱动未声明原生音频流式输出、转录 SSE 或实时音频输入。
+STT 使用 JSON 响应；Rapid-MLX 转录端点不使用 `TranscriptionOptions.prompt`。
+
+文本推理使用现有 `OpenAICompatible` ModelRequester，设置
+`base_url="http://localhost:8000/v1"`，并从 `/v1/models` 取得服务中的模型 id。
+服务器配置见 [Rapid-MLX 文档](https://rapidmlx.com/docs/)。
+
 ## 持续消费与输出 auto break
 
 基础 `tts/stt` 不变。以下四个方法可从独立 audio 对象或挂载后的 Agent 直接使用。

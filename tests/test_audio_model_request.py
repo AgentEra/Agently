@@ -15,7 +15,7 @@ from agently import (
     Agently, AudioCapabilityError, AudioConnection, AudioInput, AudioModelRequest, AudioOperation, AudioProtocolError,
     SpeechOptions, SpeechRequest, TranscriptEvent, TranscriptionOptions, TranscriptionRequest, PCMFormat,
 )
-from agently.builtins.plugins.AudioModelRequester import OMLX, OpenAICompatible
+from agently.builtins.plugins.AudioModelRequester import OMLX, OpenAICompatible, RapidMLX
 from agently.builtins.plugins.AgentExecution import AgentExecution
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ class RecordingStream(httpx.AsyncByteStream):
         self.closed = True
 
 
-def audio_client(monkeypatch, handler, *, driver_class=OMLX):
+def audio_client(monkeypatch, handler, *, driver_class: type[OpenAICompatible] = OMLX):
     driver = driver_class(AudioConnection("http://audio.test/v1", "private-key", 5))
     clients = []
 
@@ -66,7 +66,8 @@ def audio_client(monkeypatch, handler, *, driver_class=OMLX):
 
 
 @pytest.mark.asyncio
-async def test_complete_calls_preserve_audio_and_distinct_models(monkeypatch, tmp_path):
+@pytest.mark.parametrize("driver_class", [OMLX, RapidMLX])
+async def test_complete_calls_preserve_audio_and_distinct_models(monkeypatch, tmp_path, driver_class):
     requests = []
 
     def handler(request):
@@ -82,7 +83,7 @@ async def test_complete_calls_preserve_audio_and_distinct_models(monkeypatch, tm
         assert b'name="prompt"' in request.content
         return httpx.Response(200, json={"text": "你好", "language": "zh", "duration": 1.2})
 
-    audio, clients = audio_client(monkeypatch, handler)
+    audio, clients = audio_client(monkeypatch, handler, driver_class=driver_class)
     speech = await audio.async_tts("你好", voice="speaker", options=SpeechOptions(language="Chinese", extra={"seed": 3}))
     result = await audio.async_stt(AudioInput(speech.data), options=TranscriptionOptions(prompt="词汇"))
     assert (result.text, result.model, result.duration) == ("你好", "transcribe-model", 1.2)
@@ -126,14 +127,15 @@ async def test_invalid_inputs_do_not_dispatch(monkeypatch, case):
     httpx.Response(200, json={"text": 123}), httpx.Response(200, content=b"not json"),
     httpx.Response(200, json={"text": "", "duration": -1}),
 ])
-async def test_stt_failure_is_not_success_or_retry(monkeypatch, response):
+@pytest.mark.parametrize("driver_class", [OMLX, RapidMLX])
+async def test_stt_failure_is_not_success_or_retry(monkeypatch, response, driver_class):
     calls = []
 
     def handler(request):
         calls.append(request)
         return response
 
-    audio, clients = audio_client(monkeypatch, handler)
+    audio, clients = audio_client(monkeypatch, handler, driver_class=driver_class)
     with pytest.raises((httpx.HTTPStatusError, AudioProtocolError)):
         await audio.async_stt(AudioInput(b"audio"))
     assert len(calls) == 1
@@ -145,28 +147,30 @@ async def test_stt_failure_is_not_success_or_retry(monkeypatch, response):
     (200, b"", "audio/wav"), (200, b'{"error":"failed"}', "application/json"),
     (503, b"unavailable", "text/plain"), (302, b"redirect", "text/plain"),
 ])
-async def test_bad_speech_delivery_is_rejected(monkeypatch, status, body, media):
+@pytest.mark.parametrize("driver_class", [OMLX, RapidMLX])
+async def test_bad_speech_delivery_is_rejected(monkeypatch, status, body, media, driver_class):
     calls = []
 
     def handler(request):
         calls.append(request)
         return httpx.Response(status, content=body, headers={"content-type": media})
 
-    audio, clients = audio_client(monkeypatch, handler)
+    audio, clients = audio_client(monkeypatch, handler, driver_class=driver_class)
     with pytest.raises((httpx.HTTPStatusError, AudioProtocolError)):
         await audio.async_tts("hello")
     assert len(calls) == 1 and clients[0].is_closed
 
 
 @pytest.mark.asyncio
-async def test_timeout_closes_client_without_implicit_retry(monkeypatch):
+@pytest.mark.parametrize("driver_class", [OMLX, RapidMLX])
+async def test_timeout_closes_client_without_implicit_retry(monkeypatch, driver_class):
     calls = []
 
     def handler(request):
         calls.append(request)
         raise httpx.ReadTimeout("synthetic timeout", request=request)
 
-    audio, clients = audio_client(monkeypatch, handler)
+    audio, clients = audio_client(monkeypatch, handler, driver_class=driver_class)
     with pytest.raises(httpx.ReadTimeout):
         await audio.async_tts("hello")
     assert len(calls) == 1 and clients[0].is_closed
@@ -368,3 +372,35 @@ async def test_input_stream_can_be_owned_by_replacement_driver():
     async with audio.driver.stream_stt_input(frames(), model="realtime", audio_format=PCMFormat(), options=TranscriptionOptions()) as events:
         assert [event.kind async for event in events] == ["delta", "delta", "done"]
     assert received == [b"frame1", b"frame2"] and closed == [True]
+
+
+def test_rapid_mlx_registered_complete_file_profile():
+    audio = Agently.create_audio_request(driver="RapidMLX", base_url="http://localhost:8000/v1")
+    assert isinstance(audio.driver, RapidMLX)
+    assert audio.driver.name == "RapidMLX"
+    assert audio.driver.supported_operations == frozenset({"tts", "stt"})
+    assert audio.supported_operations == frozenset({
+        "tts", "stt", "stream_tts", "stream_stt", "stream_tts_with_auto_break", "stream_stt_with_auto_break",
+    })
+
+
+@pytest.mark.asyncio
+async def test_rapid_mlx_native_streams_fail_before_dispatch(monkeypatch):
+    audio, clients = audio_client(monkeypatch, lambda _: pytest.fail("Unexpected network"), driver_class=RapidMLX)
+    with pytest.raises(AudioCapabilityError, match="stream_tts"):
+        async with audio.driver.stream_tts(SpeechRequest("hello", "tts-1")):
+            pass
+    with pytest.raises(AudioCapabilityError, match="stream_stt"):
+        async with audio.driver.stream_stt(TranscriptionRequest(AudioInput(b"audio"), "whisper-large-v3-turbo")):
+            pass
+
+    async def frames():
+        pytest.fail("Unsupported driver must not consume input")
+        yield b"pcm"
+
+    with pytest.raises(AudioCapabilityError, match="realtime audio input"):
+        async with audio.driver.stream_stt_input(
+            frames(), model="whisper-large-v3-turbo", audio_format=PCMFormat(), options=TranscriptionOptions(),
+        ):
+            pass
+    assert clients == []
