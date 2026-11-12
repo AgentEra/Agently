@@ -128,6 +128,7 @@ Agently.set_settings("AnthropicCompatible", {
     "model": "${ENV.MINIMAX_MODEL}",
 })
 ```
+MiniMax 文档中的 Anthropic SDK 根地址以 `/anthropic` 结尾。Agently 直接发起 HTTP 请求，会在 `base_url` 后拼接 `/messages`，因此上面的配置包含 `/anthropic/v1`。也可以通过 `full_url` 指定完整的 Messages 端点，例如 `https://api.minimax.io/anthropic/v1/messages`。
 
 ## Doubao（豆包）
 
