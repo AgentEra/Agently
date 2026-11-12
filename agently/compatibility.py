@@ -654,6 +654,9 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                        'input(...).info(...).use_action(...) cannot '
                                                                        'silently replace the execution or discard its '
                                                                        'Prompt.',
+                                   'chat_completions_native_tools': 'OpenAICompatible forwards prompt tool definitions to '
+                                                                    'Chat Completions. Explicit functions override matching names. '
+                                                                    'Streaming and non-streaming tool events are supported.',
                                    'programmatic_action_calling': {'surface': ['Agent.set_action_loop(planning_protocol=programmatic)',
                                                                                'Agent.get_action_result(planning_protocol=programmatic)',
                                                                                'Agent.async_get_action_result(planning_protocol=programmatic)',

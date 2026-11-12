@@ -345,7 +345,8 @@
           "isolation_policy": "preferred",
           "fallback": "fail_closed"
         }
-      ]
+      ],
+      "chat_completions_native_tools": "OpenAICompatible forwards prompt tool definitions to Chat Completions. Explicit functions override matching names. Streaming and non-streaming tool events are supported."
     },
     "triggerflow": {
       "record_store_resource": "flow.create_execution(record_store=...); record_store=False opts out",
