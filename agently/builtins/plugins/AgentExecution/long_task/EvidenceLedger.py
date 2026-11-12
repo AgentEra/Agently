@@ -367,6 +367,7 @@ def validate_evidence_use(evidence_use: Any, ledger_value: Any) -> dict[str, Any
     }
     alias_index = _build_evidence_alias_index(raw_item_sequence)
     uses = _evidence_use_sequence(evidence_use)
+    anchor_cache: dict[int, list[tuple[str, str]]] = {}
     diagnostics: list[dict[str, Any]] = []
     normalized_uses: list[dict[str, Any]] = []
     for index, use in enumerate(uses):
@@ -453,7 +454,9 @@ def validate_evidence_use(evidence_use: Any, ledger_value: Any) -> dict[str, Any
                 # ("quotes_summary.md table row for AMD", "final.md Data Boundary
                 # section") binds to the ledger item whose anchor it names. Anchor
                 # resolution never inspects bodies and never crosses files.
-                anchor_resolution = _resolve_evidence_anchor(evidence_id, raw_item_sequence, claim=claim)
+                anchor_resolution = _resolve_evidence_anchor(
+                    evidence_id, raw_item_sequence, claim=claim, _anchor_cache=anchor_cache
+                )
                 anchor_id = str(anchor_resolution.get("id") or "").strip()
                 anchor_item = items_by_id.get(anchor_id)
                 if canonical_id in normalized_ids:
@@ -861,7 +864,11 @@ def _build_evidence_alias_index(raw_items: Sequence[Any]) -> dict[str, Any]:
             continue
         canonical_ids.add(evidence_id)
         for alias in _evidence_aliases_for_item(item):
-            alias_to_ids.setdefault(alias, set()).add(evidence_id)
+            ids = alias_to_ids.get(alias)
+            if ids is None:
+                alias_to_ids[alias] = {evidence_id}
+            else:
+                ids.add(evidence_id)
 
     unique: dict[str, str] = {}
     ambiguous: dict[str, list[str]] = {}
@@ -947,6 +954,8 @@ def _alias_variants(value: Any) -> set[str]:
     if not text:
         return set()
     variants = {text}
+    if "/" not in text and "\\" not in text:
+        return variants
     compact_path = text.replace("\\", "/")
     while compact_path.startswith("./"):
         compact_path = compact_path[2:]
@@ -1092,7 +1101,13 @@ def _narrow_anchor_hits_by_sublocator(
     return pool_ids
 
 
-def _resolve_evidence_anchor(reference: str, raw_items: Sequence[Any], *, claim: str = "") -> dict[str, Any]:
+def _resolve_evidence_anchor(
+    reference: str,
+    raw_items: Sequence[Any],
+    *,
+    claim: str = "",
+    _anchor_cache: dict[int, list[tuple[str, str]]] | None = None,
+) -> dict[str, Any]:
     reference_norm = _anchor_normalize(reference)
     if not reference_norm:
         return {}
@@ -1104,8 +1119,14 @@ def _resolve_evidence_anchor(reference: str, raw_items: Sequence[Any], *, claim:
         item_id = str(item.get("id") or "").strip()
         if not item_id:
             continue
-        for anchor in _evidence_item_anchor_tokens(item):
-            if _anchor_token_in(_anchor_normalize(anchor), reference_norm):
+        cache_key = id(item)
+        anchors = _anchor_cache.get(cache_key) if _anchor_cache is not None else None
+        if anchors is None:
+            anchors = [(anchor, _anchor_normalize(anchor)) for anchor in _evidence_item_anchor_tokens(item)]
+            if _anchor_cache is not None:
+                _anchor_cache[cache_key] = anchors
+        for anchor, anchor_norm in anchors:
+            if _anchor_token_in(anchor_norm, reference_norm):
                 hits.append((item_id, item))
                 if not matched_alias:
                     matched_alias = anchor
