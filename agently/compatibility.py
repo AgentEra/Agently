@@ -1411,6 +1411,14 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                      'TaskWorkspace view.',
                                                  'durability_contract': 'Process state stays in memory/logs by '
                                                                         'default; record_store_recovery is opt-in.',
+                                                 'resume_contract': 'AgentExecutionResult.resume()/async_resume() delegates '
+                                                                    'only when task_refs identify a resumable task: the '
+                                                                    'explicit resumable flag covers recovery-enabled original '
+                                                                    'runs, while the released resume flag remains a '
+                                                                    'compatibility fallback for restored executions; ordinary '
+                                                                    'task refs return an unsupported response. TaskBoard '
+                                                                    'checkpoints carry the board tick separately from the '
+                                                                    'outer iteration.',
                                                  'evidence_replan_contract': 'A material-evidence replan_segment '
                                                                              'without an unresolved mounted capability '
                                                                              'first uses a dedicated ModelRequest to '

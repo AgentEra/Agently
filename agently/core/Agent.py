@@ -1365,6 +1365,7 @@ class BaseAgent:
             "task_id": task.id,
             "strategy": "task",
             "resume": True,
+            "resumable": True,
             "resumed_from_iteration": getattr(task, "_resumed_from_iteration", 0),
         }
         return execution
