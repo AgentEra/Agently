@@ -42,10 +42,40 @@ DEFAULT_PLACEHOLDER_PATTERN = re.compile(r"\$\{\s*([^}]+?)\s*\}")
 class DataFormatter:
     @staticmethod
     def sanitize(value: Any, *, remain_type: bool = False) -> Any:
-        from .StateData import StateData, StateDataNamespace
+        value_type = type(value)
+        if value_type is dict:
+            return {
+                (k if type(k) is str else str(k)): v
+                if type(v) is str or type(v) is int or type(v) is float or type(v) is bool or v is None
+                else DataFormatter.sanitize(v, remain_type=remain_type)
+                for k, v in value.items()
+            }
+        if value_type is list:
+            return [
+                v
+                if type(v) is str or type(v) is int or type(v) is float or type(v) is bool or v is None
+                else DataFormatter.sanitize(v, remain_type=remain_type)
+                for v in value
+            ]
+        if value_type is set:
+            return {
+                v
+                if type(v) is str or type(v) is int or type(v) is float or type(v) is bool or v is None
+                else DataFormatter.sanitize(v, remain_type=remain_type)
+                for v in value
+            }
+        if value_type is tuple:
+            return tuple(
+                v
+                if type(v) is str or type(v) is int or type(v) is float or type(v) is bool or v is None
+                else DataFormatter.sanitize(v, remain_type=remain_type)
+                for v in value
+            )
 
         if isinstance(value, (str, int, float, bool)) or value is None:
             return value
+
+        from .StateData import StateData, StateDataNamespace
 
         if isinstance(value, (datetime.datetime, datetime.date)):
             return value.isoformat()
@@ -108,7 +138,10 @@ class DataFormatter:
             return str(value)
 
         if isinstance(value, Mapping):
-            return {str(k): DataFormatter.sanitize(v, remain_type=remain_type) for k, v in value.items()}
+            return {
+                (k if type(k) is str else str(k)): DataFormatter.sanitize(v, remain_type=remain_type)
+                for k, v in value.items()
+            }
         if isinstance(value, list):
             return [DataFormatter.sanitize(v, remain_type=remain_type) for v in value]
         if isinstance(value, set):
