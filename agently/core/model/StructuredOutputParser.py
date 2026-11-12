@@ -186,12 +186,16 @@ def parse_xml_field_output(text: str, output_schema: Mapping[str, Any]) -> dict[
 
 
 def extract_yaml_literal_target(text: str) -> str | None:
-    match = _YAML_TARGET_RE.search(text)
-    if match:
-        return match.group(1).strip()
-    fence = re.search(r"```(?:yaml|yml)?[ \t]*\n(.*?)\n?```", text, flags=re.DOTALL | re.IGNORECASE)
+    start = None if type(text) is str and "<<<" not in text else re.search(r"<<<BEGIN\s+AGENTLY_YAML>>>", text, flags=re.IGNORECASE)
+    if start:
+        end = re.compile(r"<<<END\s+AGENTLY_YAML>>>", flags=re.IGNORECASE).search(text, start.end())
+        if end:
+            return str.__getitem__(text, slice(start.end(), end.start())).strip()
+    fence = None if type(text) is str and "```" not in text else re.search(r"```(?:yaml|yml)?[ \t]*\n", text, flags=re.IGNORECASE)
     if fence:
-        return fence.group(1).strip()
+        end = str.find(text, "```", fence.end())
+        if end != -1:
+            return str.__getitem__(text, slice(fence.end(), end)).strip()
     return None
 
 
@@ -201,7 +205,26 @@ def parse_yaml_literal_output(text: str, output_schema: Mapping[str, Any]) -> di
     target = extract_yaml_literal_target(text)
     if target is None:
         return None
-    data = yaml.safe_load(target)
+    loader = getattr(yaml, "CSafeLoader", None)
+    if loader is None or "	" in target:
+        data = yaml.safe_load(target)
+    else:
+        try:
+            parser = loader(target)
+            constructors = parser.yaml_constructors.copy()
+            string_constructor = constructors["tag:yaml.org,2002:str"]
+            constructors["tag:yaml.org,2002:str"] = (
+                lambda loader, node: node.value
+                if node.id == "scalar" else string_constructor(loader, node)
+            )
+            parser.yaml_constructors = constructors
+            try:
+                data = parser.get_single_data()
+            finally:
+                parser.dispose()
+        except Exception:
+            # The Python loader preserves the public exception type and message.
+            data = yaml.safe_load(target)
     if not isinstance(data, dict):
         return None
     return data
