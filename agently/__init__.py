@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import _startup as _startup
 from .base import print_, async_print, AgentlyMain, Agent
 from ._version import __version__
 from .types.data.judgment import OutputTemplate, Probability, Choice, Score

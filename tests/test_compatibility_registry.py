@@ -58,8 +58,8 @@ def test_4_1_4_8_skills_catalog_is_v3_without_rewriting_archives() -> None:
 def test_current_release_manifest_pins_stage_native_runtime_contract() -> None:
     manifest = get_current_release_manifest()
 
-    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.10"
-    assert CURRENT_RELEASE_TRAIN == "2026-10-4.1.4.10"
+    assert CURRENT_FRAMEWORK_VERSION == "4.1.4.11"
+    assert CURRENT_RELEASE_TRAIN == "2026-11-4.1.4.11"
     stage_support = manifest["runtime_support"]["agently_stage"]
     assert stage_support["version_specifier"] == ">=0.3.8,<0.4.0"
     assert stage_support["role"] == "required_runtime_dependency"
