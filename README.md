@@ -1,6 +1,6 @@
 <img width="640" alt="Agently" src="https://github.com/user-attachments/assets/c645d031-c8b0-4dba-a515-9d7a4b0a6881" />
 
-# Agently 4.1.4.10 - AI Application Runtime Framework
+# Agently 4.1.4.11 - AI Application Runtime Framework
 
 > Build AI service backends with structured outputs, observable Actions, runtime Skills, MCP capabilities, process streams, and recoverable workflows.
 
@@ -32,6 +32,8 @@ Agently is for teams moving from "the model can do it once" to "the application 
 
 The main design question is simple: how do you keep model behavior useful while still giving application code stable contracts, observable execution, and restart-safe workflow boundaries?
 
+Agently 4.1.4.11 improves state copying and nested data sanitization. It still supports Python 3.10 and shows a startup notice about the Python 3.11 minimum in Agently 4.2.
+
 Agently 4.1.4.10 fixes long-task file delivery and supports FastMCP 3/4 while retaining the existing 4.1 APIs. Content accuracy and business completion judgment still require application-level review.
 
 The existing one-run Agent composition remains available:
@@ -41,7 +43,7 @@ stable interaction, review, final validation, and artifact delivery APIs now hav
 complete examples. It also adds accepted retry-stream replay, fail-closed model
 aliases, execution-scoped Skills, programmatic Action calling, and clearer
 concurrent debug output. Read the
-[4.1.4.10 Release Notes](docs/en/development/release-notes-4.1.4.10.md), [4.1.4.9 Release Notes](docs/en/development/release-notes-4.1.4.9.md), [4.1.4.8 Release Notes](docs/en/development/release-notes-4.1.4.8.md),
+[4.1.4.11 Release Notes](docs/en/development/release-notes-4.1.4.11.md), [4.1.4.10 Release Notes](docs/en/development/release-notes-4.1.4.10.md), [4.1.4.9 Release Notes](docs/en/development/release-notes-4.1.4.9.md), [4.1.4.8 Release Notes](docs/en/development/release-notes-4.1.4.8.md),
 [4.1.4.7 Release Notes](docs/en/development/release-notes-4.1.4.7.md),
 [4.1.4.6 Release Notes](docs/en/development/release-notes-4.1.4.6.md),
 [4.1.4.5 Release Notes](docs/en/development/release-notes-4.1.4.5.md),

@@ -1069,7 +1069,8 @@ meta = await execution.async_get_meta()
 可恢复快照则抛出 `ValueError`。崩溃时正在执行中的那次迭代会被重新规划，因此非
 replay-safe 的 step 副作用由宿主负责。当 result 带有可恢复的 `task_refs` 时，
 `AgentExecutionResult.resume()` 会委托同一个 Agent resume facade；否则返回不支持恢复的
-响应。`resume_task(...)` 只保留为 `resume(...)` 的兼容别名。
+响应。启用恢复的原始任务会暴露 `task_refs["resumable"] = True`；恢复后的 execution
+继续保留 `resume=True` 兼容旧数据。`resume_task(...)` 只保留为 `resume(...)` 的兼容别名。
 
 ### 路由用户的“继续”请求
 

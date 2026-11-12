@@ -406,11 +406,18 @@ class AgentExecutionResult:
 
     async def async_resume(self, *args: Any, **kwargs: Any) -> Any:
         task_id = kwargs.pop("task_id", None)
+        explicit_task_id = task_id is not None
         remaining_args = args
         if task_id is None and remaining_args:
             task_id = remaining_args[0]
+            explicit_task_id = True
             remaining_args = remaining_args[1:]
-        task_id = task_id or self.task_refs.get("task_id")
+        if not explicit_task_id and not (
+            self.task_refs.get("resumable", False) or self.task_refs.get("resume", False)
+        ):
+            task_id = None
+        else:
+            task_id = task_id or self.task_refs.get("task_id")
         if task_id:
             return await self._view.agent.async_resume(str(task_id), *remaining_args, **kwargs)
         return {
@@ -422,11 +429,18 @@ class AgentExecutionResult:
 
     def resume(self, *args: Any, **kwargs: Any) -> Any:
         task_id = kwargs.pop("task_id", None)
+        explicit_task_id = task_id is not None
         remaining_args = args
         if task_id is None and remaining_args:
             task_id = remaining_args[0]
+            explicit_task_id = True
             remaining_args = remaining_args[1:]
-        task_id = task_id or self.task_refs.get("task_id")
+        if not explicit_task_id and not (
+            self.task_refs.get("resumable", False) or self.task_refs.get("resume", False)
+        ):
+            task_id = None
+        else:
+            task_id = task_id or self.task_refs.get("task_id")
         if task_id:
             return self._view.agent.resume(str(task_id), *remaining_args, **kwargs)
         return {

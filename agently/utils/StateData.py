@@ -94,17 +94,33 @@ class StateData:
 
     def _copy(self, origin: Any) -> Any:
         try:
+            origin_type = type(origin)
+            # Subclasses must retain the custom-object and deepcopy behavior below.
+            if (
+                origin is None
+                or origin_type is str
+                or origin_type is int
+                or origin_type is float
+                or origin_type is bool
+                or origin_type is bytes
+                or origin_type is complex
+            ):
+                return origin
             if isinstance(origin, dict):
+                copy = self._copy
                 result = {}
                 for key, value in origin.items():
-                    result[key] = self._copy(value)
+                    result[key] = copy(value)
                 return result
             if isinstance(origin, list):
-                return [self._copy(item) for item in origin]
+                copy = self._copy
+                return [copy(item) for item in origin]
             if isinstance(origin, set):
-                return {self._copy(item) for item in origin}
+                copy = self._copy
+                return {copy(item) for item in origin}
             if isinstance(origin, tuple):
-                return tuple(self._copy(item) for item in origin)
+                copy = self._copy
+                return tuple(copy(item) for item in origin)
             if hasattr(origin, "__class__") and hasattr(origin, "__module__") and origin.__module__ != "builtins":
                 return origin
             return deepcopy(origin)

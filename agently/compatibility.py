@@ -5,8 +5,8 @@ from typing import Any
 
 
 CURRENT_COMPATIBILITY_SCHEMA_VERSION = 1
-CURRENT_FRAMEWORK_VERSION = "4.1.4.10"
-CURRENT_RELEASE_TRAIN = "2026-10-4.1.4.10"
+CURRENT_FRAMEWORK_VERSION = "4.1.4.11"
+CURRENT_RELEASE_TRAIN = "2026-11-4.1.4.11"
 
 DEVTOOLS_RUNTIME_PROTOCOL = "agently-devtools.observation-runtime.v1"
 SKILLS_AUTHORING_PROTOCOL = "agently-skills.authoring.v3"
@@ -137,8 +137,36 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                         'files; no retries or cancellation flush',
                                               'quality': 'VAD is acoustic, not semantic; no universal '
                                                          'cough/music/noise rejection or low-volume recall guarantee'}},
- 'release_train': '2026-10-4.1.4.10',
- 'notes': '4.1.4.10 candidate: repair long_task file observation, exact selection, terminal retention and implicit '
+ 'rerank_capability': {'status': 'in_development',
+                       'since': '4.1.4.11',
+                       'model_type': 'OpenAICompatible model_type="rerank" targets path_mapping.rerank (default '
+                                     '"/rerank")',
+                       'protocol': 'Cohere/Jina-shaped /rerank body; not an official OpenAI endpoint, and not available '
+                                   'on AnthropicCompatible because the Anthropic Messages API has no rerank endpoint',
+                       'request_input': 'prompt input {"query": str, "documents": [str | {"text": str}]}; mixed lists '
+                                        'normalize to one shape; invalid input and a missing model fail before dispatch',
+                       'default_model': 'none; default_model.rerank stays empty and an explicit model is required',
+                       'stream': False,
+                       'result': 'get_data() returns the provider results array; original_done carries the full record '
+                                 'including usage',
+                       'retrieval_seam': 'RecordStore RerankProvider.rank(query, documents, *, top_n); rerank_provider / '
+                                         'rerank_options creation options and '
+                                         'RecordStoreRegistry.register_rerank_provider',
+                       'builtin_providers': ['callable', 'agent'],
+                       'engine_precedence': ['handler', 'provider', 'model'],
+                       'drop_policy': 'provider engine reorders only; drops require an explicit budget '
+                                      'rerank_score_floor and are reported as rerank_drop',
+                       'unscored_candidates': 'keep their original relative order behind scored candidates; never '
+                                              'dropped on absent evidence',
+                       'degrade': 'provider failure degrades to deterministic order with diagnostics and never falls '
+                                  'back to the model engine',
+                       'score_semantics': 'provider-owned scale; comparable within one response only, never a '
+                                          'cross-model confidence',
+                       'observation_protocol_changed': False},
+ 'release_train': '2026-11-4.1.4.11',
+ 'notes': '4.1.4.11 adds the Python 3.10 support notice and optimizes StateData copying (#370) and nested data '
+          'sanitization (#371). Python 3.10 remains supported in this release. Agently 4.2 and later require Python '
+          '3.11 or newer. Carries forward the following compatibility contracts. 4.1.4.10 candidate: repair long_task file observation, exact selection, terminal retention and implicit '
           'native file Action execution identity. Preserve published 4.1 compatibility; do not include 4.2 removals. '
           'File lifecycle verification is separate from model semantic quality. FastMCP 4.1.0 / MCP SDK v2 field, '
           'metadata and content adapters are covered while FastMCP 3.x remains compatible. Carries forward the '
@@ -176,7 +204,12 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
           'file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns '
           'files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and '
           'SkillLibrary owns immutable Skill revisions.',
- 'runtime_support': {'agently_stage': {'repository': 'Agently-Stage',
+ 'runtime_support': {'python': {'requires_python': '>=3.10',
+                                'python_310_end_of_life': '2026-10-01',
+                                'python_310_notice': 'Once per Python 3.10 process on first import; set '
+                                                     'AGENTLY_PYTHON_310_NOTICE=0 before import to disable.',
+                                'requires_python_since_4_2': '>=3.11'},
+                     'agently_stage': {'repository': 'Agently-Stage',
                                        'package': 'agently-stage',
                                        'role': 'required_runtime_dependency',
                                        'version_specifier': '>=0.3.8,<0.4.0',
@@ -621,6 +654,9 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                        'input(...).info(...).use_action(...) cannot '
                                                                        'silently replace the execution or discard its '
                                                                        'Prompt.',
+                                   'chat_completions_native_tools': 'OpenAICompatible forwards prompt tool definitions to '
+                                                                    'Chat Completions. Explicit functions override matching names. '
+                                                                    'Streaming and non-streaming tool events are supported.',
                                    'programmatic_action_calling': {'surface': ['Agent.set_action_loop(planning_protocol=programmatic)',
                                                                                'Agent.get_action_result(planning_protocol=programmatic)',
                                                                                'Agent.async_get_action_result(planning_protocol=programmatic)',
@@ -1404,6 +1440,14 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                                      'TaskWorkspace view.',
                                                  'durability_contract': 'Process state stays in memory/logs by '
                                                                         'default; record_store_recovery is opt-in.',
+                                                 'resume_contract': 'AgentExecutionResult.resume()/async_resume() delegates '
+                                                                    'only when task_refs identify a resumable task: the '
+                                                                    'explicit resumable flag covers recovery-enabled original '
+                                                                    'runs, while the released resume flag remains a '
+                                                                    'compatibility fallback for restored executions; ordinary '
+                                                                    'task refs return an unsupported response. TaskBoard '
+                                                                    'checkpoints carry the board tick separately from the '
+                                                                    'outer iteration.',
                                                  'evidence_replan_contract': 'A material-evidence replan_segment '
                                                                              'without an unresolved mounted capability '
                                                                              'first uses a dedicated ModelRequest to '
@@ -1548,8 +1592,8 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                      'Semantic completion, factual quality and visual quality remain '
                                                      'model-dependent; no new automatic semantic judge or guaranteed '
                                                      'quality improvement.'},
- 'framework_version': '4.1.4.10',
- 'released_at': '2026-10-13',
+ 'framework_version': '4.1.4.11',
+ 'released_at': '2026-11-12',
  'mcp_compatibility': {'fastmcp_optional': True,
                        'verified_fastmcp_versions': ['3.4.7', '4.1.0'],
                        'schema_fields': 'SDK v2 snake_case with SDK v1 fallback; no camelCase bridge required',

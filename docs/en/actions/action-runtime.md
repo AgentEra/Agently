@@ -362,6 +362,8 @@ agent.set_action_loop(planning_protocol="programmatic")
 | `native_tool_calls` | Provider-native Action/tool calling |
 | `programmatic` | One bounded Python program that branches, loops, or aggregates over eligible read-only Actions |
 
+For Chat Completions, `OpenAICompatible` sends available Actions as function tools. Explicit function tools in `request_options.tools` take precedence when their names match. The configured model and endpoint must support tool calling. See the [Chat Completions example](../../../examples/action_runtime/1_3_chat_completions_native_tools.py).
+
 An explicit `planning_protocol=...` passed to `get_action_result(...)` or
 `async_get_action_result(...)` overrides the Agent setting for that call.
 Programmatic mode requires read-only, replay-safe Actions with explicit return

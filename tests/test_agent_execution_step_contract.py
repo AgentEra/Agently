@@ -8085,6 +8085,55 @@ async def test_taskboard_recovery_snapshot_persists_task_level_read_progress(tmp
 
 
 @pytest.mark.asyncio
+async def test_taskboard_resume_snapshot_separates_outer_iteration_from_tick(tmp_path):
+    task_id = "taskboard-outer-iteration-resume"
+    task_workspace_dir = tmp_path / "task_workspace"
+    agent = _create_taskboard_agent(
+        "execution-taskboard-outer-iteration-resume-seed"
+    ).use_task_workspace(task_workspace_dir)
+    task = AgentTask(
+        agent,
+        task_id=task_id,
+        goal="Resume a board after several internal ticks.",
+        success_criteria=["The outer task iteration remains stable."],
+        execution="taskboard",
+        options={"agent_task": {"record_store_recovery": True}},
+    )
+    revision = TaskBoardRevision.create(
+        board_id=task_id,
+        graph=TaskBoardGraph.from_value(
+            {
+                "graph_id": f"{task_id}.graph",
+                "cards": [{"id": "continue", "objective": "Continue the board."}],
+            }
+        ),
+    )
+
+    await task._record_taskboard_checkpoint(
+        stage="tick",
+        tick_index=5,
+        iteration_index=1,
+        revision=revision,
+        runtime_topology={"driver": "test"},
+    )
+
+    snapshot = await agent.record_store.get_snapshot(f"{task_id}::resume")
+    assert snapshot is not None
+    assert snapshot["iteration"] == 1
+    assert snapshot["taskboard_state"]["tick_index"] == 5
+    assert snapshot["taskboard_state"]["outer_iteration"] == 1
+
+    agent2 = _create_taskboard_agent(
+        "execution-taskboard-outer-iteration-resume-restore"
+    ).use_task_workspace(task_workspace_dir)
+    resumed = await agent2.async_resume(task_id, task_workspace=task_workspace_dir)
+    resumed_task = cast(AgentTask, resumed.task_record)
+    assert resumed_task._resumed_from_iteration == 1
+    assert resumed_task._resumed_taskboard_state is not None
+    assert resumed_task._resumed_taskboard_state["tick_index"] == 5
+
+
+@pytest.mark.asyncio
 async def test_taskboard_resume_terminal_snapshot_without_reexecuting_cards(tmp_path):
     task_id = "taskboard-terminal-resume"
     task_workspace_dir = tmp_path / "task_workspace"
@@ -9457,6 +9506,31 @@ async def test_agent_quick_prompt_returns_execution_and_result_facade():
     assert data["answer"] == "ok-1"
     assert meta["execution_id"] == execution.id
     assert agent.request.prompt.get(inherit=False) == {}
+
+
+@pytest.mark.asyncio
+async def test_agent_execution_result_resume_requires_resumable_task_refs():
+    class AgentStub:
+        async def async_resume(self, task_id: str, *args: Any, **kwargs: Any) -> str:
+            return f"resumed:{task_id}"
+
+        def resume(self, task_id: str, *args: Any, **kwargs: Any) -> str:
+            return f"resumed:{task_id}"
+
+    execution = SimpleNamespace(
+        id="ordinary-result",
+        status="completed",
+        task_refs={"task_id": "ordinary-task", "resume": False},
+        agent=AgentStub(),
+    )
+    result = AgentExecutionResult(execution)
+
+    unsupported = await result.async_resume()
+    assert unsupported["supported"] is False
+
+    execution.task_refs["resumable"] = True
+    assert await result.async_resume() == "resumed:ordinary-task"
+    assert result.resume() == "resumed:ordinary-task"
 
 
 def test_agent_define_parameter_and_builder_forms_write_definition_state():

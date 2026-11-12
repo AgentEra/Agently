@@ -27,11 +27,44 @@ Agently.set_settings("OpenAICompatible", {
 | `base_url` | API 根，如 `https://api.openai.com/v1` |
 | `api_key` | bearer token；本地无鉴权服务可省略 |
 | `model` | provider 模型名 |
-| `model_type` | `"chat"`（默认）或 `"completion"`（旧 completion 端点） |
+| `model_type` | `"chat"`（默认）、`"completions"`（旧 completion 端点）、`"embeddings"` 或 `"rerank"` |
 | `request_retry` | 临时传输错误重试策略；默认 `{"max_attempts": 2, "after_output": true}` |
 | `request_options` | 转给底层 HTTP client 的额外 dict（timeout、header） |
 
 完整集合在 [agently/builtins/plugins/ModelRequester/OpenAICompatible/](../../../agently/builtins/plugins/ModelRequester/OpenAICompatible/) 包目录中。公开插件类由 `plugin.py` 导出，请求构造、鉴权、transport、handler 绑定和 response mapping 放在私有 `modules/` 包下。
+
+## 重排模型
+
+`model_type="rerank"` 指向专用重排模型（`bge-reranker-v2-m3` 这类交叉编码器）
+使用的 `/rerank` 端点。这是 Cohere/Jina 的请求形状，**不是** OpenAI 官方端点：
+Jina、Cohere、vLLM、TEI、Xinference 以及 oMLX 等本地服务都用同一套请求体。
+`AnthropicCompatible` 没有对应形态，因为 Anthropic Messages API 没有 rerank 端点。
+
+```python
+Agently.set_settings("OpenAICompatible", {
+    "base_url": "${ENV.RERANK_BASE_URL}",
+    "api_key": "${ENV.RERANK_API_KEY}",
+    "model_type": "rerank",
+    "model": "${ENV.RERANK_MODEL}",  # 必填，没有默认重排模型
+})
+
+result = Agently.create_request().input({
+    "query": "怎么给框架接本地模型服务",
+    "documents": ["...", "...", "..."],
+}).get_result()
+
+for scored in result.get_data():
+    print(scored["index"], scored["relevance_score"])
+```
+
+`input` 需要 `query` 和非空的 `documents`，元素是字符串或 `{"text": ...}`；
+混合列表会在分发前归一化成同一种形态。输入非法或缺少 model 会在发起网络请求前失败。
+`top_n`、`return_documents` 等字段通过 `request_options` 传递。该请求不会流式化，
+`get_data()` 返回服务的 `results` 数组，分数沿用模型自身量纲：
+**同一次响应内可比，跨模型不可比。**
+
+重排模型给的是相关性分数，不是「有没有用」的判断。要把它用于 RecordStore 检索，
+请绑定为 rerank provider，见 [检索重排](../requests/workspace.md#检索重排)。
 
 ## Responses API 变体
 

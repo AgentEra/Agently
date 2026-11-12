@@ -1354,7 +1354,9 @@ iteration history and cumulative required-capability progress, and raises
 crash time is re-planned, so non-replay-safe step side effects are the host's
 responsibility. `AgentExecutionResult.resume()` delegates to the same Agent
 resume facade when the result carries resumable `task_refs`; otherwise it
-returns an unsupported resume response. `resume_task(...)` remains only as a
+returns an unsupported resume response. Recovery-enabled original runs expose
+`task_refs["resumable"] = True`; restored executions retain `resume=True` for
+compatibility. `resume_task(...)` remains only as a
 compatibility alias for `resume(...)`.
 
 ### Route a user's "continue" request

@@ -446,6 +446,7 @@ class AgentTaskResumeMixin(AgentTaskMixinBase):
         *,
         stage: str,
         tick_index: int,
+        iteration_index: int | None = None,
         revision: Any,
         evidence_view: Mapping[str, Any],
         runtime_topology: Mapping[str, Any],
@@ -466,6 +467,14 @@ class AgentTaskResumeMixin(AgentTaskMixinBase):
         if not bool(self._agent_task_option("record_store_recovery", False)):
             return
         final_result = final_result if isinstance(final_result, Mapping) else {}
+        try:
+            resume_iteration = int(
+                self._lifecycle_state.iteration
+                if iteration_index is None
+                else iteration_index
+            )
+        except (TypeError, ValueError):
+            resume_iteration = int(self._lifecycle_state.iteration or 0)
         status = str(final_result.get("status") or self.status or "").strip().lower()
         accepted = bool(final_result.get("accepted"))
         reason = str(final_result.get("reason") or terminal_reason or "")
@@ -489,7 +498,10 @@ class AgentTaskResumeMixin(AgentTaskMixinBase):
                     {
                         "resume_version": 3,
                         "task_id": self.id,
-                        "iteration": int(tick_index),
+                        # Keep the outer AgentTask iteration separate from the
+                        # TaskBoard's internal tick counter.  A single outer
+                        # iteration may contain many board ticks.
+                        "iteration": resume_iteration,
                         "manifest": self._resume_manifest(),
                         "context_state": self._context_resume_state(),
                         "iterations_summary": self._iteration_prompt_summaries(),
@@ -506,6 +518,7 @@ class AgentTaskResumeMixin(AgentTaskMixinBase):
                             "schema_version": "agent_task_taskboard_resume/v1",
                             "stage": stage,
                             "tick_index": int(tick_index),
+                            "outer_iteration": resume_iteration,
                             "status": status or self.status,
                             "terminal_reason": terminal_reason,
                             "revision": effective_revision.to_dict(),
@@ -684,12 +697,18 @@ class AgentTaskResumeMixin(AgentTaskMixinBase):
                 task_any._taskboard_read_progress = DataFormatter.sanitize(
                     read_progress
                 )
-            try:
-                task_any._resumed_from_iteration = int(
-                    taskboard_state.get("tick_index") or task_any._resumed_from_iteration or 0
-                )
-            except (TypeError, ValueError):
-                pass
+            # New TaskBoard snapshots carry the outer AgentTask iteration
+            # explicitly.  Older snapshots only had the tick counter in the
+            # top-level field; keep their recorded value for compatibility.
+            if "outer_iteration" in taskboard_state:
+                try:
+                    task_any._resumed_from_iteration = int(
+                        taskboard_state.get("outer_iteration")
+                        or task_any._resumed_from_iteration
+                        or 0
+                    )
+                except (TypeError, ValueError):
+                    pass
         summaries = state.get("iterations_summary")
         task_any._resumed_iteration_summaries = list(summaries) if isinstance(summaries, list) else []
         reflection_summaries = state.get("reflection_summaries")

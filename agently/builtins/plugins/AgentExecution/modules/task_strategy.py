@@ -410,6 +410,14 @@ async def _run_agent_task_route_impl(
         "execution_strategy": task.execution_strategy,
         "effective_execution_strategy": task.effective_execution_strategy,
         "resume": bool(resume_task_id is not None or task_options.get("resume")),
+        # Keep the capability separate from ``resume``.  The latter describes
+        # how this execution was started; a normal run can still be resumable
+        # when record-store recovery is enabled.
+        "resumable": bool(
+            resume_task_id is not None
+            or task_options.get("resume")
+            or task._agent_task_option("record_store_recovery", False)
+        ),
         "resumed_from_iteration": getattr(task, "_resumed_from_iteration", 0),
     }
     await execution.emit_stream(

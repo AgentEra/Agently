@@ -172,3 +172,14 @@ class RecordRetrievalPackage(TypedDict):
     items: list[RecordRetrievalItem]
     omitted: list[RecordRetrievalOmission]
     diagnostics: dict[str, Any]
+
+
+class RerankScore(TypedDict):
+    """One reranker relevance score keyed by the caller's document index.
+
+    `score` carries the provider's own scale. Agently only compares scores
+    within one response and never treats them as cross-model confidence.
+    """
+
+    index: int
+    score: float

@@ -20,7 +20,9 @@ from .Registry import RecordStoreRegistry
 from .Profiles import CheckpointIngestionProfile, FastIngestionProfile
 from .Stores import (
     AgentEmbeddingProvider,
+    AgentRerankProvider,
     CallableEmbeddingProvider,
+    CallableRerankProvider,
     ChromaVectorStoreProvider,
     LocalVectorIndex,
     NoopVectorIndex,
@@ -31,7 +33,9 @@ from .Stores import (
 __all__ = [
     "CheckpointIngestionProfile",
     "AgentEmbeddingProvider",
+    "AgentRerankProvider",
     "CallableEmbeddingProvider",
+    "CallableRerankProvider",
     "ChromaVectorStoreProvider",
     "FastIngestionProfile",
     "LocalVectorIndex",
