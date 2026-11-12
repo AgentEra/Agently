@@ -8129,6 +8129,7 @@ async def test_taskboard_resume_snapshot_separates_outer_iteration_from_tick(tmp
     resumed = await agent2.async_resume(task_id, task_workspace=task_workspace_dir)
     resumed_task = cast(AgentTask, resumed.task_record)
     assert resumed_task._resumed_from_iteration == 1
+    assert resumed_task._resumed_taskboard_state is not None
     assert resumed_task._resumed_taskboard_state["tick_index"] == 5
 
 
