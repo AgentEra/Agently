@@ -112,6 +112,15 @@ class OpenAICompatibleResponseAdapterMixin:
                         tool_calls_mapping,
                         style=content_mapping_style,
                     )
+                    if (
+                        not tool_calls
+                        and self.model_type == "chat"
+                        and tool_calls_mapping == "choices[0].delta.tool_calls"
+                        and content_mapping_style == "dot"
+                    ):
+                        tool_calls = DataLocator.locate_path_in_dict(
+                            loaded_message, "choices[0].message.tool_calls", style="dot"
+                        )
                     if tool_calls:
                         yield "tool_calls", tool_calls
                 if extra_delta_mapping:

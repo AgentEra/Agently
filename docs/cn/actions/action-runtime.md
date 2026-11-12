@@ -318,6 +318,8 @@ agent.set_action_loop(planning_protocol="programmatic")
 | `native_tool_calls` | provider-native Action/tool calling |
 | `programmatic` | 用一段有边界 Python 程序对合格只读 Actions 做分支、循环或聚合 |
 
+使用 Chat Completions 时，`OpenAICompatible` 会把可用 Action 转成请求体中的函数工具。`request_options.tools` 中显式配置的同名函数优先。模型和接口需要支持原生工具调用。见 [Chat Completions 示例](../../../examples/action_runtime/1_3_chat_completions_native_tools.py)。
+
 在 `get_action_result(...)` 或 `async_get_action_result(...)` 上显式传入的
 `planning_protocol=...` 会覆盖本次调用的 Agent 设置。程序化模式只纳入有明确
 返回 contract、只读且 replay-safe 的 Actions，并依赖支持 host binding 的隔离

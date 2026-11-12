@@ -1537,3 +1537,66 @@ async def test_non_stream_response_without_idle_timeout_is_unbounded(monkeypatch
     assert not any(
         event == "error" and isinstance(payload, TimeoutError) for event, payload in events
     )
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_chat_sends_prompt_tools_and_preserves_explicit_definitions(stream: bool) -> None:
+    override = {
+        "type": "function",
+        "function": {"name": "search", "description": "Explicit definition", "parameters": {"type": "object"}},
+    }
+    plugin = build_plugin(
+        {"model": "test-model", "stream": stream, "request_options": {"tools": [override], "tool_choice": "auto"}},
+        {
+            "input": "Find the total.",
+            "tools": [
+                {
+                    "name": "add",
+                    "desc": "Add two integers.",
+                    "kwargs": {"left": (int, "First integer"), "right": (int, "Second integer")},
+                    "required_input_keys": ["left", "right"],
+                },
+                {"name": "search", "desc": "Prompt definition", "kwargs": {}},
+            ],
+        },
+    )
+
+    request = plugin.generate_request_data()
+
+    assert request.request_options["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "add",
+                "description": "Add two integers.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "left": {"type": "integer", "description": "First integer"},
+                        "right": {"type": "integer", "description": "Second integer"},
+                    },
+                    "required": ["left", "right"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        override,
+    ]
+    assert request.request_options["tool_choice"] == "auto"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload_slot", ["delta", "message"])
+async def test_chat_emits_tool_calls_in_both_response_modes(payload_slot: str) -> None:
+    tool_calls = [
+        {"id": "add-call", "type": "function", "function": {"name": "add", "arguments": '{"left":2,"right":3}'}}
+    ]
+
+    async def response():
+        yield "message", json.dumps({"choices": [{payload_slot: {"role": "assistant", "tool_calls": tool_calls}}]})
+        yield "message", "[DONE]"
+
+    plugin = build_plugin({"model": "test-model", "stream": payload_slot == "delta"}, {"input": "Add 2 and 3."})
+    events = [(event, data) async for event, data in plugin.broadcast_response(response())]
+
+    assert [(event, data) for event, data in events if event == "tool_calls"] == [("tool_calls", tool_calls)]
