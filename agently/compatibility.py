@@ -1593,7 +1593,7 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                      'model-dependent; no new automatic semantic judge or guaranteed '
                                                      'quality improvement.'},
  'framework_version': '4.1.4.11',
- 'released_at': None,
+ 'released_at': '2026-11-12',
  'mcp_compatibility': {'fastmcp_optional': True,
                        'verified_fastmcp_versions': ['3.4.7', '4.1.0'],
                        'schema_fields': 'SDK v2 snake_case with SDK v1 fallback; no camelCase bridge required',

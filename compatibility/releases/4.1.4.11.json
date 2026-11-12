@@ -507,7 +507,7 @@
     "quality_boundary": "File reachability, identity and retention are Host-checked. Semantic completion, factual quality and visual quality remain model-dependent; no new automatic semantic judge or guaranteed quality improvement."
   },
   "framework_version": "4.1.4.11",
-  "released_at": null,
+  "released_at": "2026-11-12",
   "mcp_compatibility": {
     "fastmcp_optional": true,
     "verified_fastmcp_versions": [
