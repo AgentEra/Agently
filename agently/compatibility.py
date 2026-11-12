@@ -5,8 +5,8 @@ from typing import Any
 
 
 CURRENT_COMPATIBILITY_SCHEMA_VERSION = 1
-CURRENT_FRAMEWORK_VERSION = "4.1.4.10"
-CURRENT_RELEASE_TRAIN = "2026-10-4.1.4.10"
+CURRENT_FRAMEWORK_VERSION = "4.1.4.11"
+CURRENT_RELEASE_TRAIN = "2026-11-4.1.4.11"
 
 DEVTOOLS_RUNTIME_PROTOCOL = "agently-devtools.observation-runtime.v1"
 SKILLS_AUTHORING_PROTOCOL = "agently-skills.authoring.v3"
@@ -137,8 +137,10 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                         'files; no retries or cancellation flush',
                                               'quality': 'VAD is acoustic, not semantic; no universal '
                                                          'cough/music/noise rejection or low-volume recall guarantee'}},
- 'release_train': '2026-10-4.1.4.10',
- 'notes': '4.1.4.10 candidate: repair long_task file observation, exact selection, terminal retention and implicit '
+ 'release_train': '2026-11-4.1.4.11',
+ 'notes': '4.1.4.11 adds the Python 3.10 support notice and optimizes StateData copying (#370) and nested data '
+          'sanitization (#371). Python 3.10 remains supported in this release. Agently 4.2 and later require Python '
+          '3.11 or newer. Carries forward the following compatibility contracts. 4.1.4.10 candidate: repair long_task file observation, exact selection, terminal retention and implicit '
           'native file Action execution identity. Preserve published 4.1 compatibility; do not include 4.2 removals. '
           'File lifecycle verification is separate from model semantic quality. FastMCP 4.1.0 / MCP SDK v2 field, '
           'metadata and content adapters are covered while FastMCP 3.x remains compatible. Carries forward the '
@@ -176,7 +178,12 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
           'file truth. The 4.1.4.2 owner split remains intact: TaskContext owns bounded disclosure, TaskWorkspace owns '
           'files and artifacts, RecordStore owns durable runtime state including opt-in record_store_recovery, and '
           'SkillLibrary owns immutable Skill revisions.',
- 'runtime_support': {'agently_stage': {'repository': 'Agently-Stage',
+ 'runtime_support': {'python': {'requires_python': '>=3.10',
+                                'python_310_end_of_life': '2026-10-01',
+                                'python_310_notice': 'Once per Python 3.10 process on first import; set '
+                                                     'AGENTLY_PYTHON_310_NOTICE=0 before import to disable.',
+                                'requires_python_since_4_2': '>=3.11'},
+                     'agently_stage': {'repository': 'Agently-Stage',
                                        'package': 'agently-stage',
                                        'role': 'required_runtime_dependency',
                                        'version_specifier': '>=0.3.8,<0.4.0',
@@ -1548,8 +1555,8 @@ _CURRENT_RELEASE_MANIFEST: dict[str, Any] = {'schema_version': 1,
                                                      'Semantic completion, factual quality and visual quality remain '
                                                      'model-dependent; no new automatic semantic judge or guaranteed '
                                                      'quality improvement.'},
- 'framework_version': '4.1.4.10',
- 'released_at': '2026-10-13',
+ 'framework_version': '4.1.4.11',
+ 'released_at': None,
  'mcp_compatibility': {'fastmcp_optional': True,
                        'verified_fastmcp_versions': ['3.4.7', '4.1.0'],
                        'schema_fields': 'SDK v2 snake_case with SDK v1 fallback; no camelCase bridge required',
