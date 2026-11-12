@@ -88,6 +88,17 @@ Agently.set_settings("AnthropicCompatible", {
 
 The header is forwarded as-is. Check Anthropic's current beta documentation for valid values.
 
+## What this plugin does not cover
+
+The Anthropic Messages API is a text/vision messages protocol. It defines no
+audio (TTS/STT), embeddings or rerank endpoints, so `AnthropicCompatible` has
+no `model_type` switch for them. Those capabilities are reached through their
+own surfaces: [audio requests](audio.md) use an `AudioModelRequester` against an
+audio endpoint, while embeddings and rerank use
+[`OpenAICompatible` model types](openai-compatible.md#rerank-models). Binding
+them alongside an Anthropic text model is supported and does not change text
+settings.
+
 ## See also
 
 - [Models Overview](overview.md) — protocol picking and the OpenAI vs Anthropic split

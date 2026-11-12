@@ -49,6 +49,7 @@ from .RecordStore import (
     DBStoreProvider,
     DurableCheckpointStore,
     EmbeddingProvider,
+    RerankProvider,
     ExecutionSnapshotStore,
     ExecutionSnapshotRetentionStore,
     EvidenceLinker,

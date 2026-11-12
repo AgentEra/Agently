@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -26,7 +27,11 @@ from agently.types.data.record_store import (
     RecordRetrievalPackage,
     RecordRetrievalSelection,
 )
-from .Stores import EmbeddingProviderUnavailableError, VectorStoreProviderUnavailableError
+from .Stores import (
+    EmbeddingProviderUnavailableError,
+    VectorStoreProviderUnavailableError,
+    _coerce_rerank_scores,
+)
 
 if TYPE_CHECKING:
     from .RecordStore import RecordStore
@@ -108,6 +113,7 @@ async def retrieve_records(
             candidates=candidates,
             budget=normalized_budget,
             rerank_handler=rerank_handler,
+            rerank_provider=_bound_rerank_provider(record_store) if rerank_handler is None else None,
             max_retries=max(0, int(max_rerank_retries)),
             plugin_manager=plugin_manager,
             settings=settings,
@@ -616,6 +622,7 @@ async def _rerank_with_degrade(
     candidates: list[dict[str, Any]],
     budget: Mapping[str, Any],
     rerank_handler: RerankHandler | None,
+    rerank_provider: Any = None,
     max_retries: int,
     plugin_manager: Any,
     settings: Any,
@@ -623,15 +630,29 @@ async def _rerank_with_degrade(
     rerank_limit = _rerank_limit(candidates, budget)
     rerank_candidates = candidates[:rerank_limit]
     remaining_candidates = candidates[rerank_limit:]
+    engine = "handler" if rerank_handler is not None else "provider" if rerank_provider is not None else "model"
     diagnostics: dict[str, Any] = {
         "enabled": True,
+        "engine": engine,
         "candidate_count": len(rerank_candidates),
         "attempts": 0,
     }
+    if engine == "provider":
+        diagnostics["provider"] = str(getattr(rerank_provider, "name", type(rerank_provider).__name__))
     last_error: str | None = None
     for attempt in range(max_retries + 1):
         diagnostics["attempts"] = attempt + 1
         try:
+            if engine == "provider":
+                ranked, dropped, provider_facts = await _provider_rerank(
+                    query=query,
+                    candidates=rerank_candidates,
+                    provider=rerank_provider,
+                    budget=budget,
+                )
+                diagnostics.update(provider_facts)
+                diagnostics.update({"degraded": False, "dropped": dropped, "kept": len(ranked)})
+                return ranked + remaining_candidates, diagnostics, dropped
             decisions = await _run_rerank_handler(
                 query=query,
                 candidates=rerank_candidates,
@@ -659,6 +680,90 @@ async def _rerank_with_degrade(
         }
     )
     return candidates, diagnostics, 0
+
+
+def _bound_rerank_provider(record_store: "RecordStore") -> Any:
+    """Return the bound reranker, or None. Absence is ordinary, not a failure."""
+    try:
+        backend = record_store.backend
+    except Exception:
+        return None
+    ensure = getattr(backend, "ensure_rerank_provider", None)
+    if callable(ensure):
+        try:
+            provider = ensure()
+        except Exception:
+            return None
+    else:
+        provider = getattr(backend, "rerank_provider", None)
+    return provider if callable(getattr(provider, "rank", None)) else None
+
+
+def _candidate_document_text(candidate: dict[str, Any]) -> str:
+    """Project one candidate into the same bounded material the model rerank sees."""
+    preview = _candidate_preview(candidate)
+    parts: list[str] = []
+    for value in (preview.get("summary"), preview.get("kind"), preview.get("collection")):
+        text = str(value or "").strip()
+        if text:
+            parts.append(text)
+    tags = preview.get("tags")
+    if isinstance(tags, list) and tags:
+        parts.append(" ".join(str(tag) for tag in tags if str(tag).strip()))
+    return "\n".join(parts) or str(preview.get("id") or "")
+
+
+def _rerank_score_floor(budget: Mapping[str, Any]) -> float | None:
+    raw = budget.get("rerank_score_floor")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    floor = float(raw)
+    return floor if math.isfinite(floor) else None
+
+
+async def _provider_rerank(
+    *,
+    query: str | None,
+    candidates: list[dict[str, Any]],
+    provider: Any,
+    budget: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
+    """Order candidates by provider relevance score.
+
+    A reranker model produces relevance, not a usefulness verdict, so nothing is
+    dropped unless the caller sets an explicit `rerank_score_floor`. Candidates
+    the provider did not score keep their original relative order behind the
+    scored ones instead of being discarded on absent evidence.
+    """
+    documents = [_candidate_document_text(candidate) for candidate in candidates]
+    raw_scores = await provider.rank(query or "", documents, top_n=None)
+    scores = _coerce_rerank_scores(raw_scores, len(documents))
+    if not scores:
+        raise ValueError("Rerank provider returned no usable relevance scores.")
+    score_by_index = {int(item["index"]): float(item["score"]) for item in scores}
+    floor = _rerank_score_floor(budget)
+    scored: list[tuple[float, int, dict[str, Any]]] = []
+    unscored: list[dict[str, Any]] = []
+    dropped = 0
+    for index, candidate in enumerate(candidates):
+        if index not in score_by_index:
+            unscored.append(candidate)
+            continue
+        score = score_by_index[index]
+        if floor is not None and score < floor:
+            dropped += 1
+            continue
+        ranked_candidate = dict(candidate)
+        ranked_candidate["score"] = score
+        scored.append((score, index, ranked_candidate))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    facts: dict[str, Any] = {
+        "scored": len(scored) + dropped,
+        "unscored": len(unscored),
+    }
+    if floor is not None:
+        facts["score_floor"] = floor
+    return [item[2] for item in scored] + unscored, dropped, facts
 
 
 def _rerank_limit(candidates: list[dict[str, Any]], budget: Mapping[str, Any]) -> int:
