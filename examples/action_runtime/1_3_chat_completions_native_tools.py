@@ -32,15 +32,15 @@ def main() -> None:
     agent.use_actions(add_invoice_amounts)
     turn = agent.input(
         "Use add_invoice_amounts once to calculate the total of invoices INV-14 and INV-27. "
-        "After receiving the tool result, give the total in one short sentence."
+        "If an Action result is already available for these invoices, use its total and reply in one short sentence."
     )
-    records = agent.get_action_result(prompt=turn.prompt)
+    reply = turn.get_result().get_text()
+    records = turn.get_meta()["logs"].get("action_logs", [])
     assert any(record.get("status") == "success" for record in records)
-    result = turn.get_result()
     print("Action calls:", calls)
-    print("Final reply:", result.get_text())
+    print("Final reply:", reply)
     assert len(calls) == 1 and sorted(calls[0]) == ["INV-14", "INV-27"]
-    assert "60525" in result.get_text().replace(",", "")
+    assert "60525" in reply.replace(",", "")
 
 
 if __name__ == "__main__":
