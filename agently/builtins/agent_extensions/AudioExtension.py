@@ -10,6 +10,7 @@ from typing import TypeVar, cast
 from agently_stage import default_stage_call_bridge
 
 from agently.core.Agent import BaseAgent
+from agently.core.model.AudioConfig import resolve_audio
 from agently.types.data.audio import (
     AudioInput, SpeechOptions, SpeechResult, TranscriptionOptions, TranscriptResult, PCMFormat, PCMStream,
     TextSource, TextSegmentOptions, TranscriptionStreamOptions, TranscriptBlock, TranscriptSegment,
@@ -40,7 +41,7 @@ class AudioExtension(BaseAgent):
         self, text: str, *, model: str | None = None, voice: str | None = None,
         options: SpeechOptions | None = None,
     ) -> SpeechResult:
-        return await self.audio.async_tts(text, model=model, voice=voice, options=options)
+        return await resolve_audio(self, "tts").async_tts(text, model=model, voice=voice, options=options)
 
     def tts(
         self, text: str, *, model: str | None = None, voice: str | None = None,
@@ -52,7 +53,7 @@ class AudioExtension(BaseAgent):
         self, audio: AudioInput | str | PathLike[str], *, model: str | None = None,
         options: TranscriptionOptions | None = None,
     ) -> TranscriptResult:
-        return await self.audio.async_stt(audio, model=model, options=options)
+        return await resolve_audio(self, "stt").async_stt(audio, model=model, options=options)
 
     def stt(
         self, audio: AudioInput | str | PathLike[str], *, model: str | None = None,
@@ -65,7 +66,7 @@ class AudioExtension(BaseAgent):
         options: SpeechOptions | None = None, segments: TextSegmentOptions | None = None,
         segmenter: TextSegmenter | None = None, audio_format: PCMFormat | None = None, chunk_bytes: int = 8192,
     ) -> AbstractAsyncContextManager[PCMStream]:
-        return self.audio.stream_tts(
+        return resolve_audio(self, "tts").stream_tts(
             text, model=model, voice=voice, options=options, segments=segments,
             segmenter=segmenter, audio_format=audio_format, chunk_bytes=chunk_bytes,
         )
@@ -75,7 +76,7 @@ class AudioExtension(BaseAgent):
         options: SpeechOptions | None = None, segments: TextSegmentOptions | None = None,
         segmenter: TextSegmenter | None = None,
     ) -> AbstractAsyncContextManager[AsyncIterator[SpeechResult]]:
-        return self.audio.stream_tts_with_auto_break(
+        return resolve_audio(self, "tts").stream_tts_with_auto_break(
             text, model=model, voice=voice, options=options, segments=segments, segmenter=segmenter,
         )
 
@@ -83,7 +84,7 @@ class AudioExtension(BaseAgent):
         self, audio: AsyncIterable[bytes], *, audio_format: PCMFormat, model: str | None = None,
         options: TranscriptionOptions | None = None, stream_options: TranscriptionStreamOptions | None = None,
     ) -> AbstractAsyncContextManager[AsyncIterator[TranscriptBlock]]:
-        return self.audio.stream_stt(
+        return resolve_audio(self, "stt").stream_stt(
             audio, audio_format=audio_format, model=model, options=options, stream_options=stream_options,
         )
 
@@ -92,7 +93,7 @@ class AudioExtension(BaseAgent):
         options: TranscriptionOptions | None = None, stream_options: TranscriptionStreamOptions | None = None,
         segmenter: TextSegmenter | None = None,
     ) -> AbstractAsyncContextManager[AsyncIterator[TranscriptSegment]]:
-        return self.audio.stream_stt_with_auto_break(
+        return resolve_audio(self, "stt").stream_stt_with_auto_break(
             audio, audio_format=audio_format, model=model, options=options,
             stream_options=stream_options, segmenter=segmenter,
         )

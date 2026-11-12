@@ -159,3 +159,5 @@ If a provider is missing or speaks an incompatible protocol, you can add a new r
 - [Providers](providers/) — per-provider recipes
 - [Model Setup](../start/model-setup.md) — quickstart-level setup
 - [Settings](../start/settings.md) — env placeholders and hierarchy
+
+See [Independent model uses and multimodal tasks](capabilities.md) for the development API.

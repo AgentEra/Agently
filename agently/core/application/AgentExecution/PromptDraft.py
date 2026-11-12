@@ -226,14 +226,16 @@ class AgentExecutionPromptDraft:
         if always:
             self.agent.attachment(prompt, mappings=mappings, always=True)
         else:
+            self.request.settings.set("execution.image_groups", [])
             self.request_prompt.set("attachment", prompt, mappings=mappings)
         return self
 
     def image(
         self,
-        *,
-        question: str,
         file: str | os.PathLike[str] | None = None,
+        *,
+        question: str | None = None,
+        mode: Literal["vlm", "llm", "ocr"] = "vlm",
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
@@ -241,27 +243,15 @@ class AgentExecutionPromptDraft:
         mappings: dict[str, Any] | None = None,
         always: bool = False,
     ):
-        attachment = build_image_attachment(
-            question=question,
-            file=file,
-            url=url,
-            files=files,
-            urls=urls,
-            detail=detail,
-        )
+        from agently.core.model.AttachmentInput import append_image
+
         if always:
-            self.agent.image(
-                question=question,
-                file=file,
-                url=url,
-                files=files,
-                urls=urls,
-                detail=detail,
-                mappings=mappings,
-                always=True,
-            )
+            self.agent.image(file, question=question, mode=mode, url=url, files=files,
+                             urls=urls, detail=detail, mappings=mappings, always=True)
         else:
-            self.request_prompt.set("attachment", attachment, mappings=mappings)
+            append_image(self.request.prompt, self.request.settings, build_image_attachment(
+                question=question, file=file, url=url, files=files, urls=urls, detail=detail,
+            ), mode=mode, mappings=mappings)
         return self
 
     def set_prompt_options(self, options: dict[str, Any], *, always: bool = False):

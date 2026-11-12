@@ -83,7 +83,7 @@ from .task_workspace import (
     TaskWorkspaceTerminalStatus,
     TaskWorkspaceWriteResult,
 )
-from .serializable import SerializableData, SerializableMapping, SerializableValue
+from .serializable import SerializableData, SerializableMapping as SerializableMapping, SerializableValue as SerializableValue
 from .prompt import (
     ChatMessage,
     ChatMessageDict,
@@ -98,7 +98,7 @@ from .request import (
     APIKeyFailoverAction,
     APIKeyFailoverContext,
     APIKeySelectionContext,
-    AgentlyRequestData,
+    AgentlyRequestData as AgentlyRequestData,
     AgentlyRequestDataDict,
     ModelProfileResolution,
 )

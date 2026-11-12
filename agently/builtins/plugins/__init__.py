@@ -39,4 +39,5 @@ from .AgentExecution import AgentExecution, RequestExecution, LongTaskExecution,
 from .ModelRequester.AnthropicCompatible import AnthropicCompatible
 from .ModelRequester.OpenAICompatible import OpenAICompatible
 from .ModelRequester.OpenAIResponsesCompatible import OpenAIResponsesCompatible
+from .ModelRequester.Jev import Jev
 from .ResponseParser.AgentlyResponseParser import AgentlyResponseParser

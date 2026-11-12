@@ -273,6 +273,11 @@ async def run_model_request_route(
         if isinstance(tool_logs, list):
             for log in tool_logs:
                 await execution.record_action_log(log, route="model_request", source="tool")
+    return await finish_model_request_route(execution, data, long_output=long_output_delivery is not None)
+
+
+async def finish_model_request_route(execution: "AgentExecution", data: Any, *, long_output: bool = False) -> Any:
+    """Apply the existing capability gate to direct and composed request output."""
     capability_failure = await _required_action_failure(execution, route="model_request")
     if capability_failure is not None:
         execution.status = "blocked"
@@ -301,7 +306,7 @@ async def run_model_request_route(
             "required_capabilities": capability_failure,
         }
     execution.close_snapshot = {"status": "success", "route": "model_request"}
-    if long_output_delivery is not None:
+    if long_output:
         execution.close_snapshot["long_output"] = DataFormatter.sanitize(
             getattr(execution, "_long_output_meta", {})
         )

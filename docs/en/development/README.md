@@ -1,9 +1,12 @@
 # Development
 
-Current release candidate: `4.1.4.8`. It requires Agently-Stage 0.3.8 and adds
-fluent AgentExecution typing, stable interaction/review/artifact delivery,
-beta whole-request Patterns, execution-scoped Skills, and Action/runtime
-delivery improvements.
+Current release notes: `4.1.4.11`. This version improves state copying and sanitization and adds the Python 3.10 startup notice.
+
+4.1.4.10 fixes long-task file delivery and adds FastMCP 3/4 compatibility while preserving the existing 4.1 APIs and Agently-Stage 0.3.8 support.
+
+[Agently 4.1.4.11 release notes](release-notes-4.1.4.11.md): Python 3.10 startup notice and performance improvements.
+
+[Agently 4.1.4.10 Release Notes](release-notes-4.1.4.10.md): long-task file delivery and FastMCP 3/4 compatibility.
 
 Read in this order:
 

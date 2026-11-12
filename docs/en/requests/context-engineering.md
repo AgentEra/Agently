@@ -55,6 +55,16 @@ catalog. When one task may need Skills, files, records, SessionMemory recall,
 evidence, or a pinned repository, bind those sources to `TaskContext` and read
 one consumer/phase-specific `ContextPackage` through `ContextReader`.
 
+Immutable structured content in a ContextPackage is projected recursively as ordinary data for the Prompt, preserving nested fields, numbers, booleans, and nulls. Read-only mappings are not rendered as Python object descriptions, and projection does not mutate the package.
+
+TaskBoard preparation reads for its initial planner and passes that package
+directly to the planning request. An unchanged package is not selected and read
+again at the next stage. If task context or source revisions change before
+planning, the planner refreshes the package and the context used by downstream
+cards. Rich attachments stay bound to the same package, and consumption is
+recorded only after the planning request succeeds. Other phases and cards keep
+their own scoped reads.
+
 TaskContext owns an internal `ContextIndex`. Sources contribute structural
 descriptors and bounded exact reads; the internal index builds reusable
 revisioned structural, lexical, or optional hybrid partitions. ContextReader
@@ -77,7 +87,7 @@ task_context.configure_index(
 In hybrid mode, vector/lexical ranking narrows the optional descriptor window
 to the reader's `max_blocks` before semantic selection instead of multiplying
 that window fourfold. The selector may still omit every candidate or choose an
-ordered subset within the delivery budget. When structural filters leave one
+ordered subset by relevance; the Host enforces the delivery budget. When structural filters leave one
 canonical candidate, the index skips a query embedding because there is no
 remaining order to improve.
 
@@ -166,3 +176,25 @@ Without `always=True`, `info` is set only for this call.
 - [Session Memory](session-memory.md) — chat history and memo
 - [Knowledge Base](../knowledge/knowledge-base.md) — retrieval-before-prompt pattern
 - [Action Runtime](../actions/action-runtime.md) — tool catalogs are injected automatically
+
+### Task preparation and source reuse (4.1.4.9)
+
+Resource selection receives the complete execution task together with the current
+read intent and phase. Later task goals do not expand the current read scope.
+Candidates carry an offered key, role, summary and completeness. Byte estimates,
+limits and canonical identities stay Host-side. Required instruction bodies can
+explain when optional resources should be read; optional bodies are read only after
+selection. Skill resource catalogs are no longer offered as extra `resource-index`
+candidates, and resource summaries omit byte counts. Direct source exact reads of
+the catalog remain available.
+
+The built-in TaskWorkspace source reuses per-file observations and bounded, complete
+small UTF-8 text bodies. It rechecks contained paths and local file identity on use;
+replacement, deletion or changed file stat invalidates observations. It still checks
+pinned revisions and rejects files that change during a read. This optimization
+assumes reliable local filesystem identity/stat information. Large, BOM-bearing,
+parsed-document and custom-handler bodies use ordinary exact reads. It does not
+change write permission, artifact promotion or final readback, and introduces no
+public cache or index manager. Refresh stale readers explicitly.
+
+The complete task projection also reaches context selection inside long_task planning, execution, and verification, while each read keeps its own intent and phase.

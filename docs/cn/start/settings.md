@@ -32,6 +32,12 @@ agent = (
 )
 ```
 
+## Python 3.10 启动通知
+
+在 Python 3.10 下，Agently 4.1.4.11 在每个进程首次导入时显示一条提示。
+导入前设置环境变量 `AGENTLY_PYTHON_310_NOTICE=0` 即可关闭。
+命令示例见 [4.1.4.11 发布说明](../development/release-notes-4.1.4.11.md)。
+
 ## 设置路径
 
 `set_settings(...)` 的第一个参数是点路径，常用：

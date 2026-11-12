@@ -29,6 +29,7 @@ from agently.core.operation.Action.ActionMetadata import _scoped_action_list
 from agently.core.model.ModelRequestRunner import PreparedModelResponse
 from agently.core.runtime.RuntimeContext import (
     get_current_action_policy,
+    get_current_agent_execution_context,
 )
 from agently.utils import DeprecationWarnings
 from agently.builtins.actions.Cmd import DEFAULT_SAFE_CMD_PREFIXES
@@ -924,13 +925,24 @@ class ActionExtension(BaseAgent):
                 raise ValueError(f"Path is outside task_workspace root: { path }") from error
             return resolved
 
+        def current_task_workspace() -> "TaskWorkspace":
+            # Implicit Agent bindings follow the current run, like code execution.
+            # Explicit file roots/workspaces retain their caller-owned boundary.
+            if not explicit_root and explicit_task_workspace is None and not isolated:
+                context = get_current_agent_execution_context()
+                workspace = getattr(context, "task_workspace", None)
+                if (workspace is not None
+                        and workspace.task_workspace_id == active_task_workspace.task_workspace_id):
+                    return cast("TaskWorkspace", workspace)
+            return active_task_workspace
+
         def mutation_task_workspace():
-            if active_task_workspace.mode == "read_write":
-                return active_task_workspace
+            if current_task_workspace().mode == "read_write":
+                return current_task_workspace()
             policy = get_current_action_policy() or {}
             if policy.get("policy_approval_granted") is not True:
-                return active_task_workspace
-            return active_task_workspace._derive(
+                return current_task_workspace()
+            return current_task_workspace()._derive(
                 mode="read_write",
             )
 
@@ -938,7 +950,7 @@ class ActionExtension(BaseAgent):
             operation: str,
             action_call: dict[str, Any],
         ) -> dict[str, Any]:
-            if active_task_workspace.mode == "read_write":
+            if current_task_workspace().mode == "read_write":
                 return {"required": False}
             action_input = action_call.get("action_input", {})
             action_input = action_input if isinstance(action_input, dict) else {}
@@ -946,10 +958,10 @@ class ActionExtension(BaseAgent):
             if operation == "apply_patch":
                 paths = patch_paths(str(action_input.get("patch") or ""))
                 external_required = any(
-                    active_task_workspace._resolve_external_file_path(item).exists() for item in paths
+                    current_task_workspace()._resolve_external_file_path(item).exists() for item in paths
                 )
             else:
-                target = active_task_workspace._resolve_external_file_path(path)
+                target = current_task_workspace()._resolve_external_file_path(path)
                 paths = [str(target.relative_to(root_path))]
                 external_required = target.exists()
             if not external_required:
@@ -961,7 +973,7 @@ class ActionExtension(BaseAgent):
                 "paths": paths,
                 "canonical_path": canonical_paths[0] if len(canonical_paths) == 1 else None,
                 "canonical_paths": canonical_paths,
-                "task_workspace_id": active_task_workspace.task_workspace_id,
+                "task_workspace_id": current_task_workspace().task_workspace_id,
             }
             return {
                 "required": True,
@@ -976,8 +988,8 @@ class ActionExtension(BaseAgent):
             return str(path.relative_to(root_path))
 
         def ordinary_action_path(path: str | Path):
-            target = active_task_workspace.resolve_file_path(path)
-            return active_task_workspace._ordinary_file_relative_path(target)
+            target = current_task_workspace().resolve_file_path(path)
+            return current_task_workspace()._ordinary_file_relative_path(target)
 
         def file_result_action_output(result: Any):
             return {
@@ -990,7 +1002,7 @@ class ActionExtension(BaseAgent):
         read_state: dict[str, dict[str, Any]] = {}
 
         def inspect_task_workspace_file(path: str | Path):
-            info = dict(active_task_workspace.inspect_file(path))
+            info = dict(current_task_workspace().inspect_file(path))
             info["path"] = ordinary_action_path(path)
             return info
 
@@ -1035,7 +1047,7 @@ class ActionExtension(BaseAgent):
                 raise ValueError("File has been modified since it was read; read it again before writing.")
 
         async def manager_read_file(path: str, max_bytes: int = max_file_bytes, offset: int = 0):
-            result = await active_task_workspace.read_file(
+            result = await current_task_workspace().read_file(
                 path,
                 max_bytes=max_bytes,
                 offset=offset,
@@ -1139,7 +1151,7 @@ class ActionExtension(BaseAgent):
                 max_results: int = 200,
                 include_hidden: bool = False,
             ):
-                result = await active_task_workspace.glob_files(
+                result = await current_task_workspace().glob_files(
                     pattern,
                     path=path,
                     max_results=max_results,
@@ -1201,7 +1213,7 @@ class ActionExtension(BaseAgent):
                 max_results: int = 200,
                 include_hidden: bool = False,
             ):
-                return await active_task_workspace.glob_files(
+                return await current_task_workspace().glob_files(
                     pattern,
                     path=path,
                     max_results=max_results,
@@ -1242,7 +1254,7 @@ class ActionExtension(BaseAgent):
                 max_results: int = 50,
                 include_hidden: bool = False,
             ):
-                return await active_task_workspace.grep_files(
+                return await current_task_workspace().grep_files(
                     pattern,
                     path=path,
                     regex=regex,
@@ -1288,7 +1300,7 @@ class ActionExtension(BaseAgent):
                 max_results: int = 50,
                 include_hidden: bool = False,
             ):
-                return await active_task_workspace.search_files(
+                return await current_task_workspace().search_files(
                     query,
                     path=path,
                     pattern=pattern,

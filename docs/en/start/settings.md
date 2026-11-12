@@ -30,6 +30,12 @@ agent = (
 )
 ```
 
+## Python 3.10 startup notice
+
+On Python 3.10, Agently 4.1.4.11 displays one notice per process on first import. Set
+`AGENTLY_PYTHON_310_NOTICE=0` in the environment before import to silence it.
+See the [4.1.4.11 release notes](../development/release-notes-4.1.4.11.md) for examples.
+
 ## Setting paths
 
 The first argument to `set_settings(...)` is a dotted path. Common paths:

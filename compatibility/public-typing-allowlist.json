@@ -24,6 +24,22 @@
     {
       "symbol": "agently.base.AgentlyMain",
       "scan": "declared_public_callables"
+    },
+    {
+      "symbol": "agently.types.data.judgment.OutputTemplate",
+      "scan": "declared_public_callables"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Probability",
+      "scan": "declared_public_callables"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Choice",
+      "scan": "declared_public_callables"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Score",
+      "scan": "declared_public_callables"
     }
   ],
   "required_typed_callables": [],
@@ -790,6 +806,46 @@
       "reason": "Released task creation forwards an open strategy-specific keyword projection. It does not define a closed task options schema.",
       "narrowing_plan": "Remove the announced legacy adapter or supply the strategy-owned typed projection during the 4.2 compatibility cleanup; do not broaden the unified execution APIs.",
       "expires": "review-before-4.2"
+    },
+    {
+      "symbol": "agently.types.data.judgment.OutputTemplate.to_schema",
+      "positions": [
+        "return"
+      ],
+      "owner": "OutputTemplate",
+      "reason": "Schema declarations contain runtime Python annotations including Annotated, Literal and user-defined Pydantic models. Python 3.10 has no TypeForm for this extension boundary.",
+      "narrowing_plan": "Adopt a shared typed schema declaration contract when the project supports an annotation-value type.",
+      "expires": "review-before-template-api-stable"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Probability.to_schema",
+      "positions": [
+        "return"
+      ],
+      "owner": "OutputTemplate",
+      "reason": "Schema declarations contain runtime Python annotations including Annotated, Literal and user-defined Pydantic models. Python 3.10 has no TypeForm for this extension boundary.",
+      "narrowing_plan": "Adopt a shared typed schema declaration contract when the project supports an annotation-value type.",
+      "expires": "review-before-template-api-stable"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Choice.to_schema",
+      "positions": [
+        "return"
+      ],
+      "owner": "OutputTemplate",
+      "reason": "Schema declarations contain runtime Python annotations including Annotated, Literal and user-defined Pydantic models. Python 3.10 has no TypeForm for this extension boundary.",
+      "narrowing_plan": "Adopt a shared typed schema declaration contract when the project supports an annotation-value type.",
+      "expires": "review-before-template-api-stable"
+    },
+    {
+      "symbol": "agently.types.data.judgment.Score.to_schema",
+      "positions": [
+        "return"
+      ],
+      "owner": "OutputTemplate",
+      "reason": "Schema declarations contain runtime Python annotations including Annotated, Literal and user-defined Pydantic models. Python 3.10 has no TypeForm for this extension boundary.",
+      "narrowing_plan": "Adopt a shared typed schema declaration contract when the project supports an annotation-value type.",
+      "expires": "review-before-template-api-stable"
     }
   ]
 }

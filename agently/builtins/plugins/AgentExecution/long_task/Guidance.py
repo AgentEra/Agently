@@ -217,7 +217,19 @@ class AgentTaskGuidanceMixin(AgentTaskMixinBase):
         reader = self._task_context_reader(phase=phase, consumer_id=consumer_id)
         if not reader.is_current:
             reader.refresh()
-        intent_metadata: dict[str, Any] = {"exclude_already_in_prompt": True}
+        prompt = self._execution_prompt_context()
+        intent_metadata: dict[str, Any] = {
+            "exclude_already_in_prompt": True,
+            "task": {
+                "goals": [self.goal],
+                "success_criteria": list(self.success_criteria),
+                "input": prompt.get("input"),
+                "task_context": {
+                    slot: prompt[slot] for slot in ("system", "info", "instruct", "output")
+                    if prompt.get(slot) not in (None, "", [], {})
+                },
+            },
+        }
         required_overflow = str(
             self.context_budget.get("required_overflow") or "fail"
         ).strip()

@@ -100,6 +100,18 @@ tokens. Consumers can render `title` deltas while `body` is still generating.
 After the stream ends, `async_get_data()` returns the cached final parsed dict
 from the same result (no second request).
 
+Ordinary ModelRequest and AgentExecution instant values remain provisional.
+Schema/ensure/validator failures retain bounded output-validation retries, even
+when complete fields have already been observed. Reopening a validated result
+replays the accepted attempt; AgentExecution forwards accepted replacement items
+with attempt metadata. Use the final validated result for side effects.
+
+Only an actual SystemOne stage stops replay after observing a complete field.
+Its final validation may still fail; the stage retains the error, observations
+and `instant_retry_suppressed` metadata, and dependent stages do not consume the
+failed result. Ordinary LLM stages before or after SystemOne retain their shared
+retry allowance. Provider transport retries keep their existing contract.
+
 ## Overlap generation with downstream fan-out
 
 When a complete early field can start independent retrieval or preparation,

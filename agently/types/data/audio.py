@@ -30,6 +30,8 @@ class AudioConnection:
     base_url: str
     api_key: str = field(default="", repr=False)
     timeout: float = 120.0
+    headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+    client_options: Mapping[str, object] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)

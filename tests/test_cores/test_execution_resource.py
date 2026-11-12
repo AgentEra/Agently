@@ -1028,11 +1028,11 @@ def test_mcp_executor_resource_blocks_use_action_artifact_contract():
     from agently.builtins.plugins.ActionExecutor.MCPActionExecutor import MCPActionExecutor
 
     class FakeTextContent:
-        def model_dump(self):
+        def model_dump(self, **_kwargs):
             return {"type": "text", "text": "plain result"}
 
     class FakeResourceLink:
-        def model_dump(self):
+        def model_dump(self, **_kwargs):
             return {
                 "type": "resource_link",
                 "uri": "file:///tmp/agently/report.md",

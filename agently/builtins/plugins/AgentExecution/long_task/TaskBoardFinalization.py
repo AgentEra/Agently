@@ -28,6 +28,8 @@ from .TaskShared import (
     collect_evidence_use,
     DataFormatter,
     Mapping,
+    Literal,
+    ReplanSignal,
     Sequence,
     source_refs_from_ledger,
     task_board_blocking_state_facts,
@@ -1138,6 +1140,12 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                 budget_selection="content_first",
             )
         )
+        _terminal_deliverables, invalid_internal_terminal_paths = (
+            self._taskboard_terminal_task_workspace_deliverables(revision)
+        )
+        explicit_delivery_contract = bool(
+            self._required_task_workspace_deliverables() or _terminal_deliverables
+        )
         explicit_state_facts = (
             list(prepared["explicit_state_facts"])
             if isinstance(prepared.get("explicit_state_facts"), Sequence)
@@ -1246,11 +1254,20 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         )
         if final is None:
             finalization_source = "model_finalizer"
-            final = self._promote_taskboard_final_candidate(
-                revision,
-                candidate_final_result=effective_candidate_final_result,
-                final_refs=final_refs,
-                board_status=result_status,
+            # A completed leaf card is not semantic proof for an ordinary
+            # task. Candidate promotion is a delivery fast path only after
+            # Host has an explicit final TaskWorkspace contract; otherwise
+            # the TaskBoard finalizer remains the single semantic completion
+            # owner.
+            final = (
+                self._promote_taskboard_final_candidate(
+                    revision,
+                    candidate_final_result=effective_candidate_final_result,
+                    final_refs=final_refs,
+                    board_status=result_status,
+                )
+                if explicit_delivery_contract
+                else None
             )
         if final is not None and not reusing_prepared_final:
             promotion_guard = validate_evidence_use(collect_evidence_use(final), evidence_ledger)
@@ -1347,22 +1364,33 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
             if self._taskboard_task_workspace_path_key(path)
             not in staged_target_keys
         ]
-        _terminal_deliverables, invalid_internal_terminal_paths = (
-            self._taskboard_terminal_task_workspace_deliverables(revision)
+        required_skill_ids, required_skill_pack_ids = self._required_skill_context_selectors()
+        # Skill/SkillPack requirements are authored context contracts. They
+        # remain Host-owned hard gates, while ordinary semantic completion stays
+        # with the TaskBoard loop.
+        required_context_contract = bool(required_skill_ids or required_skill_pack_ids)
+        # The TaskBoard loop owns ordinary semantic completion. A second
+        # semantic verdict is only justified by an explicit Host-owned hard
+        # contract or a deterministic integrity/lifecycle block.
+        explicit_capability_contract = bool(self._capability_evidence_requirements())
+        terminal_hard_gate = bool(
+            explicit_delivery_contract
+            or explicit_capability_contract
+            or required_context_contract
+            or bool(missing_deliverables)
+            or bool(_terminal_deliverables)
+            or staged_promotions
+            or invalid_internal_terminal_paths
+            or blocking_state_facts
         )
-        should_verify_final = (
-            accepted
-            or bool(str(final.get("final_result") or "").strip())
-            or bool(str(effective_candidate_final_result or "").strip())
-            or bool(final_refs)
-        )
+        should_verify_final = terminal_hard_gate
         if should_verify_final:
+            taskboard_evidence_logs = self._taskboard_final_evidence_logs(revision)
             verifier_final_result = str(final.get("final_result") or "").strip()
             if not verifier_final_result and trusted_final_refs:
                 verifier_final_result = self._task_workspace_artifact_final_result_from_refs(trusted_final_refs)
             if not verifier_final_result:
                 verifier_final_result = str(effective_candidate_final_result or "").strip()
-            taskboard_evidence_logs = self._taskboard_final_evidence_logs(revision)
             verification_options = dict(DataFormatter.sanitize(self.options))
             final_source_refs = self._taskboard_final_source_refs_from_evidence_view(evidence_view)
             final_execution_result = {
@@ -1724,65 +1752,12 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                             terminal_transition
                         ),
                     }
-                repair_revision = None
-                if self._taskboard_final_verification_allows_repair(
-                    final_verification,
+                repair_result = await self._taskboard_repair(
+                    revision, final=final, final_verification=final_verification,
                     blocking_state_facts=blocking_state_facts,
-                ):
-                    raw_replan_signal = final_verification.get("replan_signal")
-                    replan_signal = (
-                        raw_replan_signal
-                        if isinstance(raw_replan_signal, Mapping)
-                        else {}
-                    )
-                    evidence_replan = (
-                        str(replan_signal.get("status") or "").strip()
-                        == "replan_segment"
-                    )
-                    missing_capability_ids = self._normalize_string_list(
-                        final_verification.get("missing_capability_evidence")
-                    )
-                    evidence_retrieval_plan: dict[str, Any] | None = None
-                    evidence_plan_ready = True
-                    if evidence_replan and not missing_capability_ids:
-                        evidence_retrieval_plan = (
-                            await self._request_taskboard_final_evidence_retrieval_plan(
-                                revision=revision,
-                                final_verification=final_verification,
-                            )
-                        )
-                        evidence_plan_ready = bool(evidence_retrieval_plan)
-                    if evidence_plan_ready:
-                        repair_revision = self._taskboard_final_verification_repair_revision(
-                            revision,
-                            final=final,
-                            final_verification=final_verification,
-                            evidence_retrieval_plan=evidence_retrieval_plan,
-                        )
-                if repair_revision is not None:
-                    await self._record_phase(
-                        "taskboard_final_repair_requested",
-                        diagnostics={
-                            "revision_id": repair_revision.revision_id,
-                            "previous_revision_id": revision.revision_id,
-                            "reason": final_verification.get("reason"),
-                            "missing_criteria": final_verification.get("missing_criteria", []),
-                        },
-                    )
-                    await self._emit(
-                        "agent_task.taskboard.final_verification.repair_requested",
-                        {
-                            "revision_id": repair_revision.revision_id,
-                            "previous_revision_id": revision.revision_id,
-                            "missing_criteria": final_verification.get("missing_criteria", []),
-                        },
-                    )
-                    return {
-                        "terminal": False,
-                        "status": "repair_requested",
-                        "revision": repair_revision.to_dict(),
-                        "final_verification": DataFormatter.sanitize(final_verification),
-                    }
+                )
+                if repair_result is not None:
+                    return repair_result
                 accepted = False
                 final = dict(final)
                 final["accepted"] = False
@@ -1811,6 +1786,57 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
                     evidence_ledger=evidence_ledger,
                 )
                 self._latest_taskboard_acceptance_index = DataFormatter.sanitize(acceptance_index)
+        else:
+            signal_value = final.get("replan_signal")
+            signal = None
+            signal_error = ""
+            if signal_value is not None:
+                try:
+                    if not isinstance(signal_value, Mapping) or not isinstance(signal_value.get("reason"), str):
+                        raise ValueError("Finalizer continuation requires a reason.")
+                    refs = signal_value.get("evidence_refs")
+                    if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+                        raise ValueError("Finalizer continuation evidence_refs must be a string list.")
+                    signal = ReplanSignal.from_value(signal_value)
+                    if signal.status not in {"continue", "repair", "replan_segment", "blocked", "clarify"}:
+                        raise ValueError("Unsupported finalizer continuation status.")
+                    if accepted != (signal.status == "continue"):
+                        raise ValueError("Finalizer accepted and replan_signal.status disagree.")
+                    current_refs = {
+                        str(item.get("reference_id") or "")
+                        for item in evidence_ledger.get("items", [])
+                        if isinstance(item, Mapping)
+                    } & set(self._task_reference_catalog.offered_references())
+                    if not set(signal.evidence_refs).issubset(current_refs):
+                        raise ValueError("Finalizer continuation references unoffered evidence.")
+                except (TypeError, ValueError) as error:
+                    signal_error = str(error)
+            if signal_error:
+                accepted = False
+                final = {**final, "accepted": False, "reason": signal_error}
+                self.diagnostics.setdefault("taskboard_finalizer", []).append(
+                    {"code": "invalid_continuation", "reason": signal_error}
+                )
+            elif not accepted and signal is not None and signal.status in {"repair", "replan_segment"}:
+                # Adapt the same finalizer decision to the existing repair
+                # consumer. This does not call or fabricate a second verifier.
+                continuation = {
+                    **final,
+                    "is_complete": False,
+                    "requires_block": False,
+                    "decision_source": "taskboard_finalizer",
+                    "replan_signal": {
+                        "status": signal.status,
+                        "reason": signal.reason,
+                        "evidence_refs": list(signal.evidence_refs),
+                    },
+                }
+                repair_result = await self._taskboard_repair(
+                    revision, final=final, final_verification=continuation,
+                    blocking_state_facts=blocking_state_facts,
+                )
+                if repair_result is not None:
+                    return repair_result
         degraded_finalization_attempted = result_status != "completed"
         completion_notes = self._taskboard_completion_notes(
             revision,
@@ -1910,6 +1936,76 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         )
         await self._emit("agent_task.completed" if accepted else "agent_task.blocked", self.result)
         return {"terminal": True, "status": self.status}
+
+    async def _taskboard_repair(
+        self,
+        revision: Any,
+        *,
+        final: Mapping[str, Any],
+        final_verification: Mapping[str, Any],
+        blocking_state_facts: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Dispatch an existing repair path from one model completion decision."""
+        repair_revision = None
+        if self._taskboard_final_verification_allows_repair(
+            final_verification,
+            blocking_state_facts=blocking_state_facts,
+        ):
+            raw_replan_signal = final_verification.get("replan_signal")
+            replan_signal = (
+                raw_replan_signal
+                if isinstance(raw_replan_signal, Mapping)
+                else {}
+            )
+            evidence_replan = (
+                str(replan_signal.get("status") or "").strip()
+                == "replan_segment"
+            )
+            missing_capability_ids = self._normalize_string_list(
+                final_verification.get("missing_capability_evidence")
+            )
+            evidence_retrieval_plan: dict[str, Any] | None = None
+            evidence_plan_ready = True
+            if evidence_replan and not missing_capability_ids:
+                evidence_retrieval_plan = (
+                    await self._request_taskboard_final_evidence_retrieval_plan(
+                        revision=revision,
+                        final_verification=final_verification,
+                    )
+                )
+                evidence_plan_ready = bool(evidence_retrieval_plan)
+            if evidence_plan_ready:
+                repair_revision = self._taskboard_final_verification_repair_revision(
+                    revision,
+                    final=final,
+                    final_verification=final_verification,
+                    evidence_retrieval_plan=evidence_retrieval_plan,
+                )
+        if repair_revision is not None:
+            await self._record_phase(
+                "taskboard_final_repair_requested",
+                diagnostics={
+                    "revision_id": repair_revision.revision_id,
+                    "previous_revision_id": revision.revision_id,
+                    "reason": final_verification.get("reason"),
+                    "missing_criteria": final_verification.get("missing_criteria", []),
+                },
+            )
+            await self._emit(
+                "agent_task.taskboard.final_verification.repair_requested",
+                {
+                    "revision_id": repair_revision.revision_id,
+                    "previous_revision_id": revision.revision_id,
+                    "missing_criteria": final_verification.get("missing_criteria", []),
+                },
+            )
+            return {
+                "terminal": False,
+                "status": "repair_requested",
+                "revision": repair_revision.to_dict(),
+                "final_verification": DataFormatter.sanitize(final_verification),
+            }
+        return None
 
     @staticmethod
     def _taskboard_final_verification_allows_repair(
@@ -2272,8 +2368,16 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
             }
         )
         request.instruct(
-            "Assemble a verifier-ready final result for this TaskBoard task from completed card evidence. "
-            "Self-check obvious success-criteria gaps, but do not act as the terminal verifier. "
+            "Assemble the final result for this task from completed card evidence and decide whether "
+            "it satisfies the goal and success criteria. If incomplete, return replan_signal: repair when "
+            "available task facts and evidence are sufficient to satisfy the unmet criteria by correcting "
+            "the result. Facts explicitly supplied in the goal are available facts even without ledger entries. "
+            "Merely restating an unavailable input or substituting a placeholder does not satisfy a criterion "
+            "that requires that input. Use replan_segment when additional evidence "
+            "or executable work is needed; blocked or clarify only when progress needs unavailable external "
+            "state, authority, capability, or user input. Use continue only when accepted=true. "
+            "State the concrete gap and relevant offered evidence references; do not prescribe tools or "
+            "execution mechanics. "
             "Use evidence_ledger as the authoritative grounding ledger and bind factual claims only through exact "
             "offered evidence_ledger.items[].reference_id values in evidence_use.evidence_ids; no other prompt field "
             "is an evidence identity. Use the hot evidence view for summaries and preserve cold refs "
@@ -2299,19 +2403,12 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
             "usable, what degraded or unavailable evidence constrained the work, and which requested requirements "
             "remain unmet. Set degraded=true only when the response intentionally relies on disclosed partial, "
             "unavailable, optional, or degraded evidence rather than a full evidence path. "
-            "Do not add concrete times, dates, publication states, validation states, numbers, source headings, or "
-            "status details unless they are visible in the goal, evidence_ledger, trusted artifact readback, or "
-            "source_refs, or are explicitly marked as derived from those facts. The runtime/current date is execution "
-            "context only; do not write it as a business, incident, deployment, publication, approval, or validation "
-            "date unless task evidence explicitly provides it. Unsupported concrete additions must "
-            "be reported as gaps instead of accepted as harmless prose. Preserve uncertainty and evidence strength "
-            "exactly: no-known-loss, still-running audit, unpublished manifest, missing sign-off, and unresolved "
-            "warning states must not become confirmed absence, complete validation, publication, approval, or fix. "
-            "When evidence says no data loss is known and an audit is still running, do not state or imply that data "
-            "is intact, complete, safe, fully verified, or that no data was lost. "
-            "Unless the user explicitly requests a fill-in template, do not leave unresolved placeholders such as "
-            "[date], [time], [name], [Your Name], [Title], TODO, or TBD in a final deliverable; omit unknown "
-            "details or write a role-generic sentence grounded in available facts. "
+            "Preserve task-provided facts and ground factual claims in available evidence, including additions "
+            "beyond the success criteria. Distinguish evidence-derived analysis from reported facts; preserve the "
+            "evidence's scope, uncertainty, and pending states. Provide the content required by the task; "
+            "unresolved required content remains a gap. Templates or intentionally open fields are valid when the "
+            "task requests them. Runtime date/time describes execution context; it establishes a task fact only "
+            "when task evidence connects them. "
             "After the final result fields, include short self_check, short_summary, and progress_message for "
             "downstream verification/repair context and human progress. These process fields are not evidence and "
             "must not include raw chain-of-thought or long evidence bodies."
@@ -2319,6 +2416,16 @@ class AgentTaskTaskBoardFinalizationMixin(AgentTaskMixinBase):
         request.output(
             {
                 "accepted": (bool, "True only when all success criteria are satisfied", True),
+                "replan_signal": (
+                    {
+                        "status": (Literal["continue", "repair", "replan_segment", "blocked", "clarify"],
+                                   "continue iff accepted=true; otherwise choose the next step from the current evidence.", False),
+                        "reason": (str, "Concrete gap or completion reason.", False),
+                        "evidence_refs": ([str], "Only exact offered evidence_ledger reference_id values relevant to this decision; empty when none.", False),
+                    },
+                    "Next step when incomplete; continue when accepted. Do not infer missing external facts.",
+                    False,
+                ),
                 "reason": (str, "Concise final verification reason", True),
                 "final_result": (
                     str,

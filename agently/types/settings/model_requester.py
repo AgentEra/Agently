@@ -28,6 +28,18 @@ class _HTTPTimeoutSettings(AgentlyConfigModel):
     pool: float | None = None
 
 
+class JevSettings(AgentlyConfigModel):
+    __settings_namespace__ = "plugins.ModelRequester.Jev"
+    __secret_fields__ = {"api_key"}
+
+    enabled: bool | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    timeout: float | None = Field(default=None, gt=0)
+    batch_size: int | None = Field(default=None, gt=0)
+
+
 class _RequestRetrySettings(AgentlyConfigModel):
     max_attempts: int | None = None
     after_output: bool | None = None

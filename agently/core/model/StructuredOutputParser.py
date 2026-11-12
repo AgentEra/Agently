@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 import json
-from typing import Any, Callable, Mapping
+from typing import Annotated, Any, Callable, Literal, Mapping, get_args, get_origin
 
 import json5
 import yaml
@@ -37,7 +37,10 @@ def parse_json_output(
     build_result_object: Callable[[Any], BaseModel | None],
 ) -> tuple[str | None, Any, BaseModel | None, bool]:
     declaration = output_schema[0] if isinstance(output_schema, tuple) and output_schema else output_schema
-    if declaration in (str, int, float, bool):
+    while get_origin(declaration) is Annotated:
+        declaration = get_args(declaration)[0]
+    scalar_literal = get_origin(declaration) is Literal and all(isinstance(value, (str, int, float, bool)) for value in get_args(declaration))
+    if declaration in (str, int, float, bool) or scalar_literal:
         # A scalar JSON root has no object/list boundary to locate. Do not
         # mistake brackets inside a string for a second structured result.
         scalar_text = text.strip()

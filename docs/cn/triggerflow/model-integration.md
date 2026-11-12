@@ -95,6 +95,14 @@ async def draft_with_streaming(data: TriggerFlowRuntimeData):
 消费者可以在 `body` 还在生成时先渲染 `title` delta。stream 结束后，
 `async_get_data()` 返回同一个 result 的最终缓存解析 dict（不再发请求）。
 
+普通 ModelRequest 和 AgentExecution 的 instant 值仍是暂定结果。即使已观察到完整字段，
+schema、ensure 或 validator 失败仍按原有额度重试。最终校验后重新打开结果流会读取通过的
+attempt；AgentExecution 转发带 attempt metadata 的替换结果。副作用以最终校验结果为准。
+
+只有实际使用 SystemOne 的阶段在观察到完整字段后禁止重放该阶段。最终校验仍可失败，
+阶段保留错误、观察值及 `instant_retry_suppressed`，下游不消费失败结果。SystemOne 前后的
+普通 LLM 阶段仍共享既有重试额度；provider 传输重试合同不变。
+
 ## 让生成与下游 fan-out 重叠
 
 当靠前的完整字段能够启动独立检索或准备工作时，优先采用 TriggerFlow 可见的

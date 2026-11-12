@@ -130,6 +130,9 @@ from .record_store_records import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from contextlib import AbstractAsyncContextManager
+    from agently.types.data.audio import SpeechOptions, SpeechResult, TextSegmentOptions
     from agently.core.orchestration.TriggerFlow.Execution import TriggerFlowExecution
     from agently.core.operation import Action
     from agently.core.Agent import BaseAgent
@@ -197,6 +200,7 @@ class AgentExecution:
         self._rework_feedback: str | None = None
         self._rework_allow_replay = False
         self._producer_state: dict[str, Any] = {}
+        self._audio_inputs: list[Any] = []
         self._resource_release_error: Exception | None = None
         self.lineage: "AgentExecutionLineage" = normalize_execution_lineage(lineage)
         self.limits: "AgentExecutionLimits" = normalize_execution_limits(limits)
@@ -874,7 +878,21 @@ class AgentExecution:
 
     def input(self, *args: Any, **kwargs: Any) -> "AgentExecution":
         target = self._reconfiguration_target()
-        target._draft.input(*args, **kwargs)
+        if not args and kwargs.get("type") == "audio" and "file" in kwargs:
+            from agently.types.data.audio import AudioInput
+            from os import PathLike
+
+            extra = set(kwargs) - {"file", "type", "mappings"}
+            if extra:
+                raise TypeError(f"Unsupported audio input parameters: {sorted(extra)}")
+            source = kwargs["file"]
+            if not isinstance(source, (str, PathLike, AudioInput)):
+                raise TypeError("Audio file must be a path or AudioInput.")
+            sources = list(getattr(target, "_audio_inputs", []))
+            sources.append(source)
+            target._audio_inputs = sources
+        else:
+            target._draft.input(*args, **kwargs)
         return target._refresh_prompt_snapshot()
 
     def info(self, *args: Any, **kwargs: Any) -> "AgentExecution":
@@ -896,6 +914,52 @@ class AgentExecution:
         target = self._reconfiguration_target()
         target._draft.output(*args, **kwargs)
         return target._refresh_prompt_snapshot()
+
+    async def async_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        from .speech import say
+        return await say(self, scope=scope, voice=voice, options=options)
+
+    def say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        return default_stage_call_bridge.as_sync(self.async_say)(scope=scope, voice=voice, options=options)
+
+    def stream_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None, segments: "TextSegmentOptions | None" = None,
+    ) -> "AbstractAsyncContextManager[AsyncIterator[SpeechResult]]":
+        from .speech import stream_say
+        return stream_say(self, scope=scope, voice=voice, options=options, segments=segments)
+
+    def vlm_only(self, enabled: bool = True) -> "AgentExecution":
+        if not isinstance(enabled, bool):
+            raise TypeError("vlm_only expects a bool.")
+        target = self._reconfiguration_target()
+        target.request.settings.set("execution.vlm_only", enabled)
+        return target
+
+    async def async_to_text(self, *, max_retries: int = 3) -> str:
+        """Process images directly; later readers reuse the same execution."""
+        if not self._started:
+            self.request.settings.set("execution.image_direct", True)
+        elif not self.request.settings.get("execution.image_direct", False):
+            raise RuntimeError("to_text must select direct image processing before execution starts.")
+        return await self.async_get_text(max_retries=max_retries)
+
+    def to_text(self, *, max_retries: int = 3) -> str:
+        return default_stage_call_bridge.as_sync(self.async_to_text)(max_retries=max_retries)
+
+    def use_system_one(self, enabled: bool = True) -> "AgentExecution":
+        """Select the dedicated template model; configured models default to enabled."""
+        if not isinstance(enabled, bool):
+            raise TypeError("use_system_one expects a bool.")
+        target = self._reconfiguration_target()
+        target.request.settings.set("system_one.enabled", enabled)
+        return target
 
     def auto_continue(self, enabled: bool = True) -> "AgentExecution":
         """Enable conditional continuation of unfinished model output for this draft.
@@ -1589,6 +1653,29 @@ class AgentExecution:
                 query=resolved_intent,
                 metadata=policy_metadata,
             )
+        # Complete task facts interpret the current read scope; limits and
+        # canonical source identities remain Host-owned.
+        prompt = self.request_prompt.get() or {}
+        task = {
+            "goals": list(self.goal_items),
+            "success_criteria": list(self.success_criteria_items),
+            "input": prompt.get("input"),
+            "task_context": {
+                slot: prompt[slot] for slot in ("system", "info", "instruct", "output")
+                if prompt.get(slot) not in (None, "", [], {})
+            },
+        }
+        current_intent = (
+            resolved_intent if isinstance(resolved_intent, ContextReadIntent)
+            else ContextReadIntent(query=str(resolved_intent))
+        )
+        resolved_intent = ContextReadIntent(
+            query=current_intent.query,
+            explicit_refs=current_intent.explicit_refs,
+            roles=current_intent.roles,
+            filters=current_intent.filters,
+            metadata={**dict(current_intent.metadata), "task": task},
+        )
         with bind_runtime_context(
             agent_execution_context=self.execution_context,
             settings=self.request.settings,
@@ -2059,10 +2146,14 @@ class AgentExecution:
             ))
 
     def _assert_rework_supported(self) -> None:
+        if hasattr(self, "_media_result"):
+            raise NotImplementedError("Direct OCR cannot apply rework feedback; create an OCR-to-LLM task instead.")
         if self.__class__._async_produce is not AgentExecution._async_produce:
             raise NotImplementedError(f"Producer {self.name!r} must declare its own safe rework contract.")
         route = self.route_info.get("selected_route")
         if route == "agent_task":
+            if self._producer_state.get("kind") == "task_loop":
+                return
             if self.task_record is None or self._producer_state.get("kind") != "long_task":
                 raise RuntimeError("Long-task rework requires its retained producer and evidence bindings.")
             if any(not task.done() for task in self.task_record._background_stream_tasks):
@@ -2072,8 +2163,12 @@ class AgentExecution:
 
     async def _async_rework_produce(self, options: ProductionOptions) -> tuple[str, object]:
         if self.route_info.get("selected_route") == "agent_task":
-            from ..long_task.Rework import prepare_task_rework
-            await prepare_task_rework(self)
+            if self._producer_state.get("kind") == "task_loop":
+                from .task_loop import prepare_rework
+                await prepare_rework(self)
+            else:
+                from ..long_task.Rework import prepare_task_rework
+                await prepare_task_rework(self)
         else:
             from .revisions import rework_request
             await rework_request(self)
@@ -2097,9 +2192,19 @@ class AgentExecution:
     @property
     def control_capabilities(self) -> AgentExecutionControlCapabilities:
         """Describe implemented boundaries without starting the producer."""
+        boundaries: list[Literal["before_production", "candidate_ready", "long_task_step"]] = [
+            "before_production", "candidate_ready"]
+        if self._producer_state.get("kind") == "task_loop" or (
+            self.name == "long_task" and self.strategy_name not in {"flat", "taskboard", "task", "task_loop"}
+            and self.task_options.get("execution") not in {"flat", "taskboard"}
+            and self.task_record is None and not self.task_options.get("resume")
+            and self.task_options.get("resume_task_id") is None
+            and not getattr(self, "_agent_task_step_overrides", None)
+        ):
+            boundaries.append("long_task_step")
         return {
-            "pause_boundaries": ["before_production", "candidate_ready"],
-            "snapshot_boundaries": [] if self._bound_agent_capabilities else ["before_production", "candidate_ready"],
+            "pause_boundaries": list(boundaries),
+            "snapshot_boundaries": [] if self._bound_agent_capabilities or self._audio_inputs else list(boundaries),
             "resume": "explicit_pending_pause",
             "rework": ("same_execution_revision" if (
                 self.__class__._async_produce is AgentExecution._async_produce

@@ -90,7 +90,7 @@ class SkillContextSource:
 
     @staticmethod
     def _resource_summary(resource: SkillResourceDescriptor) -> str:
-        return f"{resource.kind} resource {resource.path} ({resource.size} bytes)"
+        return f"{resource.kind} resource {resource.path}"
 
     @classmethod
     def _markdown_sections(
@@ -254,31 +254,6 @@ class SkillContextSource:
                                 "SKILL.md",
                             ),
                         },
-                    )
-                )
-            index_items = [
-                {
-                    "path": resource.path,
-                    "kind": resource.kind,
-                    "size": resource.size,
-                    "sha256": resource.sha256,
-                }
-                for resource in package.resources
-                if resource.path != "SKILL.md"
-            ]
-            if index_items:
-                descriptors.append(
-                    self._descriptor(
-                        binding=binding,
-                        package=package,
-                        path="resource-index",
-                        role="index",
-                        summary=f"Resource index for {package.name}",
-                        estimated_chars=len(str(index_items)),
-                        required=False,
-                        completeness="complete",
-                        index_text=f"Resource index for {package.name}\n{index_items}",
-                        metadata={"resource_index": index_items},
                     )
                 )
             for resource in package.resources:

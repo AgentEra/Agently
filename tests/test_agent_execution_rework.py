@@ -276,3 +276,26 @@ async def test_compatibility_task_budget_covers_rework_scope_before_dispatch(tmp
         await run.async_rework("Change the answer")
     assert run.execution_context.model_request_count == count
     assert await run.get_result(revision=0).async_get_data() == "first"
+
+
+@pytest.mark.asyncio
+async def test_request_rework_preserves_original_information_and_instructions(tmp_path):
+    agent = create_execution_agent(tmp_path, 'revision-context', ['Draft', 'Revised draft', 'Final draft'])
+    run = (agent.create_execution('request')
+           .goal('Write the note', success_criteria=['Follow the supplied policy'], turn_on_long_task=False)
+           .info({'policy': 'Only describe confirmed observations.'})
+           .instruct(['Keep unknown fields explicit.']))
+    await run.async_run()
+    await run.async_rework('Make the note clearer')
+    prompt = ScriptedExecutionRequester.requests[-1]
+    assert 'Only describe confirmed observations.' in json.dumps(prompt['info'])
+    assert 'Keep unknown fields explicit.' in json.dumps(prompt['instruct'])
+    assert 'Make the note clearer' in json.dumps(prompt['info'])
+    assert 'Draft' in json.dumps(prompt['info'])
+    await run.async_rework('Use a shorter introduction')
+    prompt = ScriptedExecutionRequester.requests[-1]
+    assert 'Only describe confirmed observations.' in json.dumps(prompt['info'])
+    assert 'Keep unknown fields explicit.' in json.dumps(prompt['instruct'])
+    assert 'Use a shorter introduction' in json.dumps(prompt['info'])
+    assert 'Make the note clearer' not in json.dumps(prompt['info'])
+    assert 'Revised draft' in json.dumps(prompt['info'])

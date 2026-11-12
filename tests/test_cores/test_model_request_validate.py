@@ -54,7 +54,12 @@ class MockValidateJSONRequester:
     async def request_model(self, request_data: AgentlyRequestData):
         attempt = int(request_data.data.get("attempt", 1))
         index = min(attempt - 1, len(type(self).responses) - 1)
-        yield "message", json.dumps(type(self).responses[index], ensure_ascii=False)
+        response = type(self).responses[index]
+        if isinstance(response, dict) and "__chunks__" in response:
+            for chunk in response["__chunks__"]:
+                yield "message", str(chunk)
+            return
+        yield "message", json.dumps(response, ensure_ascii=False)
 
     async def broadcast_response(
         self,
@@ -220,6 +225,18 @@ async def test_validate_retry_exposes_accepted_attempt_through_reopened_instant_
     assert [item.value for item in first_attempt_items if item.path == "status" and item.is_complete] == ["draft"]
     assert [item.value for item in accepted_attempt_items if item.path == "status" and item.is_complete] == ["ready"]
 
+
+@pytest.mark.asyncio
+async def test_complete_instant_field_retains_validation_retry_limit():
+    MockValidateJSONRequester.reset([{"status": "draft", "title": "x"}])
+    request = _create_request(MockValidateJSONRequester, "instant-validation-limit")
+    response = request.output({"status": str, "title": str}).validate(lambda value, context: False).get_result()
+    items = [item async for item in response.get_async_generator(type="instant")]
+    with pytest.raises(ValueError):
+        await response.async_get_data(max_retries=2)
+    assert MockValidateJSONRequester.attempts == 3
+    assert any(item.path == "status" and item.is_complete for item in items)
+    assert not (await response.async_get_meta()).get("instant_retry_suppressed", False)
 
 def test_validate_retry_exposes_accepted_attempt_through_reopened_sync_instant_stream():
     MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
@@ -762,3 +779,21 @@ async def test_tuple_ensure_accepts_false_and_zero_values():
 
     assert MockValidateJSONRequester.attempts == 1
     assert data == {"ready": False, "count": 0}
+
+
+@pytest.mark.asyncio
+async def test_concurrent_final_reader_retains_validation_retry():
+    import asyncio
+
+    MockValidateJSONRequester.reset([{"status": "draft"}, {"status": "ready"}])
+    request = _create_request(MockValidateJSONRequester, "concurrent-instant-validation")
+    request.output({"status": (str,)}, format="json")
+    response = request.validate(lambda result, context: result["status"] == "ready").get_response()
+
+    async def consume():
+        return [item async for item in response.get_async_generator(type="instant")]
+
+    final, observed = await asyncio.gather(response.async_get_data(max_retries=1), consume(), return_exceptions=True)
+    assert final == {"status": "ready"}
+    assert not isinstance(observed, BaseException)
+    assert MockValidateJSONRequester.attempts == 2

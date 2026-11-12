@@ -126,6 +126,7 @@ class ModelRequest:
             parent=parent_extension_handlers,
         )
         self._model_key = model_key
+        self._model_role: str | None = "llm"
 
         self.set_settings = self.settings.set_settings
         self.load_settings = self.settings.load
@@ -284,32 +285,26 @@ class ModelRequest:
         *,
         mappings: dict[str, Any] | None = None,
     ) -> Self:
+        self.settings.set("execution.image_groups", [])
         self.prompt.set("attachment", prompt, mappings=mappings)
         return self
 
     def image(
         self,
-        *,
-        question: str,
         file: str | os.PathLike[str] | None = None,
+        *,
+        question: str | None = None,
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
         detail: ImageDetail | None = None,
         mappings: dict[str, Any] | None = None,
     ) -> Self:
-        self.prompt.set(
-            "attachment",
-            build_image_attachment(
-                question=question,
-                file=file,
-                url=url,
-                files=files,
-                urls=urls,
-                detail=detail,
-            ),
-            mappings=mappings,
-        )
+        from .AttachmentInput import append_image
+
+        append_image(self.prompt, self.settings, build_image_attachment(
+            question=question, file=file, url=url, files=files, urls=urls, detail=detail,
+        ), mappings=mappings)
         return self
 
     def validate(self, handler: "OutputValidateHandler") -> Self:
@@ -342,6 +337,10 @@ class ModelRequest:
             from agently.utils.ModelPool import resolve_model_pool_settings
 
             resolve_model_pool_settings(self._model_key, self.settings)
+        elif self._model_role is not None:
+            from agently.utils.ModelPool import apply_role_profile
+
+            apply_role_profile(self, self._model_role)
         parent_run_context = resolve_parent_run_context(parent_run_context)
         agent_execution_run_context = (
             parent_run_context

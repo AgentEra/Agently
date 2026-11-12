@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import _startup as _startup
 from .base import print_, async_print, AgentlyMain, Agent
 from ._version import __version__
+from .types.data.judgment import OutputTemplate, Probability, Choice, Score
 from .core.model.AudioModelRequest import AudioModelRequest
 from .types.data.audio import (
     AudioCapabilityError, AudioConnection, AudioFormat, AudioInput, AudioInputOptions, AudioInputEvent, AudioInputHandler, AudioOperation, AudioProtocolError,
@@ -63,6 +65,10 @@ from .types.trigger_flow import (
 Agently = AgentlyMain()
 
 __all__ = [
+    "OutputTemplate",
+    "Probability",
+    "Choice",
+    "Score",
     "LongContent",
     "Agently",
     "__version__",

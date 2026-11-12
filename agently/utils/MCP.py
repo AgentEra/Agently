@@ -15,8 +15,44 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 from urllib.parse import urlparse
+
+
+def _tool_field(tool: object, current: str, legacy: str) -> object:
+    """Prefer SDK v2 fields without invoking FastMCP's deprecated aliases."""
+    try:
+        return getattr(tool, current)
+    except AttributeError:
+        return getattr(tool, legacy, None)
+
+
+def mcp_tool_schema(tool: object, kind: Literal["input", "output"]) -> dict[str, Any] | None:
+    """Translate the optional SDK boundary; JSON Schema remains lossless."""
+    value = _tool_field(tool, f"{kind}_schema", f"{kind}Schema")
+    if value is None and kind == "output":
+        return None
+    if not isinstance(value, dict):
+        raise ValueError(f"MCP tool {kind} schema must be a JSON object.")
+    return value
+
+
+def mcp_tool_tags(tool: object) -> list[str]:
+    meta = _tool_field(tool, "meta", "_meta")
+    if not isinstance(meta, dict):
+        return []
+    tags: list[str] = []
+    for key in ("fastmcp", "_fastmcp"):
+        namespace = meta.get(key)
+        if not isinstance(namespace, dict):
+            continue
+        declared = namespace.get("tags", [])
+        if isinstance(declared, list):
+            for tag in declared:
+                if isinstance(tag, str) and tag not in tags:
+                    tags.append(tag)
+    return tags
 
 
 def _is_url(value: str) -> bool:
@@ -25,9 +61,11 @@ def _is_url(value: str) -> bool:
 
 
 def normalize_mcp_transport(transport: Any, *, headers: dict[str, str] | None = None) -> Any:
-    """Normalize URL + headers into FastMCP-compatible MCP config shape."""
+    """Normalize Python stdio paths and URL + headers for FastMCP."""
 
     if not headers:
+        if isinstance(transport, str) and transport.endswith(".py") and not _is_url(transport):
+            return Path(transport)
         return transport
     normalized_headers = {str(key): str(value) for key, value in headers.items()}
     if isinstance(transport, str) and _is_url(transport):

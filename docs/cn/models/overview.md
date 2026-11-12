@@ -154,3 +154,5 @@ coordinator，私有实现职责分别放在 `modules/request_builder.py`、
 - [Providers](providers/)——按 provider 分组的 recipe
 - [模型设置](../start/model-setup.md)——快速入门级配置
 - [设置](../start/settings.md)——环境变量与分层
+
+开发中 API 参见[独立模型用途与多模态串联](capabilities.md)。

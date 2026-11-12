@@ -1,5 +1,7 @@
 # Agent 自动编排
 
+> 4.1.4.9 新长任务已使用[统一 Loop](long-task-loop.md)。下文 Flat/TaskBoard 卡片调度、目标补全和旧任务恢复说明仅适用于 4.1.x 显式旧策略兼容路径。
+
 Agently 4.1.4 将 `agent.start()` 作为 Agent turn 的默认用户层入口。它仍然返回
 业务结果，但 Agent 可以在显式注入候选能力后，路由到普通模型响应、Actions 或
 AgentExecution-bound Skill context。
@@ -445,10 +447,10 @@ AgentExecution 默认继承父执行的 strategy context，除非子执行显式
 Auto 可以复用 task-shape analysis 中通过校验的最小 board 形状；如果这个候选 board
 只是很小的线性序列，且没有真实 dependency、parallelism、readback 或 recovery 价值，
 则会记录 diagnostics 并回落到 Flat。显式 `execution="taskboard"` 仍然保留
-TaskBoard。TaskBoard 也可以把已经完成的终态 candidate 直接提升到 verification，
-跳过第二次 final synthesis 请求。这些优化只减少重复模型调用；最终 acceptance 仍然
-必须通过 canonical evidence ledger、TaskWorkspace readback evidence、deterministic host
-guards 和模型拥有的 terminal verification。
+TaskBoard。有明确最终 TaskWorkspace 交付合同时，可以把已完成的终态 candidate 直接
+提升到 verification，再由 Host 交付并读回。普通候选由 loop finalizer 判断语义完成；
+叶卡已完成本身不代表整个任务完成。明确的交付、能力及必需上下文合同，以及确定性的
+完整性或生命周期阻断，仍触发 terminal verification。
 
 ```python
 agent.language("zh-CN")
@@ -750,7 +752,11 @@ file carrier，不再静默切换到 inline summary hash。
 TaskWorkspace。未知 carrier id、未知 evidence id，或不是当前 carrier 精确 span 的 quote 都会
 fail closed，并生成结构化 material-claim repair contract。
 
-当某个 bounded step 或 TaskBoard card 返回短小 `artifact_markdown` 正文或分段
+公共正文交付保留完整值；日志和元数据的预览长度限制不会裁剪 `final_result`。
+
+TaskBoard 的 model/control 卡片使用 `candidate_final_result` 作为唯一完整正文槽。普通文字任务保持正文答复；只有任务或卡片声明的最终文件交付合同才授权 Host 自动物化，并开放 `artifact_manifest` 内容计划。旧响应的 `final_result` / `artifact_markdown` 正文仍可读取，但字段名本身不再授权创建文件。用户请求文件而未指定文件名时，由规划模型在既有交付字段中选择相对路径。最终卡片已返回完整正文但未给 manifest 路径时，Host 将现有正文暂存到指定目标对应的候选位置，不为搬运文件重新生成正文。readback 卡片也会通过现有 ContextReader 执行所声明的 `scoped_retrieval`；仅定位的结果仍是引用，正文读取的实际完整性则保留在共享证据账本中。
+
+当 bounded step 返回显式 artifact，或具有文件交付合同的 TaskBoard card 返回完整正文或分段
 `artifact_manifest` 时，AgentTask 会通过绑定的 TaskWorkspace 写入交付物，并立刻
 readback。冷证据会记录 `path`、`bytes`、`sha256`、有界 preview 和 `file_refs`；
 模型热 verifier 输入使用 path/ref handle、有界内容或 preview、截断状态。对于长篇、
@@ -760,7 +766,7 @@ Markdown / plain text，不必为了携带正文而声明 `.output()`；如果�
 `.output(..., format=...)` 的 `xml_field`、`hybrid` 或 `yaml_literal`；AgentTask 的
 TaskWorkspace artifact writer 消费的是 AgentExecution stream 事实：自然正文来自原始
 delta item，retry 边界优先来自 provider 报告的 `$status`。因此这条自然文本路径不要求
-draft request 使用 `.output()`。如果 public `type="delta"` replay marker
+draft request 使用 `.output()`。非流式草稿没有 delta 时，写入器读取同一次成功执行的最终正文，不追加模型请求，也不重复写入已有流式正文。如果 public `type="delta"` replay marker
 `"<$retry>...</$retry>"` 到达 artifact consumer，它会被当作 public replay
 delimiter 处理，绝不会写入或转运为 deliverable text，也不会被提升为 retry metadata；
 structured `$status` 仍是 retry control source。如果 bounded work unit 已经在结构化
@@ -1448,6 +1454,7 @@ assert await execution.get_result(revision=0).async_get_full_data() == first
 
 `rework` 返回新候选的完整结果，已有 reader 保留原版本的数据、meta 和 stream；
 新 reader 默认读取当前 revision。原始任务和验收标准与本次反馈一起交给生产者。
+Request 返工保留原始 `info` 和 `instruct`；当前反馈与上一候选单独追加，连续返工不累积过时反馈。
 Request 修改上一候选；Plan 保留已接受的澄清；LongContent 复用未变的前缀，
 重写受影响章节及后续章节。LongTask 由模型选择需失效的工作，Host 校验 ID
 并失效依赖：Flat 失效后续串行工作，TaskBoard 保留无关卡片并核验复用文件内容。

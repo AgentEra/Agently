@@ -843,8 +843,10 @@ class AgentlyPromptGenerator(PromptGenerator):
                     content = [content_adapter.validate_python(message_content) for message_content in content]
                     for one_content in content:
                         if one_content.type == "text":
+                            # The open attachment variant also accepts dynamic text payloads.
+                            text_content = getattr(one_content, "text")
                             chat_history_lines.append(
-                                f"[{ role }]:{ self._replace_slot_references(str(one_content.text), prompt_title_mapping) }"
+                                f"[{ role }]:{ self._replace_slot_references(str(text_content), prompt_title_mapping) }"
                             )
                         else:
                             warnings.warn(
@@ -1255,7 +1257,9 @@ class AgentlyPromptGenerator(PromptGenerator):
                 else:
                     field_desc = str(field_type_schema)
                     field_required = strict_output
-                if field_required and field_type is not Any:
+                is_judgment = (isinstance(field_type_schema, tuple) and len(field_type_schema) > 3
+                               and isinstance(field_type_schema[3], Mapping) and field_type_schema[3].get("judgment") is True)
+                if field_required and field_type is not Any and not is_judgment:
                     field_annotation = cast(Any, field_type) | None
                 else:
                     field_annotation = field_type
@@ -1358,6 +1362,10 @@ class AgentlyPromptGenerator(PromptGenerator):
 
     def to_output_model(self, *args, strict_output: bool | None = None, **kwargs) -> type["BaseModel"]:
         declared_output = self.prompt.get("output")
+        from agently.types.data.judgment import OutputTemplate
+        if isinstance(declared_output, OutputTemplate):
+            from pydantic import RootModel
+            return RootModel[declared_output.to_schema()[0]]
         if self._is_pydantic_model_type(declared_output):
             return cast(type["BaseModel"], declared_output)
 

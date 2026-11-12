@@ -18,6 +18,25 @@ servers. SSE endpoints remain a legacy compatibility path.
 
 ## Minimal example
 
+FastMCP is optional. For the 4.1.4.10 candidate's updated adapter, install
+`fastmcp==4.1.0` to use MCP SDK v2; FastMCP 3.x with its resolver-selected SDK
+v1 remains compatible. Do not independently upgrade `mcp` across the range
+required by your FastMCP version. The adapter reads SDK v2 snake_case fields
+without requiring FastMCP's deprecated camelCase bridge, preserves server and
+host tags, and retains MCP wire aliases such as `mimeType` in content values.
+Empty structured objects remain `{}`; error results remain failures even when
+the server supplies no text block. These are adapter guarantees, separate from
+model selection or answer quality.
+
+The model-free [protocol smoke](../../../examples/action_runtime/2_5_mcp_protocol_compat.py)
+uses a real local MCP server and checks schemas, two stateful calls and resource
+release. An agent owns one managed client per registration; the upstream
+protocol determines whether a server session exists. FastMCP 4's interactive
+tools and background-task extensions require their own host integration; this
+adapter update does not add those workflows.
+The existing `runtime.httpx_log_level` setting also controls FastMCP 4's
+`httpx2` / `httpcore2` loggers; it does not change tool permissions or retry.
+
 ```python
 import os
 import asyncio

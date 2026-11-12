@@ -79,7 +79,8 @@ python examples/agent_auto_orchestration/29_field_long_content_ollama.py
   No Actions are authorized. The early run timed out after preparation; the
   later release-candidate run completed preparation and accepted production.
 - **29 - Execution Controls.** Safe outer pause, snapshot/rebind/resume,
-  same-object revision rework, retained readers and explicit cleanup.
+  same-object revision rework, retained readers and explicit cleanup. Request rework
+  preserves original information and instructions alongside the latest feedback.
 - **29 - Field Long Content.** Explicit LongContent fields use the chapter
   producer and fill their final strings back into a structured result;
   conditional continuation remains an independent option.

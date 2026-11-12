@@ -44,6 +44,10 @@ def _is_long_content_annotation(value: Any) -> bool:
 
 def normalize_output_declaration(value: Any) -> Any:
     """Resolve typed/string production tags without mutating caller schemas."""
+    from agently.types.data.judgment import OutputTemplate
+
+    if isinstance(value, OutputTemplate):
+        return value.to_schema()
     if _is_long_content_annotation(value):
         return (value, '', None, {'long_content': True})
     if isinstance(value, tuple) and value:

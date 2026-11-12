@@ -323,10 +323,12 @@ Do not keep or re-enable desktop installer workflows only to support the retired
 
 ## PyPI publishing
 
-The main PyPI automation is `Publish on version change`. It runs on pushes to
-`main` that touch `pyproject.toml`. Its validation matrix installs the locked
+The main PyPI automation is `Publish on version change`. Pull requests to `dev`
+and `main` validate Python 3.10/3.14 with FastMCP 3/4 without publishing. Pushes to
+`main` that touch `pyproject.toml` run the same validation matrix. It installs the locked
 dependencies, including Agently-Stage from PyPI, and runs typing and tests
-before the publish job. The publish job then detects whether the Agently package
+before the publish job, which accepts only `main` pushes or manual runs on `main`.
+The publish job then detects whether the Agently package
 version changed and publishes with Poetry only when it changed.
 
 If validation fails after that version-changing push, fix the failure through a

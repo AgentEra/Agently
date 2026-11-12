@@ -34,15 +34,16 @@ SUPPORTED_IMAGE_MIME_TYPES = {
 
 def build_image_attachment(
     *,
-    question: str,
+    question: str | None = None,
     file: str | os.PathLike[str] | None = None,
     url: str | None = None,
     files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
     urls: list[str] | tuple[str, ...] | None = None,
     detail: ImageDetail | None = None,
 ) -> list[dict[str, Any]]:
-    question_text = _validate_question(question)
-    attachment: list[dict[str, Any]] = [{"type": "text", "text": question_text}]
+    attachment: list[dict[str, Any]] = []
+    if question is not None:
+        attachment.append({"type": "text", "text": _validate_question(question)})
 
     image_urls: list[str] = []
     if file is not None:
@@ -137,3 +138,14 @@ def _validate_detail(detail: ImageDetail) -> ImageDetail:
     if detail not in ("low", "high", "auto"):
         raise ValueError("image() detail must be one of: low, high, auto.")
     return detail
+
+
+def append_image(prompt: Any, settings: Any, attachment: list[dict[str, Any]], *, mode: str = "vlm", mappings: dict[str, Any] | None = None) -> None:
+    """Append one image group while retaining its local instruction and mode."""
+    if mode not in {"vlm", "llm", "ocr"}:
+        raise ValueError("image mode must be vlm, llm, or ocr.")
+    current = list(prompt.get("attachment", []) or [])
+    groups = list(settings.get("execution.image_groups", []) or [])
+    groups.append({"start": len(current), "end": len(current) + len(attachment), "mode": mode})
+    prompt.set("attachment", current + attachment, mappings=mappings)
+    settings.set("execution.image_groups", groups)

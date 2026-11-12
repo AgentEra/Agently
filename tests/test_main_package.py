@@ -102,8 +102,8 @@ def _restore_runtime_log_settings(snapshot):
         Agently.settings.set(key, value)
     level_name = Agently.settings.get("runtime.httpx_log_level", "WARNING")
     level = getattr(logging, str(level_name).upper(), logging.WARNING)
-    logging.getLogger("httpx").setLevel(level)
-    logging.getLogger("httpcore").setLevel(level)
+    for logger_name in ("httpx", "httpcore", "httpx2", "httpcore2"):
+        logging.getLogger(logger_name).setLevel(level)
 
 
 @pytest.mark.asyncio
@@ -1413,6 +1413,8 @@ def test_agently_load_settings_refresh_httpx_log_level(tmp_path):
 
     assert logging.getLogger("httpx").level == logging.INFO
     assert logging.getLogger("httpcore").level == logging.INFO
+    assert logging.getLogger("httpx2").level == logging.INFO
+    assert logging.getLogger("httpcore2").level == logging.INFO
 
 
 def test_agently_set_debug_mapping_profiles():

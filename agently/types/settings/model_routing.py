@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, StrictBool
 
 from agently.types.config import AgentlyConfigModel
 
@@ -75,3 +75,21 @@ class ModelProfileSettings(AgentlyConfigModel):
     headers: dict[str, Any] | None = None
     timeout: dict[str, Any] | None = None
     stream_idle_timeout: float | None = None
+
+
+class ModelUseSettings(ModelProfileSettings):
+    """Independent model use: an inline profile or a model-pool reference."""
+
+    __secret_fields__ = {"api_key", "auth"}
+    model_key: str | None = None
+    vision: StrictBool | None = None
+
+
+class SystemOneSettings(ModelProfileSettings):
+    """Dedicated model profile for SystemOne output-template stages."""
+
+    __settings_namespace__ = "system_one"
+    __secret_fields__ = {"api_key", "auth"}
+    enabled: StrictBool | None = None
+    model_key: str | None = None
+    batch_size: int = Field(default=64, ge=1, strict=True)

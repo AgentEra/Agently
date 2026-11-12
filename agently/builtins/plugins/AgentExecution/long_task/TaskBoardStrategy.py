@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from agently.types.data import ContextPackage
+
 from .TaskShared import (
     Any,
     build_task_board_evidence_view,
@@ -379,10 +381,15 @@ class AgentTaskTaskBoardStrategyMixin(
                 "TaskBoard: building a TaskContext package for board planning.",
             )
             await self._apply_guidance_boundary(iteration_index=iteration_index, boundary="taskboard_context")
-            context_pack = await self._await_task_deadline(
-                self._build_context(),
+            context_pack, context_package = await self._await_task_deadline(
+                self._read_task_context_view(
+                    phase="planning",
+                    consumer_id=f"agent_task:{self.id}:taskboard-planner",
+                    intent=f"Plan the TaskBoard: {self.goal}",
+                ),
                 stage="context",
             )
+            frame["planning_context_package"] = context_package
             await self._emit("agent_task.taskboard.context", context_pack)
             required_skill_blocker = self._required_skill_context_blocker(context_pack)
             if required_skill_blocker is not None:
@@ -456,8 +463,17 @@ class AgentTaskTaskBoardStrategyMixin(
                         "taskboard_plan",
                         "TaskBoard: asking the model to plan the initial board.",
                     )
+                    planning_context_package = frame.get("planning_context_package")
+                    plan_request = (
+                        self._request_taskboard_plan(
+                            context_pack,
+                            context_package=planning_context_package,
+                        )
+                        if planning_context_package is not None
+                        else self._request_taskboard_plan(context_pack)
+                    )
                     planning_result = await self._await_task_deadline(
-                        self._request_taskboard_plan(context_pack),
+                        plan_request,
                         stage="taskboard_plan",
                     )
                 else:
@@ -992,13 +1008,38 @@ class AgentTaskTaskBoardStrategyMixin(
         frame["iteration_result"] = dict(result)
         return frame
 
-    async def _request_taskboard_plan(self, context_pack: "TaskContextView"):
-        del context_pack
-        request_context_pack, context_package = await self._read_task_context_view(
-            phase="planning",
-            consumer_id=f"agent_task:{self.id}:taskboard-planner",
-            intent=f"Plan the TaskBoard: {self.goal}",
+    async def _request_taskboard_plan(
+        self,
+        context_pack: "TaskContextView",
+        *,
+        context_package: ContextPackage | None = None,
+    ):
+        consumer_id = f"agent_task:{self.id}:taskboard-planner"
+        reader = self._task_context_reader(
+            phase="planning", consumer_id=consumer_id,
         )
+        snapshot = reader.snapshot
+        if (
+            context_package is None
+            or context_package.task_context_id != snapshot.context_id
+            or context_package.consumer_id != consumer_id
+            or context_package.phase != "planning"
+            or context_package.context_revision != snapshot.revision
+            or context_package.source_revisions != snapshot.source_revisions
+        ):
+            request_context_pack, context_package = await self._read_task_context_view(
+                phase="planning",
+                consumer_id=consumer_id,
+                intent=f"Plan the TaskBoard: {self.goal}",
+            )
+        else:
+            reader.ensure_required_delivery(context_package)
+            request_context_pack = dict(self._context_pack_with_guidance(
+                cast("TaskContextView", self._project_task_context_package(context_package))
+            ))
+        # Keep the orientation used by downstream cards aligned with the actual
+        # planning input, including when sources changed after preparation.
+        context_pack.update(request_context_pack)
         policy = resolve_task_board_planning_policy(
             self._taskboard_effort(),
             metadata={"execution_strategy": self.execution_strategy, "task_id": self.id},
@@ -1009,6 +1050,10 @@ class AgentTaskTaskBoardStrategyMixin(
         self._apply_language_policy_to_request(request, language_policy)
         previous_iterations = self._iteration_prompt_summaries()
         repair_context = self._planner_repair_context(previous_iterations)
+        planning_policy_payload = policy.to_prompt_payload()
+        # Execution identity and task-local budget bookkeeping belong to Host;
+        # the planner only needs the orchestration guidance itself.
+        planning_policy_payload.pop("metadata", None)
         request.input(
             {
                 "task_id": self.id,
@@ -1017,27 +1062,7 @@ class AgentTaskTaskBoardStrategyMixin(
                 "task_context_contract": self._task_context_contract_for_model_prompt(),
                 "context_pack": DataFormatter.sanitize(request_context_pack),
                 "execution_prompt": self._execution_prompt_context(),
-                "planning_policy": policy.to_prompt_payload(),
-                "taskboard_harness_policy": {
-                    "acceptance_index": {
-                        "schema_version": "task_board_acceptance_index/v1",
-                        "authority": "projection_only",
-                        "semantic_owner": "verifier",
-                    },
-                    "handoff_projection": {
-                        "schema_version": "task_board_handoff_projection/v1",
-                        "authority": "orientation_only",
-                    },
-                    "preflight": {
-                        "allowed_only_with_mounted_capabilities": True,
-                        "metadata_fields": [
-                            "preflight_kind",
-                            "requires_capability_ids",
-                            "requires_task_workspace_refs",
-                            "focus_item_ids",
-                        ],
-                    },
-                },
+                "planning_policy": planning_policy_payload,
                 "retrieval_policy": self._task_context_retrieval_policy(),
                 "planner_capabilities": self._planner_capabilities(),
                 "capability_evidence_requirements": self._capability_evidence_requirements(),
@@ -1049,11 +1074,8 @@ class AgentTaskTaskBoardStrategyMixin(
             "Plan a card board for this submitted task. "
             "Do not discuss route selection. "
             "Use task_context_contract for prompt-safe temporal policy and ref-backed intermediate-resource handling. "
-            "Concrete runtime current_time values may be omitted from the model hot path; do not infer or write a "
-            "current date/time as a business fact unless it appears in task facts or source evidence. It is not a resource cap. "
             "Use the planning_policy as vocabulary guidance for orchestration complexity, evidence depth, "
-            "reflection density, and repair tendency. Do not create hard budgets, fixed card counts, "
-            "or action allowlists from the effort profile. "
+            "reflection density, and repair tendency. "
             "When context_pack.skill_projection is present, its guidance and selected_resources are already "
             "TaskContext-disclosed Skill procedure. Apply it directly; do not treat it as business evidence or create readback "
             "cards or scoped_retrieval query groups for skills/... citations, and do not treat Skill citations "
@@ -1391,7 +1413,8 @@ class AgentTaskTaskBoardStrategyMixin(
                 continue
 
             if not commands:
-                card["allowed_execution_shape"] = "control"
+                # A delivery location does not determine how its content is
+                # produced. Missing commands may require an adaptive Action loop.
                 card.pop("action_commands", None)
                 prepared.append(card)
                 continue

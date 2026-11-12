@@ -452,8 +452,17 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
             "rationale": "Execute one TaskBoard artifact readback card through the shared Block carrier.",
             "step_scope": {},
         }
+        scoped_retrieval = self._taskboard_card_scoped_retrieval(context.card)
+        if scoped_retrieval:
+            carrier_plan["scoped_retrieval"] = scoped_retrieval
 
         async def run_readback_work_unit(_context: Mapping[str, Any]) -> Mapping[str, Any]:
+            scoped_payload = self._taskboard_card_payload_with_scoped_retrieval_results({}, _context)
+            scoped_results = scoped_payload.get("scoped_retrieval_results", [])
+            retrieved_groups = sum(
+                bool(item.get("locator_refs") or item.get("evidence_snippets"))
+                for item in scoped_results
+            )
             await self._emit(
                 f"agent_task.taskboard.card.{ self._stream_path_token(context.card.id) }.readback.started",
                 {
@@ -469,7 +478,7 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
             diagnostics: list[dict[str, Any]] = []
             readback_evidence_items: list[dict[str, Any]] = []
             if not refs and not file_refs:
-                status = "completed" if exhausted_ref_count else "blocked"
+                status = "completed" if exhausted_ref_count or retrieved_groups else "blocked"
                 success_count = 0
                 failed_count = 0
                 file_success_count = 0
@@ -479,7 +488,10 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
                         "code": (
                             "taskboard.readback.no_unread_ranges"
                             if exhausted_ref_count
-                            else "taskboard.readback.no_refs"
+                            else (
+                                "taskboard.readback.context_read"
+                                if scoped_retrieval else "taskboard.readback.no_refs"
+                            )
                         ),
                         "card_id": context.card.id,
                         "evidence_scope": evidence_card_ids or "all",
@@ -491,16 +503,22 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
                     "answer": (
                         "All scoped Action artifact and TaskWorkspace target ranges were already read; no duplicate read was issued."
                         if exhausted_ref_count
-                        else "No Action artifact refs or TaskWorkspace file refs are available for this readback card."
+                        else (
+                            f"Retrieved scoped Context results for {retrieved_groups} query groups; content completeness is recorded per result."
+                            if scoped_retrieval
+                            else "No Action artifact refs or TaskWorkspace file refs are available for this readback card."
+                        )
                     ),
                     "readbacks": readbacks,
                     "file_readbacks": file_readbacks,
                     "evidence": [],
                     "remaining_work": (
                         []
-                        if exhausted_ref_count
+                        if exhausted_ref_count or retrieved_groups
                         else [
-                            "Upstream cards must produce Action artifact refs or TaskWorkspace file refs before readback can run."
+                            "No scoped Context results were returned."
+                            if scoped_retrieval
+                            else "Upstream cards must produce Action artifact refs or TaskWorkspace file refs before readback can run."
                         ]
                     ),
                     "diagnostics": diagnostics,
@@ -665,7 +683,7 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
                         )
                 file_success_count = sum(1 for item in file_readbacks if item.get("ok"))
                 file_failed_count = len(file_readbacks) - file_success_count
-                status = "completed" if (success_count + file_success_count) > 0 else "failed"
+                status = "completed" if (success_count + file_success_count + retrieved_groups) > 0 else "failed"
                 remaining_work = []
                 if failed_count:
                     remaining_work.append(f"{ failed_count } artifact refs could not be read.")
@@ -707,6 +725,12 @@ class AgentTaskTaskBoardReadbackMixin(AgentTaskMixinBase):
                     "remaining_work": remaining_work,
                     "diagnostics": diagnostics,
                 }
+
+            if scoped_retrieval:
+                payload.update(scoped_payload)
+                empty_groups = len(scoped_retrieval.get("query_groups", [])) - retrieved_groups
+                if empty_groups > 0 and status == "completed":
+                    payload["remaining_work"].append(f"{empty_groups} scoped Context query groups returned no results.")
 
             await self._emit(
                 f"agent_task.taskboard.card.{ self._stream_path_token(context.card.id) }.readback.completed",

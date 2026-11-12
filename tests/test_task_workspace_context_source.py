@@ -438,3 +438,145 @@ async def test_skill_asset_copy_on_write_does_not_mutate_installed_revision(
 
     assert (workspace.root / copied.path).read_text(encoding="utf-8") == "CHANGED"
     assert library.read_resource(package.revision_ref, "assets/template.txt").text == "ORIGINAL"
+
+
+@pytest.mark.asyncio
+async def test_context_reuses_small_text_and_invalidates_same_size_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import os
+
+    target = tmp_path / 'note.txt'
+    target.write_text('first body')
+    source = TaskWorkspaceContextSource(TaskWorkspace(tmp_path))
+    opened = []
+    original = Path.open
+
+    def track(path, *args, **kwargs):
+        if path == target:
+            opened.append(path)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'open', track)
+    page = await source.async_enumerate_descriptors(profile={}, cursor=None, limit=10)
+    read = await source.async_read_exact('note.txt', max_chars=100)
+    assert read.content == 'first body'
+    # Source observation plus one IO operation; registry classification and
+    # decoding no longer reread the file. Exact disclosure reuses the body.
+    assert len(opened) == 2
+    assert read.content_digest == page.descriptors[0].content_digest
+    before = target.stat()
+    target.write_text('other body')
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    changed = await source.async_read_exact('note.txt', max_chars=100)
+    assert changed.content == 'other body'
+    assert changed.source_revision != read.source_revision
+    assert changed.content_digest != read.content_digest
+
+
+@pytest.mark.asyncio
+async def test_cached_context_preserves_utf8_ranges_and_bom_behavior(tmp_path: Path) -> None:
+    workspace = TaskWorkspace(tmp_path)
+    for name, body in [('utf8.txt', '甲乙abc'.encode()), ('bom.txt', b'\xef\xbb\xbfhello')]:
+        (tmp_path / name).write_bytes(body)
+        source = TaskWorkspaceContextSource(workspace)
+        await source.async_enumerate_descriptors(profile={}, cursor=None, limit=10)
+        for offset, size in [(0, 2), (1, 5), (3, 4), (50, 5)]:
+            expected = await workspace.read_file(name, offset=offset, max_bytes=size)
+            actual = await source.async_read_exact(name, range_start=offset, max_chars=size)
+            assert actual.content == expected.content
+            assert actual.completeness == ('truncated' if expected.truncated else 'complete')
+            assert actual.content_digest == expected.sha256
+
+
+@pytest.mark.asyncio
+async def test_cached_source_checks_replacement_deletion_and_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / 'work'
+    root.mkdir()
+    target = root / 'note.txt'
+    target.write_text('first')
+    source = TaskWorkspaceContextSource(TaskWorkspace(root))
+    first = await source.async_read_exact('note.txt', max_chars=100)
+    replacement = tmp_path / 'replacement.txt'
+    replacement.write_text('next!')
+    replacement.replace(target)
+    second = await source.async_read_exact('note.txt', max_chars=100)
+    assert second.content == 'next!'
+    assert first.source_revision != second.source_revision
+    target.unlink()
+    assert source.source_revision != second.source_revision
+    assert not source._reads
+    with pytest.raises(FileNotFoundError):
+        await source.async_read_exact('note.txt', max_chars=100)
+    outside = tmp_path / 'outside.txt'
+    outside.write_text('private')
+    target.symlink_to(outside)
+    with pytest.raises(TaskWorkspacePolicyError):
+        await source.async_read_exact('note.txt', max_chars=100)
+
+
+@pytest.mark.asyncio
+async def test_source_rejects_file_changed_by_handler_during_read(tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / 'note.txt'
+    target.write_text('first')
+    workspace = TaskWorkspace(tmp_path)
+    source = TaskWorkspaceContextSource(workspace)
+    original = workspace.read_file
+
+    async def racing(*args, **kwargs):
+        result = await original(*args, **kwargs)
+        target.write_text('changed')
+        return result
+
+    monkeypatch.setattr(workspace, 'read_file', racing)
+    with pytest.raises(ValueError, match='changed during read'):
+        await source.async_read_exact('note.txt', max_chars=100)
+    assert not source._reads
+
+
+@pytest.mark.asyncio
+async def test_source_does_not_cache_custom_text_handler(tmp_path: Path) -> None:
+    from agently.core.TaskWorkspace.FileIO import DefaultTextTaskWorkspaceFileIOHandler
+
+    class CustomText(DefaultTextTaskWorkspaceFileIOHandler):
+        name = 'custom'
+        priority = 0
+        calls = 0
+
+        async def read(self, **kwargs):
+            self.calls += 1
+            result = await super().read(**kwargs)
+            result['content'] = f'custom {self.calls}'
+            return result
+
+    (tmp_path / 'note.txt').write_text('source')
+    workspace = TaskWorkspace(tmp_path)
+    source = TaskWorkspaceContextSource(workspace)
+    await source.async_read_exact('note.txt', max_chars=100)
+    custom = CustomText()
+    workspace.register_file_io_handler(custom)
+    first = await source.async_read_exact('note.txt', max_chars=100)
+    second = await source.async_read_exact('note.txt', max_chars=100)
+    assert (first.content, second.content) == ('custom 1', 'custom 2')
+    assert not source._reads
+
+
+@pytest.mark.asyncio
+async def test_source_body_cache_is_bounded_and_pinned_reader_stays_stale(tmp_path: Path) -> None:
+    from agently.core.context import TaskContext
+    from agently.types.data import ContextReadIntent
+    from agently.core.context import ContextStaleError
+
+    for i in range(60):
+        (tmp_path / f'{i}.txt').write_text('x' * 20_000)
+    source = TaskWorkspaceContextSource(TaskWorkspace(tmp_path))
+    for i in range(60):
+        await source.async_read_exact(f'{i}.txt', max_chars=20_000)
+    assert source._read_bytes <= 1_048_576
+    assert len(source._reads) < 60
+    context = TaskContext(task_id='cache-stale')
+    context.attach(source)
+    reader = context.reader(consumer='test', phase='read')
+    (tmp_path / '0.txt').write_text('changed')
+    with pytest.raises(ContextStaleError):
+        await reader.async_read(ContextReadIntent(query='read', explicit_refs=('0.txt',)))

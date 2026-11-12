@@ -246,7 +246,7 @@ def pause_flow() -> TriggerFlow[Any, Any, Any]:
 
 async def pause_at(
     owner: AgentExecution,
-    boundary: Literal["before_production", "candidate_ready"],
+    boundary: Literal["before_production", "candidate_ready", "long_task_step"],
     continuation: Callable[[], Awaitable[tuple[str, object]]],
 ) -> None:
     if not owner._pause_requested:

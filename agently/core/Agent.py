@@ -33,6 +33,9 @@ from agently.utils import DataFormatter, Settings
 from agently.utils.LanguagePolicy import apply_language_policy_to_prompt, resolve_language_policy
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from contextlib import AbstractAsyncContextManager
+    from agently.types.data.audio import SpeechOptions, SpeechResult, TextSegmentOptions
     from agently.core import PluginManager
     from agently.types.data import (
         AgentExecutionLineage,
@@ -1095,6 +1098,69 @@ class BaseAgent:
             parent_run_context=parent_run_context,
         )
 
+    async def async_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        return await self.create_execution().async_say(scope=scope, voice=voice, options=options)
+
+    def say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None,
+    ) -> "SpeechResult | None":
+        return self.create_execution().say(scope=scope, voice=voice, options=options)
+
+    def stream_say(
+        self, *, scope: Literal["final", "all"] = "final", voice: str | None = None,
+        options: "SpeechOptions | None" = None, segments: "TextSegmentOptions | None" = None,
+    ) -> "AbstractAsyncContextManager[AsyncIterator[SpeechResult]]":
+        return self.create_execution().stream_say(scope=scope, voice=voice, options=options, segments=segments)
+
+    async def async_embed(self, content: str | list[str]) -> list[list[float]]:
+        """Embed one or more texts with the independent embeddings profile."""
+        import math
+        from agently.utils.ModelPool import apply_role_profile
+
+        texts = [content] if isinstance(content, str) else content
+        if not isinstance(texts, list) or not texts or any(not isinstance(text, str) or not text.strip() for text in texts):
+            raise ValueError("embed expects a non-empty text or list of non-empty texts.")
+        request = self.create_request(inherit_agent_prompt=False, inherit_extension_handlers=False)
+        if not apply_role_profile(request, "embeddings"):
+            raise ValueError("Configure embeddings.provider/model before embed().")
+        provider = request.settings.get("plugins.ModelRequester.activate")
+        request.settings.set(f"plugins.ModelRequester.{provider}.model_type", "embeddings")
+        request.settings.set(f"plugins.ModelRequester.{provider}.stream", False)
+        result = request.input(texts).get_result()
+        raw = await result.async_get_data(type="original", max_retries=0)
+        if isinstance(raw, dict):
+            raw = raw.get("data")
+        if not isinstance(raw, list) or len(raw) != len(texts):
+            raise ValueError("Embedding response must have exactly one vector per input.")
+        if all(isinstance(row, dict) for row in raw):
+            indexes = [row.get("index") for row in raw]
+            if any(isinstance(index, bool) or not isinstance(index, int) for index in indexes) or set(indexes) != set(range(len(texts))):
+                raise ValueError("Embedding response indexes are missing, repeated or out of range.")
+            raw = [row.get("embedding") for row in sorted(raw, key=lambda row: row["index"])]
+        vectors: list[list[float]] = []
+        for row in raw:
+            if not isinstance(row, list) or not row or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in row):
+                raise ValueError("Embedding vectors must contain finite numbers.")
+            vectors.append([float(value) for value in row])
+        if len({len(row) for row in vectors}) != 1:
+            raise ValueError("Embedding vectors have inconsistent dimensions.")
+        return vectors
+
+    def embed(self, content: str | list[str]) -> list[list[float]]:
+        return cast(list[list[float]], default_stage_call_bridge.as_sync(self.async_embed)(content))
+
+    def vlm_only(self, enabled: bool = True) -> "AgentExecution":
+        """Use the dedicated VLM as this execution's final producer."""
+        return self.create_execution().vlm_only(enabled)
+
+    def use_system_one(self, enabled: bool = True) -> "AgentExecution":
+        """Create an execution with an explicit SystemOne model-selection override."""
+        return self.create_execution().use_system_one(enabled)
+
     def use_capability(self, name: str, capability: object | None) -> "BaseAgent":
         """Bind an extra capability for future executions; None removes the binding.
 
@@ -1603,6 +1669,10 @@ class BaseAgent:
         always: bool = False,
         **kwargs: Any,
     ) -> "Self | AgentExecution":
+        if prompt is _UNSET and value is _UNSET and kwargs.get("type") == "audio" and "file" in kwargs:
+            if always:
+                raise ValueError("Audio file input belongs to one execution; omit always=True.")
+            return self.create_execution().input(mappings=mappings, **kwargs)
         prompt, mappings = _resolve_quick_prompt_input(prompt, value, mappings, kwargs)
         if always:
             self.agent_prompt.set("input", prompt, mappings=mappings)
@@ -1796,6 +1866,7 @@ class BaseAgent:
         always: bool = False,
     ) -> "Self | AgentExecution":
         if always:
+            self.settings.set("execution.image_groups", [])
             self.agent_prompt.set("attachment", prompt, mappings=mappings)
             return self
         return self.create_execution().attachment(prompt, mappings=mappings)
@@ -1803,9 +1874,10 @@ class BaseAgent:
     @overload
     def image(
         self,
-        *,
-        question: str,
         file: str | os.PathLike[str] | None = None,
+        *,
+        question: str | None = None,
+        mode: Literal["vlm", "llm", "ocr"] = "vlm",
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
@@ -1817,9 +1889,10 @@ class BaseAgent:
     @overload
     def image(
         self,
-        *,
-        question: str,
         file: str | os.PathLike[str] | None = None,
+        *,
+        question: str | None = None,
+        mode: Literal["vlm", "llm", "ocr"] = "vlm",
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
@@ -1830,9 +1903,10 @@ class BaseAgent:
 
     def image(
         self,
-        *,
-        question: str,
         file: str | os.PathLike[str] | None = None,
+        *,
+        question: str | None = None,
+        mode: Literal["vlm", "llm", "ocr"] = "vlm",
         url: str | None = None,
         files: list[str | os.PathLike[str]] | tuple[str | os.PathLike[str], ...] | None = None,
         urls: list[str] | tuple[str, ...] | None = None,
@@ -1840,18 +1914,15 @@ class BaseAgent:
         mappings: dict[str, Any] | None = None,
         always: bool = False,
     ) -> "Self | AgentExecution":
-        attachment = build_image_attachment(
-            question=question,
-            file=file,
-            url=url,
-            files=files,
-            urls=urls,
-            detail=detail,
-        )
         if always:
-            self.agent_prompt.set("attachment", attachment, mappings=mappings)
+            from agently.core.model.AttachmentInput import append_image
+
+            attachment = build_image_attachment(question=question, file=file, url=url,
+                                                files=files, urls=urls, detail=detail)
+            append_image(self.agent_prompt, self.settings, attachment, mode=mode, mappings=mappings)
             return self
-        return self.create_execution().attachment(attachment, mappings=mappings)
+        return self.create_execution().image(file, question=question, mode=mode, url=url,
+                                             files=files, urls=urls, detail=detail, mappings=mappings)
 
     @overload
     def options(

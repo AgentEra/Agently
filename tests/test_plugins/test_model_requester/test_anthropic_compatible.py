@@ -814,3 +814,24 @@ def test_broadcast_response_maps_tool_use_to_tool_calls():
     assert tool_call_event["function"]["arguments"] == "{\"query\":\"anthropic\"}"
     meta = next(data for event, data in events if event == "meta")
     assert meta["finish_reason"] == "tool_calls"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        {"type": "url", "url": "https://example.com/clip.mp4"},
+        {"type": "url", "url": "mm_file://123456"},
+        {"type": "base64", "media_type": "video/mp4", "data": "aGVsbG8="},
+    ],
+)
+def test_generate_request_preserves_video_sources(source):
+    block = {"type": "video", "source": source}
+    request = generate_request({}, {"attachment": [block]})
+
+    assert request["data"]["messages"][0]["content"] == [block]
+
+
+@pytest.mark.parametrize("source", [None, "https://example.com/clip.mp4"])
+def test_generate_request_rejects_video_without_source_object(source):
+    with pytest.raises(TypeError, match="Unsupported rich content type"):
+        generate_request({}, {"attachment": [{"type": "video", "source": source}]})

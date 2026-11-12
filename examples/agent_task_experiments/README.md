@@ -58,3 +58,21 @@ The examples do not install MCP, ACP, model, language, or package-manager
 dependencies. Prepare the environment first; for the local development setup,
 run them from the `3.10` conda environment when those optional dependencies are
 installed there.
+
+For TaskBoard runs, an ordinary incomplete final answer can return to the existing
+repair loop through the finalizer's structured continuation decision. A repair
+using available facts does not need another verifier to decide whether to run.
+Missing external input can still produce a blocked partial result; a task is
+not completed merely because all original cards finished. Explicit file delivery
+continues to require actual Host delivery and readback.
+
+When evidence bindings fail and no offered references are available, the Host
+skips the binding-repair model request and retains the unresolved result.
+
+`09_taskboard_inline_inventory.py` uses the configured local OpenAI-compatible
+model (`OMLX_BASE_URL`, `OMLX_API_KEY`, optional `OMLX_MODEL`). It reads two
+synthetic CSV sources and returns an inline inventory report. A normal text
+result remains complete regardless of metadata preview limits and uses the card’s single `candidate_final_result` body slot. A legacy
+`artifact_markdown` field alone does not turn it into a file. Explicit file-delivery
+contracts still stage and promote the requested file through TaskWorkspace; when
+the user leaves the filename open, the planner chooses a relative target.
