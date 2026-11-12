@@ -31,7 +31,8 @@ class Model:
         self.entered.set()
         if self.wait:
             self.release.wait(timeout=5)
-        self.inputs.append(inputs)
+        # ONNX consumes inputs synchronously; retain value snapshots for tests.
+        self.inputs.append({name: value.copy() for name, value in inputs.items()})
         return [np.array([[.75]],dtype=np.float32), inputs['state']+1]
 
 
@@ -113,3 +114,111 @@ async def test_invalid_onnx_outputs_fail_explicitly(monkeypatch,tmp_path):
     async with detector.open(PCMFormat()) as session:
         with pytest.raises(AudioProtocolError,match='output'):
             await session.score(b'\x00\x00'*512)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('rate', [8000, 16000])
+async def test_pcm_values_context_and_alternating_short_tails(monkeypatch, tmp_path, rate):
+    detector, model = make(monkeypatch, tmp_path)
+    size, context_size = (512, 64) if rate == 16000 else (256, 32)
+    context = np.zeros(context_size, dtype=np.float32)
+    async with detector.open(PCMFormat(rate)) as session:
+        for index, length in enumerate((size, 1, size - 1, 7, size)):
+            pcm = np.resize(np.array([-32768, 32767, -1, 0, 1, 256], dtype='<i2'), length)
+            await session.score(pcm.tobytes())
+            actual = model.inputs[-1]
+            expected = np.zeros(size, dtype=np.float32)
+            expected[:length] = pcm.astype(np.float32) / 32768.0
+            np.testing.assert_array_equal(actual['input'][0, :context_size], context)
+            np.testing.assert_array_equal(actual['input'][0, context_size:], expected)
+            assert actual['input'].dtype == np.float32
+            assert actual['sr'].shape == () and actual['sr'].dtype == np.int64
+            assert int(actual['sr']) == rate
+            np.testing.assert_array_equal(actual['state'], np.full((2, 1, 128), index, dtype=np.float32))
+            context = expected[-context_size:].copy()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('rate', [8000, 16000])
+@pytest.mark.parametrize('failure', ['raise', 'count', 'probability', 'state'])
+async def test_failed_inference_preserves_last_successful_state(monkeypatch, tmp_path, rate, failure):
+    detector, model = make(monkeypatch, tmp_path)
+    size, context_size = (512, 64) if rate == 16000 else (256, 32)
+    run = model.run
+
+    def fail(names, inputs):
+        if failure == 'raise':
+            raise RuntimeError('inference failed')
+        if failure == 'count':
+            return [np.array([[.5]], dtype=np.float32)]
+        if failure == 'probability':
+            return [np.array([[.5, .5]], dtype=np.float32), inputs['state'] + 10]
+        return [np.array([[.5]], dtype=np.float32), np.zeros((1, 128), dtype=np.float32)]
+
+    async with detector.open(PCMFormat(rate)) as session:
+        await session.score(b'\x01\x00' * size)
+        monkeypatch.setattr(model, 'run', fail)
+        error = RuntimeError if failure == 'raise' else AudioProtocolError
+        message = 'inference failed' if failure == 'raise' else 'Unsupported Silero ONNX output'
+        with pytest.raises(error, match=message):
+            await session.score(b'\x02\x00' * size)
+        monkeypatch.setattr(model, 'run', run)
+        await session.score(b'\x03\x00' * 3)
+    actual = model.inputs[-1]
+    np.testing.assert_array_equal(actual['input'][0, :context_size], np.full(context_size, 1 / 32768))
+    np.testing.assert_array_equal(actual['state'], np.ones((2, 1, 128)))
+    assert np.all(actual['input'][0, context_size + 3:] == 0)
+
+
+@pytest.mark.asyncio
+async def test_parallel_streams_do_not_share_inputs(monkeypatch, tmp_path):
+    detector, model = make(monkeypatch, tmp_path)
+    barrier = threading.Barrier(2)
+    run = model.run
+
+    def together(names, inputs):
+        barrier.wait(timeout=5)
+        return run(names, inputs)
+
+    monkeypatch.setattr(model, 'run', together)
+    async with detector.open(PCMFormat()) as one, detector.open(PCMFormat()) as two:
+        await asyncio.wait_for(asyncio.gather(
+            one.score(b'\x01\x00' * 512), two.score(b'\xfe\xff' * 512),
+        ), 6)
+    assert sorted(float(row['input'][0, 64]) for row in model.inputs) == [-2 / 32768, 1 / 32768]
+    assert all(np.all(row['input'][0, :64] == 0) and np.all(row['state'] == 0) for row in model.inputs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fail', [False, True])
+async def test_cancel_settles_before_next_frame_even_if_worker_fails(monkeypatch, tmp_path, fail):
+    detector, model = make(monkeypatch, tmp_path)
+    model.wait = True
+    run = model.run
+
+    def blocking(names, inputs):
+        result = run(names, inputs)
+        if fail:
+            raise RuntimeError('worker failed during cancellation')
+        return result
+
+    monkeypatch.setattr(model, 'run', blocking)
+    async with detector.open(PCMFormat()) as session:
+        task = asyncio.create_task(session.score(b'\x05\x00' * 512))
+        while not model.entered.is_set():
+            await asyncio.sleep(.001)
+        task.cancel()
+        await asyncio.sleep(.005)
+        task.cancel()
+        await asyncio.sleep(.005)
+        assert not task.done()
+        model.release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 1)
+        monkeypatch.setattr(model, 'run', run)
+        await session.score(b'\x09\x00' * 2)
+    first, second = model.inputs
+    assert np.all(first['input'][0, 64:] == 5 / 32768)
+    assert np.all(second['input'][0, :64] == (0 if fail else 5 / 32768))
+    assert np.all(second['state'] == (0 if fail else 1))
+    assert np.all(second['input'][0, 66:] == 0)

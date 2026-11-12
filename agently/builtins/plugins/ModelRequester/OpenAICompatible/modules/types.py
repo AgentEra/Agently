@@ -35,11 +35,12 @@ class ModelSettingsMapping(TypedDict):
     chat: str
     completions: str
     embeddings: str
+    rerank: str | None
 
 
 class ModelRequesterSettings(TypedDict, total=False):
     model: str
-    model_type: Literal["chat", "completions", "embeddings"]
+    model_type: Literal["chat", "completions", "embeddings", "rerank"]
     timeout_mode: Literal["http", "first_token"]
     stream_idle_timeout: float | None
     client_options: dict[str, SerializableValue]

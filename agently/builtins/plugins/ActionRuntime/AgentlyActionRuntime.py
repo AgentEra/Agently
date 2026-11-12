@@ -614,6 +614,8 @@ class AgentlyActionRuntime:
             elif event in {"message", "delta", "text"} and data:
                 text_fragments.append(str(data))
             elif event == "done":
+                if not text_fragments and isinstance(data, str) and data:
+                    text_fragments.append(data)
                 break
         action_calls = self.action._normalize_native_action_calls(tool_call_chunks)
         if len(action_calls) == 0:

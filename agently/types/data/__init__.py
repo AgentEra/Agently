@@ -326,6 +326,7 @@ from .skill import (
 from .record_store import (
     RecordStoreCapabilities,
     RecordStoreMode,
+    RerankScore as RerankScore,
     SnapshotPruneResult,
     SnapshotRetentionPolicy,
     RecordContentSegment,

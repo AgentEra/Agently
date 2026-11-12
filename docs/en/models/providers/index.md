@@ -128,6 +128,7 @@ Agently.set_settings("AnthropicCompatible", {
     "model": "${ENV.MINIMAX_MODEL}",
 })
 ```
+MiniMax documents the Anthropic SDK base URL with the `/anthropic` suffix. Agently sends HTTP directly and appends `/messages` to `base_url`, so the examples above include `/anthropic/v1`. You can also set `full_url` to the complete Messages endpoint (for example, `https://api.minimax.io/anthropic/v1/messages`).
 
 ## Doubao
 

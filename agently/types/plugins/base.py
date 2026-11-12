@@ -42,6 +42,7 @@ AgentlyPluginType = Literal[
     "PolicyEngine",
     "VectorIndex",
     "EmbeddingProvider",
+    "RerankProvider",
     "VectorStoreProvider",
     "RecordStoreProviderFactory",
     "TaskWorkspaceFileIOHandler",

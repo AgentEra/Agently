@@ -715,6 +715,7 @@ class AgentTaskTaskBoardStrategyMixin(
                 await self._record_taskboard_checkpoint(
                     stage="tick",
                     tick_index=tick_index,
+                    iteration_index=iteration_index,
                     revision=current_board.revision,
                     runtime_topology=runtime_topology,
                     terminal_reason="no_runnable_cards",
@@ -790,6 +791,7 @@ class AgentTaskTaskBoardStrategyMixin(
                 await self._record_taskboard_checkpoint(
                     stage="terminal_convergence",
                     tick_index=tick_index,
+                    iteration_index=iteration_index,
                     revision=tick_result.revision,
                     runtime_topology=tick_runtime_topology,
                     terminal_reason="terminal_convergence_stopped",
@@ -804,6 +806,7 @@ class AgentTaskTaskBoardStrategyMixin(
             await self._record_taskboard_checkpoint(
                 stage="tick",
                 tick_index=tick_index,
+                iteration_index=iteration_index,
                 revision=tick_result.revision,
                 runtime_topology=tick_runtime_topology,
             )
@@ -853,6 +856,7 @@ class AgentTaskTaskBoardStrategyMixin(
             await self._record_taskboard_checkpoint(
                 stage="work_execute",
                 tick_index=tick_index,
+                iteration_index=iteration_index,
                 revision=revision,
                 runtime_topology=DataFormatter.sanitize(data.get_state("runtime_topology", {}, inherit=False) or {}),
                 terminal_reason=str(data.get_state("terminal_reason", "", inherit=False) or "") or None,

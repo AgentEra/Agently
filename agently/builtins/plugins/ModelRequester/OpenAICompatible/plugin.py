@@ -61,6 +61,8 @@ class OpenAICompatible(
             "chat": "gpt-4.1",
             "completions": "gpt-3.5-turbo-instruct",
             "embeddings": "text-embedding-ada-002",
+            # Rerank has no vendor-neutral default model id; it must be configured.
+            "rerank": None,
         },
         "timeout_mode": "first_token",
         "stream_idle_timeout": None,
@@ -78,6 +80,7 @@ class OpenAICompatible(
             "chat": "/chat/completions",
             "completions": "/completions",
             "embeddings": "/embeddings",
+            "rerank": "/rerank",
         },
         "auth": None,
         "stream": True,

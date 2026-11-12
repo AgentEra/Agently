@@ -103,6 +103,7 @@ class AgentTaskObservationMixin(AgentTaskMixinBase):
         *,
         stage: str,
         tick_index: int,
+        iteration_index: int | None = None,
         revision: Any,
         runtime_topology: Mapping[str, Any] | None = None,
         terminal_reason: str | None = None,
@@ -141,6 +142,7 @@ class AgentTaskObservationMixin(AgentTaskMixinBase):
             await self._write_taskboard_resume_snapshot(
                 stage=stage,
                 tick_index=tick_index,
+                iteration_index=iteration_index,
                 revision=effective_revision,
                 evidence_view=evidence_view,
                 acceptance_index=acceptance_index,

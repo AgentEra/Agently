@@ -1537,3 +1537,203 @@ async def test_non_stream_response_without_idle_timeout_is_unbounded(monkeypatch
     assert not any(
         event == "error" and isinstance(payload, TimeoutError) for event, payload in events
     )
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_chat_sends_prompt_tools_and_preserves_explicit_definitions(stream: bool) -> None:
+    override = {
+        "type": "function",
+        "function": {"name": "search", "description": "Explicit definition", "parameters": {"type": "object"}},
+    }
+    plugin = build_plugin(
+        {"model": "test-model", "stream": stream, "request_options": {"tools": [override], "tool_choice": "auto"}},
+        {
+            "input": "Find the total.",
+            "tools": [
+                {
+                    "name": "add",
+                    "desc": "Add two integers.",
+                    "kwargs": {"left": (int, "First integer"), "right": (int, "Second integer")},
+                    "required_input_keys": ["left", "right"],
+                },
+                {"name": "search", "desc": "Prompt definition", "kwargs": {}},
+            ],
+        },
+    )
+
+    request = plugin.generate_request_data()
+
+    assert request.request_options["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "add",
+                "description": "Add two integers.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "left": {"type": "integer", "description": "First integer"},
+                        "right": {"type": "integer", "description": "Second integer"},
+                    },
+                    "required": ["left", "right"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        override,
+    ]
+    assert request.request_options["tool_choice"] == "auto"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload_slot", ["delta", "message"])
+async def test_chat_emits_tool_calls_in_both_response_modes(payload_slot: str) -> None:
+    tool_calls = [
+        {"id": "add-call", "type": "function", "function": {"name": "add", "arguments": '{"left":2,"right":3}'}}
+    ]
+
+    async def response():
+        yield "message", json.dumps({"choices": [{payload_slot: {"role": "assistant", "tool_calls": tool_calls}}]})
+        yield "message", "[DONE]"
+
+    plugin = build_plugin({"model": "test-model", "stream": payload_slot == "delta"}, {"input": "Add 2 and 3."})
+    events = [(event, data) async for event, data in plugin.broadcast_response(response())]
+
+    assert [(event, data) for event, data in events if event == "tool_calls"] == [("tool_calls", tool_calls)]
+
+
+def test_rerank_request_targets_rerank_path_without_stream():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model_type": "rerank",
+            "model": "bge-reranker-v2-m3",
+        },
+        {"input": {"query": "how to configure", "documents": ["doc a", "doc b"]}},
+    )
+
+    assert request["request_url"] == "https://api.example.com/v1/rerank"
+    assert request["data"] == {"query": "how to configure", "documents": ["doc a", "doc b"]}
+    assert request["request_options"]["model"] == "bge-reranker-v2-m3"
+    assert request["request_options"]["stream"] is False
+
+
+def test_rerank_request_normalizes_mixed_documents_to_one_shape():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model_type": "rerank",
+            "model": "bge-reranker-v2-m3",
+        },
+        {"input": {"query": "q", "documents": ["plain", {"text": "wrapped"}]}},
+    )
+
+    assert request["data"]["documents"] == [{"text": "plain"}, {"text": "wrapped"}]
+
+
+def test_rerank_request_forwards_top_n_through_request_options():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model_type": "rerank",
+            "model": "bge-reranker-v2-m3",
+            "request_options": {"top_n": 2, "return_documents": False},
+        },
+        {"input": {"query": "q", "documents": ["a", "b", "c"]}},
+    )
+
+    assert request["request_options"]["top_n"] == 2
+    assert request["request_options"]["return_documents"] is False
+
+
+def test_rerank_request_requires_an_explicit_model():
+    with pytest.raises(ValueError, match="requires an explicit rerank model"):
+        generate_request(
+            {"base_url": "https://api.example.com/v1", "model_type": "rerank"},
+            {"input": {"query": "q", "documents": ["a"]}},
+        )
+
+
+@pytest.mark.parametrize(
+    "prompt_input, message",
+    [
+        ("plain text", "requires input as"),
+        ({"documents": ["a"]}, "'query' must be a non-empty string"),
+        ({"query": "  ", "documents": ["a"]}, "'query' must be a non-empty string"),
+        ({"query": "q"}, "'documents' must be a non-empty list"),
+        ({"query": "q", "documents": []}, "'documents' must be a non-empty list"),
+        ({"query": "q", "documents": [{"body": "x"}]}, "document at index 0"),
+        ({"query": "q", "documents": ["ok", 7]}, "document at index 1"),
+    ],
+)
+def test_rerank_request_rejects_invalid_input_before_dispatch(prompt_input, message):
+    with pytest.raises(ValueError, match=message):
+        generate_request(
+            {
+                "base_url": "https://api.example.com/v1",
+                "model_type": "rerank",
+                "model": "bge-reranker-v2-m3",
+            },
+            {"input": prompt_input},
+        )
+
+
+def test_rerank_path_mapping_is_configurable():
+    request = generate_request(
+        {
+            "base_url": "https://api.example.com",
+            "model_type": "rerank",
+            "model": "m1",
+            "path_mapping": {"rerank": "/v2/rerank"},
+        },
+        {"input": {"query": "q", "documents": ["a"]}},
+    )
+
+    assert request["request_url"] == "https://api.example.com/v2/rerank"
+
+
+def test_embeddings_request_shape_is_unchanged_by_rerank_support():
+    request = generate_request(
+        {"base_url": "https://api.example.com/v1", "model_type": "embeddings"},
+        {"input": ["a", "b"]},
+    )
+
+    assert request["request_url"] == "https://api.example.com/v1/embeddings"
+    assert request["data"] == {"input": ["a", "b"]}
+    assert request["request_options"]["model"] == "text-embedding-ada-002"
+
+
+@pytest.mark.asyncio
+async def test_broadcast_response_maps_rerank_results():
+    plugin = build_plugin(
+        {
+            "base_url": "https://api.example.com/v1",
+            "model_type": "rerank",
+            "model": "bge-reranker-v2-m3",
+            "stream": False,
+        },
+        {"input": {"query": "q", "documents": ["a", "b"]}},
+    )
+
+    async def response_generator():
+        yield "message", json.dumps(
+            {
+                "id": "rerank-1",
+                "model": "bge-reranker-v2-m3",
+                "results": [
+                    {"index": 1, "relevance_score": 0.9},
+                    {"index": 0, "relevance_score": 0.1},
+                ],
+                "usage": {"total_tokens": 12},
+            }
+        )
+        yield "message", "[DONE]"
+
+    events = []
+    async for event, payload in plugin.broadcast_response(response_generator()):
+        events.append((event, payload))
+
+    done = next(payload for event, payload in events if event == "done")
+    assert [item["index"] for item in done] == [1, 0]
+    original_done = next(payload for event, payload in events if event == "original_done")
+    assert original_done["usage"]["total_tokens"] == 12
