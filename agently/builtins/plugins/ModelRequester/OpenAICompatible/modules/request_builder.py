@@ -21,8 +21,10 @@ from typing import TYPE_CHECKING, Any
 from agently.types.data import AgentlyRequestData, AgentlyRequestDataDict
 from agently.utils import DataFormatter
 
+from ...function_tools import FunctionTools
 
-class OpenAICompatibleRequestBuilderMixin:
+
+class OpenAICompatibleRequestBuilderMixin(FunctionTools):
     name: str
     model_type: str
     plugin_settings: Any
@@ -134,6 +136,22 @@ class OpenAICompatibleRequestBuilderMixin:
                 value_format="serializable",
                 default_value={},
             )
+        if self.model_type == "chat":
+            prompt_tools = self._prompt_tool_functions(self.prompt.get("tools"))
+            explicit_tools = request_options.get("tools")
+            if prompt_tools and (explicit_tools is None or isinstance(explicit_tools, list)):
+                explicit_tools = explicit_tools or []
+                explicit_names = set()
+                for tool in explicit_tools:
+                    if isinstance(tool, dict) and tool.get("type") == "function":
+                        function = tool.get("function")
+                        if isinstance(function, dict) and isinstance(function.get("name"), str):
+                            explicit_names.add(function["name"])
+                request_options["tools"] = [
+                    {"type": "function", "function": function}
+                    for function in prompt_tools
+                    if function["name"] not in explicit_names
+                ] + explicit_tools
         ## !: ensure model
         request_options.update(
             {
