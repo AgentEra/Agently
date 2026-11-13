@@ -282,6 +282,7 @@ class DataFormatter:
             if "properties" in input_schema and input_schema["properties"]:
                 properties = input_schema["properties"]
                 for kwarg_name, kwarg_schema in properties.items():
+                    kwarg_schema = kwarg_schema.copy()
                     kwarg_type = kwarg_schema.pop("type", Any)
                     kwarg_schema.pop("title", None)
                     kwarg_desc = ";".join([f"{k}: {v}" for k, v in kwarg_schema.items()]) if kwarg_schema else ""
@@ -294,6 +295,7 @@ class DataFormatter:
                 elif additional_properties is True or additional_properties is None:
                     kwargs_format["<*>"] = (Any, "")
                 elif isinstance(additional_properties, dict):
+                    additional_properties = additional_properties.copy()
                     additional_type = additional_properties.pop("type", Any)
                     additional_properties.pop("title", None)
                     additional_desc = (
